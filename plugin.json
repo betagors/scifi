@@ -5,8 +5,10 @@
   "description": "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring.",
   "author": "Mahdi Boughrous",
   "skills": [
-    "citation-verifier",
+    "alex",
     "academic-style-auditor",
-    "latex-proof-partitioner"
+    "latex-proof-partitioner",
+    "human",
+    "turing"
   ]
 }

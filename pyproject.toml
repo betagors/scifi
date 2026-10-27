@@ -1,0 +1,20 @@
+[project]
+name = "scifi"
+version = "0.1.0"
+description = "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "antlr4-python3-runtime==4.11.0",
+    "bibtexparser>=2.1.0",
+    "numpy>=2.5.4",
+    "pint>=0.26.2",
+    "requests>=2.34.2",
+    "sympy>=1.14.0",
+]
+
+[project.scripts]
+scifi = "scifi.citation_verifier.cli:main"
+scifi-verify = "scifi.citation_verifier.cli:main"
+alex = "scifi.citation_verifier.cli:main"
+
