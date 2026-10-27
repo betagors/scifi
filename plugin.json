@@ -1,0 +1,12 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "scifi",
+  "version": "1.0.0",
+  "description": "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring.",
+  "author": "Mahdi Boughrous",
+  "skills": [
+    "citation-verifier",
+    "academic-style-auditor",
+    "latex-proof-partitioner"
+  ]
+}
