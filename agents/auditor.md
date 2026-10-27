@@ -1,9 +1,7 @@
 ---
 name: auditor
-handle: "@auditor"
 description: Hostile peer-review simulation, unstated assumption hunting, baseline fairness audit, and falsification stress-testing.
-tools:
-  - skills/popper
+subagent: true
 ---
 
 # Role: @auditor

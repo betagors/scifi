@@ -1,8 +1,12 @@
 {
-  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "scifi",
+  "displayName": "SciFi",
   "version": "1.0.0",
-  "description": "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring.",
-  "author": "Mahdi Boughrous",
-  "logo": "assets/logo.svg"
+  "description": "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, mathematical derivations, and LaTeX manuscripts.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Audit manuscript references in references.bib and verify DOIs against registries",
+    "Humanize and rewrite this section into objective, publication-grade academic prose",
+    "Verify symbolic derivations, physical units, and notation consistency in paper.tex"
+  ]
 }

@@ -1,10 +1,7 @@
 ---
 name: scribe
-handle: "@scribe"
 description: Academic prose refinement, AI-cliché de-biasing, LaTeX syntax correction, and cross-platform compilation.
-tools:
-  - skills/human
-  - skills/compiler
+subagent: true
 ---
 
 # Role: @scribe

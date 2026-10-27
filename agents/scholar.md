@@ -1,10 +1,7 @@
 ---
 name: scholar
-handle: "@scholar"
 description: Literature synthesis, competitive benchmarking, citation verification, and Related Work structuring.
-tools:
-  - skills/hypatia
-  - skills/alex
+subagent: true
 ---
 
 # Role: @scholar

@@ -1,10 +1,7 @@
 ---
 name: theorist
-handle: "@theorist"
 description: Symbolic derivations, proof auditing, physical dimension checking, and numerical simulation validation.
-tools:
-  - skills/turing
-  - skills/gauss
+subagent: true
 ---
 
 # Role: @theorist
