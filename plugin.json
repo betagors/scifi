@@ -14,11 +14,5 @@
     "compiler",
     "popper",
     "uv"
-  ],
-  "agents": [
-    "agents/scholar.md",
-    "agents/theorist.md",
-    "agents/scribe.md",
-    "agents/auditor.md"
   ]
 }
