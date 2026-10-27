@@ -1,0 +1,2 @@
+description = "Verify LaTeX mathematical derivations, symbolic calculus, units, and notation"
+prompt = "Verify LaTeX mathematical derivations using the turing verification suite. Inspect symbolic derivatives, dimensional/unit compatibility with Pint, matrix product shapes, asymptotic boundary limits, Hessian convexity, numerical sanity vs simulation points, and cross-section notation consistency. Target: {{args}}"

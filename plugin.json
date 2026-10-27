@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring.",
   "author": "Mahdi Boughrous",
+  "logo": "assets/logo.svg",
   "skills": [
     "alex",
     "academic-style-auditor",

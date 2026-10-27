@@ -1,0 +1,2 @@
+description = "Rewrite AI text into rigorous, objective academic and scientific prose"
+prompt = "Rewrite the provided text using the human academic prose protocol. Systematically eradicate AI hallmarks, filler phrases, empty transition words, marketing hyperbole, and em dashes. Enforce academic passive constructions, epistemic hedging (e.g. 'it is suggested that', 'indicates'), precise technical vocabulary, and formal journal standards. Input text: {{args}}"
