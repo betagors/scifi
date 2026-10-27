@@ -1,0 +1,2 @@
+description = "Synthesize literature, inspect full-text baselines, and construct novelty matrices"
+prompt = "Execute the hypatia skill. If given a DOI or arXiv ID, fetch the open-access PDF, extract its mathematical formulation and stated limitations, and construct a Delta-Novelty Matrix vs the user's draft. If given a local PDF, skip the fetch step. If given a topic or reference list, produce a thematic Related Work taxonomy. Target: {{args}}"

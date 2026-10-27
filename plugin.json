@@ -7,9 +7,18 @@
   "logo": "assets/logo.svg",
   "skills": [
     "alex",
-    "academic-style-auditor",
-    "latex-proof-partitioner",
+    "turing",
+    "gauss",
+    "hypatia",
     "human",
-    "turing"
+    "compiler",
+    "popper",
+    "uv"
+  ],
+  "agents": [
+    "agents/scholar.md",
+    "agents/theorist.md",
+    "agents/scribe.md",
+    "agents/auditor.md"
   ]
 }

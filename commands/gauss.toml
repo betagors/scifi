@@ -1,0 +1,2 @@
+description = "Verify theoretical curves against simulation data and audit statistical confidence"
+prompt = "Execute the gauss numerical verification skill on the target. Verify that any LaTeX closed-form formula matches the simulation dataset within standard tolerances using verify_curve_match.py, check confidence interval and sample-size validity using audit_statistics.py, and report monotonicity agreement. Surface worst-point deviations and reviewer-facing warnings where applicable. Target: {{args}}"
