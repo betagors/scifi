@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-scifi = "scifi.citation_verifier.cli:main"
+scifi = "scifi.cli:main"
 scifi-verify = "scifi.citation_verifier.cli:main"
 alex = "scifi.citation_verifier.cli:main"
 scifi-argus = "scifi.argus.cli:main"
