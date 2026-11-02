@@ -115,6 +115,16 @@ class TestUnits(unittest.TestCase):
         self.assertFalse(res["is_correct"])
         self.assertIn("mismatched_terms", res)
 
+    def test_check_units_terms_mode_valid(self):
+        res = check_units("10 meter, 5 meter, 2 meter", check_mode="terms")
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+
+    def test_check_units_terms_mode_mismatch(self):
+        res = check_units("10 meter, 5 second", check_mode="terms")
+        self.assertEqual(res["status"], "DIMENSION_MISMATCH")
+        self.assertFalse(res["is_correct"])
+
     def test_check_units_missing_rhs_in_eq(self):
         res = check_units("5 joule", check_mode="eq")
         self.assertEqual(res["status"], "ERROR")
@@ -159,6 +169,31 @@ class TestLinearAlgebra(unittest.TestCase):
         self.assertEqual(res["status"], "ERROR")
         self.assertIn("error_message", res)
 
+    def test_check_matrix_shapes_matmult_and_unary_neg(self):
+        dims = {"A": ["m", "n"], "B": ["n", "k"]}
+        res = check_matrix_shapes("-A @ B", dims)
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+        self.assertEqual(res["result_shape"], ["m", "k"])
+
+    def test_check_matrix_shapes_ast_rejects_eval_call(self):
+        dims = {"A": ["m", "n"]}
+        res = check_matrix_shapes("eval('1')", dims)
+        self.assertEqual(res["status"], "ERROR")
+        self.assertIn("error_message", res)
+
+    def test_check_matrix_shapes_ast_rejects_disallowed_attribute(self):
+        dims = {"A": ["m", "n"]}
+        res = check_matrix_shapes("A.__class__", dims)
+        self.assertEqual(res["status"], "ERROR")
+        self.assertIn("error_message", res)
+
+    def test_check_matrix_shapes_ast_rejects_disallowed_operator(self):
+        dims = {"A": ["m", "n"], "B": ["n", "k"]}
+        res = check_matrix_shapes("A / B", dims)
+        self.assertEqual(res["status"], "ERROR")
+        self.assertIn("error_message", res)
+
 
 class TestConvexity(unittest.TestCase):
     def test_check_convexity_strictly_convex(self):
@@ -193,6 +228,33 @@ class TestConvexity(unittest.TestCase):
         res = check_convexity(r"\frac{1}", "x")
         self.assertEqual(res["status"], "ERROR")
         self.assertIn("error_message", res)
+
+    def test_check_convexity_strictly_concave(self):
+        # f(x, y) = -(x^2 + y^2) has negative definite Hessian
+        res = check_convexity(r"-(x^2 + y^2)", "x, y", claimed="strictly_concave")
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+        self.assertEqual(res["actual_property"], "strictly_concave")
+
+    def test_check_convexity_concave_single_var(self):
+        # f(x) = -x^2 is strictly concave / concave
+        res = check_convexity(r"-x^2", "x", claimed="concave")
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+
+    def test_check_convexity_normalization(self):
+        # Claim with space or hyphen: "strictly concave", "strictly-concave", "strictly-convex"
+        res1 = check_convexity(r"-x^2", "x", claimed="strictly concave")
+        self.assertEqual(res1["status"], "VALID")
+        self.assertTrue(res1["is_correct"])
+
+        res2 = check_convexity(r"-x^2", "x", claimed="strictly-concave")
+        self.assertEqual(res2["status"], "VALID")
+        self.assertTrue(res2["is_correct"])
+
+        res3 = check_convexity(r"x^2", "x", claimed="strictly-convex")
+        self.assertEqual(res3["status"], "VALID")
+        self.assertTrue(res3["is_correct"])
 
 
 class TestNotation(unittest.TestCase):

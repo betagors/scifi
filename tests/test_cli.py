@@ -25,7 +25,7 @@ def test_cli_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert ret == 0
     captured = capsys.readouterr().out
     assert "usage: scifi" in captured
-    for subcmd in ["verify", "audit", "search", "argus", "setup", "server"]:
+    for subcmd in ["verify", "audit", "search", "argus", "setup", "compile", "server"]:
         assert subcmd in captured
 
 
@@ -65,6 +65,11 @@ def test_cli_subcommand_helps(capsys: pytest.CaptureFixture[str]) -> None:
     captured_setup = capsys.readouterr().out
     assert "--auto" in captured_setup
     assert "--dry-run" in captured_setup
+
+    # compile help
+    ret_compile = scifi.cli.main(["compile", "--help"])
+    assert ret_compile == 0
+    assert "tex_file" in capsys.readouterr().out
 
     # server help
     ret_server = scifi.cli.main(["server", "--help"])

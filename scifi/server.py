@@ -94,50 +94,46 @@ def scifi_verify_citation(
     has_claimed = bool(claimed_title or claimed_author or claimed_year or claimed_venue)
 
     if cached is not None:
-        if not has_claimed:
-            return cached
+        canonical_data = cached
+    else:
+        # Fetch canonical metadata only (without claimed fields) to avoid caching per-call discrepancies
+        meta = verify_citation(query=identifier)
+        canonical_data = meta.to_dict()
+        if meta.status != VerificationStatus.UNRESOLVED:
+            cache.set(cache_key, canonical_data)
 
-        # Re-audit claimed fields against cached verified metadata without remote network call
-        claimed = ClaimedMetadata(
-            title=claimed_title,
-            authors=[claimed_author] if claimed_author else [],
-            year=claimed_year,
-            venue=claimed_venue,
-        )
-        cached_authors = [
-            a["name"] if isinstance(a, dict) else str(a)
-            for a in cached.get("authors", [])
-        ]
-        discrepancies = audit_discrepancies(
-            claimed,
-            verified_title=cached.get("title"),
-            verified_authors=cached_authors,
-            verified_year=cached.get("year"),
-            verified_venue=cached.get("venue"),
-        )
-        result = dict(cached)
-        result["claimed_metadata"] = {
-            "title": claimed_title,
-            "authors": [claimed_author] if claimed_author else [],
-            "year": claimed_year,
-            "venue": claimed_venue,
-        }
-        result["discrepancies"] = [d.to_dict() for d in discrepancies]
-        if any(d.severity == Severity.ERROR for d in discrepancies) and result.get("status") == VerificationStatus.VERIFIED.value:
-            result["status"] = VerificationStatus.MISMATCH.value
-        return result
+    if not has_claimed or canonical_data.get("status") == VerificationStatus.UNRESOLVED.value:
+        return canonical_data
 
-    meta = verify_citation(
-        query=identifier,
-        claimed_title=claimed_title,
-        claimed_year=claimed_year,
-        claimed_author=claimed_author,
-        claimed_venue=claimed_venue,
+    # Dynamically audit claimed fields against canonical verified metadata without polluting cache
+    claimed = ClaimedMetadata(
+        title=claimed_title,
+        authors=[claimed_author] if claimed_author else [],
+        year=claimed_year,
+        venue=claimed_venue,
     )
-    data = meta.to_dict()
-    if meta.status != VerificationStatus.UNRESOLVED:
-        cache.set(cache_key, data)
-    return data
+    cached_authors = [
+        a["name"] if isinstance(a, dict) else str(a)
+        for a in canonical_data.get("authors", [])
+    ]
+    discrepancies = audit_discrepancies(
+        claimed,
+        verified_title=canonical_data.get("title"),
+        verified_authors=cached_authors,
+        verified_year=canonical_data.get("year"),
+        verified_venue=canonical_data.get("venue"),
+    )
+    result = dict(canonical_data)
+    result["claimed_metadata"] = {
+        "title": claimed_title,
+        "authors": [claimed_author] if claimed_author else [],
+        "year": claimed_year,
+        "venue": claimed_venue,
+    }
+    result["discrepancies"] = [d.to_dict() for d in discrepancies]
+    if any(d.severity == Severity.ERROR for d in discrepancies) and result.get("status") == VerificationStatus.VERIFIED.value:
+        result["status"] = VerificationStatus.MISMATCH.value
+    return result
 
 
 @mcp.tool()
@@ -157,7 +153,14 @@ def scifi_audit_bib(
         Dictionary with total entries, counts for verified, retracted, errata, mismatch, unresolved,
         detailed findings per entry, and markdown summary.
     """
-    report = audit_bib_file(Path(bib_path))
+    bib_file = Path(bib_path)
+    if not bib_file.exists():
+        return {
+            "status": "ERROR",
+            "error_message": f"File not found: {bib_path}",
+        }
+
+    report = audit_bib_file(bib_file)
     if output_bib:
         sanitized = generate_sanitized_bib(report)
         out_path = Path(output_bib)
@@ -302,6 +305,12 @@ def scifi_audit_attribution(
         AttributionReport dictionary containing findings, categories, suggestions, and autofix results.
     """
     target_path = Path(file_path)
+    if not target_path.exists():
+        return {
+            "status": "ERROR",
+            "error_message": f"File not found: {file_path}",
+        }
+
     engine = ArgusEngine(enable_search=enable_search)
     report = engine.audit_file(target_path)
     findings_dict = report.to_dict()

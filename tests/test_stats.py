@@ -51,6 +51,56 @@ class TestVerifyCurve(unittest.TestCase):
         self.assertTrue(res["is_correct"])
         self.assertLess(res["max_error"], 1e-4)
 
+    def test_verify_curve_relational_equality(self):
+        """Verify relational equation 'y = 2*x + 1' (Finding 2)."""
+        x_vals = [0.0, 1.0, 2.0, 3.0]
+        y_vals = [1.0, 3.0, 5.0, 7.0]
+        res = verify_curve(
+            formula_latex="y = 2*x + 1",
+            var_name="x",
+            x_vals=x_vals,
+            y_vals=y_vals,
+        )
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+
+    def test_verify_curve_python_power_syntax(self):
+        """Verify Python power syntax '2*x**2 + 1' and 'y = 2*x**2 + 1' (Finding 2)."""
+        x_vals = [0.0, 1.0, 2.0, 3.0]
+        y_vals = [1.0, 3.0, 9.0, 19.0]
+        res1 = verify_curve(
+            formula_latex="2*x**2 + 1",
+            var_name="x",
+            x_vals=x_vals,
+            y_vals=y_vals,
+        )
+        self.assertEqual(res1["status"], "VALID")
+        self.assertTrue(res1["is_correct"])
+
+        res2 = verify_curve(
+            formula_latex="y = 2*x**2 + 1",
+            var_name="x",
+            x_vals=x_vals,
+            y_vals=y_vals,
+        )
+        self.assertEqual(res2["status"], "VALID")
+        self.assertTrue(res2["is_correct"])
+
+    def test_verify_curve_latex_equality(self):
+        """Verify LaTeX formula with equality 'y = \\frac{1}{1 + x^2}' (Finding 2)."""
+        x_vals = [0.0, 1.0, 2.0, 3.0]
+        y_vals = [1.0 / (1.0 + x**2) for x in x_vals]
+        res = verify_curve(
+            formula_latex=r"y = \frac{1}{1 + x^2}",
+            var_name="x",
+            x_vals=x_vals,
+            y_vals=y_vals,
+            rtol=1e-3,
+            atol=1e-4,
+        )
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+
     def test_verify_curve_csv_file(self):
         """Verify reading from CSV simulation file."""
         with tempfile.TemporaryDirectory() as tmpdir:

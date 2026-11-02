@@ -3,14 +3,14 @@ description: Verify LaTeX mathematical derivations, symbolic calculus, units, an
 argument-hint: "[--expr <latex> --claimed <latex> | --file <paper.tex>]"
 ---
 
-Audit mathematical proofs and derivations using the `turing` skill and verification scripts:
+Audit mathematical proofs and derivations using the `turing` skill and native `scifi_*` MCP tools:
 
-- **Derivatives (`verify_derivation.py`)**: Check that symbolic $\frac{d}{dx} f(x)$ matches claimed results using SymPy.
-- **Dimensional Units (`verify_units.py`)**: Validate physical units and dimension consistency via Pint.
-- **Matrix Dimensions (`verify_matrix_shapes.py`)**: Validate symbolic tensor and matrix products.
-- **Asymptotic Limits (`verify_limits.py`)**: Check boundary and asymptotic behavior (e.g. $N \to \infty$).
-- **Convexity (`verify_convexity.py`)**: Calculate symbolic Hessian and test positive definiteness via Sylvester's criterion.
-- **Numerical Sanity (`verify_numerical.py`)**: Lambdify closed forms and compare against simulation data.
-- **Notation Consistency (`verify_notation.py`)**: Scan LaTeX files for conflicting notation variants ($P$, $p(t)$, $\mathbf{P}$).
+- **Derivatives (`scifi_verify_derivative`)**: Check that symbolic $\frac{d}{dx} f(x)$ matches claimed results using SymPy.
+- **Dimensional Units (`scifi_check_units`)**: Validate physical units and dimension consistency via Pint (`eq` or `terms` mode).
+- **Matrix Dimensions (`scifi_check_matrix_shapes`)**: Validate symbolic tensor and matrix products.
+- **Asymptotic Limits (`scifi_check_limits`)**: Check boundary and asymptotic behavior (e.g. $N \to \infty$).
+- **Convexity (`scifi_check_convexity`)**: Calculate symbolic Hessian and test positive definiteness via Sylvester's criterion.
+- **Curve Verification (`scifi_verify_curve`)**: Evaluate closed forms and compare against simulation data.
+- **Notation Consistency (`scifi_check_notation`)**: Scan LaTeX files for conflicting notation variants ($P$, $p(t)$, $\mathbf{P}$).
 
 Target/Arguments: $ARGUMENTS

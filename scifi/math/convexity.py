@@ -47,7 +47,7 @@ def check_convexity(
     Args:
         expr: Scalar function in LaTeX or symbolic math syntax.
         var: Comma-separated variable names (e.g., 'x' or 'x, y').
-        claimed: Claimed property: 'strictly_convex', 'convex', or 'indefinite'.
+        claimed: Claimed property: 'strictly_convex', 'convex', 'strictly_concave', 'concave', or 'indefinite'.
     """
     try:
         variables = [sp.Symbol(v.strip()) for v in var.split(",") if v.strip()]
@@ -70,22 +70,44 @@ def check_convexity(
         eigenvals = H.eigenvals()
         eigenval_list = [sp.latex(ev) for ev in eigenvals.keys()]
 
+        claimed_norm = claimed.strip().lower().replace(" ", "_").replace("-", "_")
+
         is_pd = _sylvester_criterion(H_simplified)
         is_psd = is_pd or all(
             sp.ask(sp.Q.nonnegative(sp.simplify(ev))) is True or sp.simplify(ev).is_nonnegative is True
             for ev in eigenvals.keys()
         )
 
+        neg_H = -H_simplified
+        is_nd = _sylvester_criterion(neg_H)
+        is_nsd = is_nd or all(
+            sp.ask(sp.Q.nonnegative(sp.simplify(-ev))) is True or sp.simplify(-ev).is_nonnegative is True
+            for ev in eigenvals.keys()
+        )
+
         if is_pd:
             actual = "strictly_convex"
-        elif is_psd:
+        elif is_nd:
+            actual = "strictly_concave"
+        elif is_psd and not is_nsd:
             actual = "convex"
+        elif is_nsd and not is_psd:
+            actual = "concave"
+        elif is_psd and is_nsd:
+            actual = "concave" if "concave" in claimed_norm else "convex"
         else:
             actual = "indefinite"
 
-        claimed_norm = claimed.strip().lower()
         if claimed_norm == "convex":
-            is_correct = (actual in ("convex", "strictly_convex"))
+            is_correct = is_psd
+        elif claimed_norm == "concave":
+            is_correct = is_nsd
+        elif claimed_norm == "strictly_convex":
+            is_correct = is_pd
+        elif claimed_norm == "strictly_concave":
+            is_correct = is_nd
+        elif claimed_norm == "indefinite":
+            is_correct = (not is_psd and not is_nsd)
         else:
             is_correct = (actual == claimed_norm)
 

@@ -36,6 +36,38 @@ def cmd_server(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compile(args: argparse.Namespace) -> int:
+    """Compile a LaTeX manuscript and report diagnostics."""
+    from scifi.latex import compile_latex
+
+    entrypoint = args.tex_file
+    engine = getattr(args, "engine", "auto")
+    clean = getattr(args, "clean", True)
+    res = compile_latex(entrypoint=entrypoint, engine=engine, clean=clean)
+
+    status = res.get("status")
+    if status == "SUCCESS":
+        print(f"[SUCCESS] Compiled {res.get('pdf_path')}")
+        warnings = res.get("warnings", [])
+        if warnings:
+            print(f"Warnings ({len(warnings)}):")
+            for w in warnings:
+                print(f"  - {w}")
+        return 0
+    elif status == "ENGINE_MISSING":
+        print(f"[ENGINE_MISSING] {res.get('message')}")
+        hint = res.get("action_required", {}).get("install_command")
+        if hint:
+            print(f"Action required: {hint}")
+        return 1
+    else:
+        print(f"[{status}] Compilation failed: {res.get('message')}")
+        for err in res.get("errors", []):
+            loc = f"{err.get('file', '')}:{err.get('line', '')}"
+            print(f"  Error at {loc}: {err.get('message', '')}")
+        return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Build the unified top-level ArgumentParser."""
     parser = argparse.ArgumentParser(
@@ -88,6 +120,12 @@ def create_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
     p_setup.add_argument("--scifi-root", type=str, help="Custom root directory for scifi repository")
+
+    # compile
+    p_compile = subparsers.add_parser("compile", help="Compile a LaTeX manuscript and diagnose build errors")
+    p_compile.add_argument("tex_file", nargs="?", default="main.tex", help="Path to main LaTeX (.tex) file (default: main.tex)")
+    p_compile.add_argument("--engine", choices=["auto", "latexmk", "pdflatex"], default="auto", help="LaTeX engine to use (default: auto)")
+    p_compile.add_argument("--no-clean", dest="clean", action="store_false", default=True, help="Do not remove auxiliary files")
 
     # server
     p_server = subparsers.add_parser("server", help="Run the SciFi FastMCP server daemon")
@@ -154,6 +192,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.print_help()
             return 0
         return argus_cli.cmd_audit(args)
+    elif args.command == "compile":
+        return cmd_compile(args)
     elif args.command == "setup":
         return setup_cli.cmd_setup(args)
     elif args.command == "server":

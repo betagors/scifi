@@ -37,7 +37,7 @@ Returns:
 {
   "status": "SUCCESS | ERROR",
   "total_flags": 4,
-  "findings": [
+  "flags": [
     {
       "line_number": 48,
       "matched_text": "our algorithm completely eliminates latency",

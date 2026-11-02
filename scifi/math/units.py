@@ -22,7 +22,7 @@ def check_units(
         lhs: Primary unit expression or comma-separated terms (for check_mode='add').
         rhs: Secondary unit expression to compare against (for check_mode='eq').
         check_mode: 'eq' (assert lhs and rhs match dimensionality) or
-                    'add' (assert all terms share the same dimensionality).
+                    'add' / 'terms' (assert all terms share the same dimensionality).
     """
     try:
         mode = check_mode.strip().lower()
@@ -52,7 +52,7 @@ def check_units(
                 )
             return res
 
-        elif mode == "add":
+        elif mode in ("add", "terms"):
             terms = [t.strip() for t in lhs.split(",") if t.strip()]
             if rhs:
                 terms.extend([t.strip() for t in rhs.split(",") if t.strip()])
@@ -87,7 +87,7 @@ def check_units(
         else:
             return {
                 "status": "ERROR",
-                "error_message": f"Unsupported check_mode '{check_mode}'. Expected 'eq' or 'add'.",
+                "error_message": f"Unsupported check_mode '{check_mode}'. Expected 'eq', 'add', or 'terms'.",
             }
 
     except Exception as e:

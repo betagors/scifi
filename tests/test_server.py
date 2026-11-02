@@ -221,6 +221,47 @@ class TestCitationAndAttributionTools(unittest.TestCase):
                     self.assertIsNotNone(in_cache)
                     self.assertEqual(in_cache["title"], "Example DOI Title")
 
+    def test_verify_citation_dynamic_discrepancy_does_not_pollute_cache(self):
+        """Verify that dynamic discrepancy audit does not write MISMATCH into shared cache (Finding 1)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_db = Path(tmpdir) / "test_cache.db"
+            cache = RegistryCache(db_path=cache_db)
+
+            from scifi.citation_verifier.models import Author, CitationMetadata, VerificationStatus
+
+            canonical_meta = CitationMetadata(
+                identifier_type="doi",
+                identifier_value="10.1000/canonical",
+                status=VerificationStatus.VERIFIED,
+                title="Canonical Title",
+                authors=[Author(name="Alice Walker")],
+                year=2021,
+                venue="Nature",
+            )
+
+            with patch("scifi.server.get_cache", return_value=cache):
+                with patch("scifi.server.verify_citation", return_value=canonical_meta):
+                    # Call 1: Claimed year 1990 produces MISMATCH
+                    res1 = scifi_verify_citation("10.1000/canonical", claimed_year=1990)
+                    self.assertEqual(res1["status"], "MISMATCH")
+                    self.assertTrue(len(res1["discrepancies"]) > 0)
+
+                    # Verify that cache only stored canonical VERIFIED status with empty discrepancies
+                    cached_record = cache.get("citation:10.1000/canonical")
+                    self.assertIsNotNone(cached_record)
+                    self.assertEqual(cached_record["status"], "VERIFIED")
+                    self.assertEqual(cached_record.get("discrepancies", []), [])
+
+                    # Call 2: Naked call without claimed fields gets canonical VERIFIED
+                    res2 = scifi_verify_citation("10.1000/canonical")
+                    self.assertEqual(res2["status"], "VERIFIED")
+                    self.assertEqual(res2.get("discrepancies", []), [])
+
+                    # Call 3: Call with correct claimed year gets VERIFIED
+                    res3 = scifi_verify_citation("10.1000/canonical", claimed_year=2021)
+                    self.assertEqual(res3["status"], "VERIFIED")
+                    self.assertEqual(res3.get("discrepancies", []), [])
+
     def test_search_literature_cached_or_openalex(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_db = Path(tmpdir) / "test_cache.db"
@@ -272,6 +313,18 @@ class TestCitationAndAttributionTools(unittest.TestCase):
                     self.assertEqual(res["verified_count"], 1)
                     self.assertTrue(out_bib.exists())
                     self.assertEqual(out_bib.read_text(encoding="utf-8"), "% sanitized bib")
+
+    def test_audit_bib_file_not_found(self):
+        """Verify scifi_audit_bib returns ERROR if file does not exist (Finding 5)."""
+        res = scifi_audit_bib("nonexistent_test_bib_file.bib")
+        self.assertEqual(res["status"], "ERROR")
+        self.assertIn("File not found", res["error_message"])
+
+    def test_audit_attribution_file_not_found(self):
+        """Verify scifi_audit_attribution returns ERROR if file does not exist (Finding 5)."""
+        res = scifi_audit_attribution("nonexistent_test_latex_file.tex")
+        self.assertEqual(res["status"], "ERROR")
+        self.assertIn("File not found", res["error_message"])
 
     def test_audit_attribution_with_autofix(self):
         with tempfile.TemporaryDirectory() as tmpdir:

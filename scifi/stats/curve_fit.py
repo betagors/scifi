@@ -18,6 +18,45 @@ import sympy as sp
 from sympy.parsing.latex import parse_latex
 
 
+def _parse_formula(formula_str: str, var_name: str | None = None) -> sp.Expr:
+    """Parse a formula string into a SymPy expression.
+
+    Supports LaTeX expressions (e.g. r'\\frac{1}{1 + x^2}'), standard Python
+    expressions (e.g. '2*x**2 + 1'), and relational equations (e.g. 'y = 2*x + 1').
+    """
+    s = formula_str.strip()
+    var_sym = sp.Symbol(var_name) if var_name else None
+
+    def _extract_side(eq: Any) -> sp.Expr:
+        if not isinstance(eq, sp.Equality):
+            return eq
+        if var_sym is not None:
+            if var_sym in eq.rhs.free_symbols and var_sym not in eq.lhs.free_symbols:
+                return eq.rhs
+            if var_sym in eq.lhs.free_symbols and var_sym not in eq.rhs.free_symbols:
+                return eq.lhs
+        return eq.rhs
+
+    if "**" in s:
+        if "=" in s:
+            _, rhs = s.split("=", 1)
+            expr = sp.sympify(rhs.strip())
+        else:
+            expr = sp.sympify(s)
+        return _extract_side(expr)
+
+    try:
+        expr = parse_latex(s)
+        return _extract_side(expr)
+    except Exception:
+        if "=" in s:
+            _, rhs = s.split("=", 1)
+            expr = sp.sympify(rhs.strip())
+        else:
+            expr = sp.sympify(s)
+        return _extract_side(expr)
+
+
 def verify_curve(
     formula_latex: str,
     var_name: str,
@@ -152,9 +191,9 @@ def verify_curve(
         x_arr = np.array(x_list, dtype=np.float64)
         y_sim = np.array(y_list, dtype=np.float64)
 
-        # 2. Parse LaTeX formula into SymPy symbolic expression
+        # 2. Parse LaTeX or Python formula into SymPy symbolic expression
         var = sp.Symbol(var_name)
-        expr = parse_latex(formula_latex)
+        expr = _parse_formula(formula_latex, var_name=var_name)
 
         # 3. Compile expression into numerical evaluator via lambdify
         f_num = sp.lambdify(var, expr, modules=["numpy", "scipy"])

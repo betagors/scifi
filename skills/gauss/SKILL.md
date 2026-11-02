@@ -79,7 +79,7 @@ Audit empirical simulation data: compute mean, standard error, confidence interv
 ### Curve Verification
 | Status Code | Meaning | Agent Action |
 |---|---|---|
-| `VALID_MATCH` | Closed-form theory matches simulation within tolerance | Confirm alignment; theoretical derivation explains empirical results. |
+| `VALID` | Closed-form theory matches simulation within tolerance | Confirm alignment; theoretical derivation explains empirical results. |
 | `CURVE_MISMATCH` | Simulation deviates from theoretical curve | Surface `worst_point` and `max_relative_error`. Ask whether hardware overhead, channel noise, or unmodelled dynamics explain the divergence. |
 | `ERROR` | Data file not found or formula parse failure | Check column names and formula syntax; prompt user. |
 

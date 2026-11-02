@@ -4,6 +4,7 @@ Matrix and tensor shape verification engine (scifi.math.linear_algebra).
 
 from __future__ import annotations
 
+import ast
 from typing import Any
 import sympy as sp
 from sympy.matrices.expressions import MatrixSymbol
@@ -12,6 +13,34 @@ try:
     from sympy.matrices.common import ShapeError
 except ImportError:
     from sympy.matrices.exceptions import ShapeError
+
+_ALLOWED_OPERATORS = (ast.Add, ast.Sub, ast.Mult, ast.MatMult)
+_ALLOWED_UNARY = (ast.USub, ast.UAdd)
+
+
+def _validate_operation(operation: str) -> None:
+    """Validate matrix arithmetic expression AST to prevent unsafe execution.
+
+    Only allows binary operations (+, -, *, @), unary operations (+, -),
+    variable names, numeric constants, and .T transpose attribute access.
+    """
+    tree = ast.parse(operation.strip(), mode="eval")
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Expression, ast.Load, *_ALLOWED_OPERATORS, *_ALLOWED_UNARY)):
+            continue
+        elif isinstance(node, ast.BinOp):
+            if not isinstance(node.op, _ALLOWED_OPERATORS):
+                raise ValueError(f"Disallowed binary operator '{type(node.op).__name__}' in operation.")
+        elif isinstance(node, ast.UnaryOp):
+            if not isinstance(node.op, _ALLOWED_UNARY):
+                raise ValueError(f"Disallowed unary operator '{type(node.op).__name__}' in operation.")
+        elif isinstance(node, ast.Attribute):
+            if node.attr != "T":
+                raise ValueError(f"Disallowed attribute access '.{node.attr}' in operation. Only '.T' is permitted.")
+        elif isinstance(node, (ast.Name, ast.Constant)):
+            continue
+        else:
+            raise ValueError(f"Disallowed syntax element '{type(node).__name__}' in matrix operation.")
 
 
 def _parse_dimensions(
@@ -73,6 +102,7 @@ def check_matrix_shapes(
         dimensions: Dict of shapes (e.g. {'A': ['m', 'n']}) or string spec ('A:m:n,B:n:k').
     """
     try:
+        _validate_operation(operation)
         matrices, _ = _parse_dimensions(dimensions)
         namespace: dict[str, Any] = {**matrices}
         namespace.update({
