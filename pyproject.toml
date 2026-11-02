@@ -13,10 +13,14 @@ dependencies = [
     "sympy>=1.14.0",
     "pypdf>=4.0.0",
     "scipy>=1.18.1",
+    "mcp>=1.0.0,<2",
+    "pytest>=8.0.0",
 ]
 
 [project.scripts]
 scifi = "scifi.citation_verifier.cli:main"
 scifi-verify = "scifi.citation_verifier.cli:main"
 alex = "scifi.citation_verifier.cli:main"
+scifi-argus = "scifi.argus.cli:main"
+argus = "scifi.argus.cli:main"
 
