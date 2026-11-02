@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 from typing import Any
 
 
@@ -212,11 +213,20 @@ def install_mcp_config(
         print(formatted_json)
         return True
 
+    temp_name: str | None = None
     try:
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(formatted_json, encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=target_path.parent, delete=False) as tf:
+            tf.write(formatted_json)
+            temp_name = tf.name
+        os.replace(temp_name, target_path)
         return True
     except Exception as exc:
+        if temp_name and os.path.exists(temp_name):
+            try:
+                os.remove(temp_name)
+            except OSError:
+                pass
         print(f"Error writing configuration to {target_path}: {exc}", file=sys.stderr)
         return False
 
