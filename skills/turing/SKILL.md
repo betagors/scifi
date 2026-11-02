@@ -1,184 +1,161 @@
 ---
 name: turing
 description: Verify mathematical derivations, gradients, and symbolic differentiations in LaTeX manuscripts using SymPy. Use when auditing calculus steps, optimality conditions, or checking if mathematical equations hold.
-compatibility: python3, sympy, pint, numpy
 ---
+
+# Turing: Symbolic Mathematics & Theoretical Rigor
+
+The `turing` skill provides symbolic mathematics, proof auditing, and dimensional validation for academic manuscripts. It exposes native MCP tools powered by SymPy, Pint, and NumPy to verify calculus derivations, algebraic equivalence, physical units, matrix shapes, limits, convexity, and symbol notation consistency.
 
 ## When to Use
 - Validating claimed gradients, Jacobians, or first-order optimality conditions ($\nabla f(x) = 0$).
-- Checking derivations in proofs, state equations, or Hamilton-Jacobi-Bellman (HJB) systems.
-- Verifying step-by-step calculus before inserting proofs into paper drafts.
-- Catching dimensional inconsistencies (Watts vs. Joules), matrix shape mismatches, divergent limits, indefinite Hessians, analytical-vs-simulation deviations, or symbol-notation drift across sections.
+- Checking step-by-step calculus, algebraic steps, or Bellman / HJB equations in proofs.
+- Asserting dimensional homogeneity across equations (e.g. Watts vs. Joules) and additive terms.
+- Validating matrix/tensor shapes without concrete numeric substitutions.
+- Checking boundary conditions, asymptotic limits ($N \to \infty$, $x \to 0^+$), and Hessian convexity.
+- Auditing symbol notation consistency and overloading across manuscript sections.
 
 ---
 
-## Verifier Scripts
+## Native MCP Tools
 
-All scripts live in `skills/turing/scripts/` and output structured JSON.
+Invoke the native SciFi MCP tools directly:
 
-### 1. Derivative Verification — `verify_derivation.py`
+### 1. `scifi_verify_derivative`
+Check whether a claimed derivative $f'_{\text{claimed}}$ equals $\frac{d}{dx}f(x)$.
 
-Check whether a claimed derivative $f'_{\text{claimed}}$ equals $\frac{d}{dx}f$.
-
-```bash
-uv run python skills/turing/scripts/verify_derivation.py \
-    --expr    "\\frac{1}{2} x^2 + \\sin(x)" \
-    --var     "x" \
-    --claimed "x + \\cos(x)"
+```json
+{
+  "expr": "\\frac{1}{2} x^2 + \\sin(x)",
+  "var": "x",
+  "claimed": "x + \\cos(x)"
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--expr` | Original function $f$ in LaTeX |
-| `--var` | Differentiation variable |
-| `--claimed` | Author's claimed derivative in LaTeX |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `expr` | string | Yes | Function $f(x)$ in LaTeX or Python math syntax |
+| `var` | string | Yes | Differentiation variable (e.g., `"x"`) |
+| `claimed` | string | Yes | Claimed analytical derivative in LaTeX or Python math |
 
-**Status codes:** `VALID` · `INVALID_DERIVATION` · `ERROR`
+### 2. `scifi_verify_derivation_step`
+Symbolically verify algebraic derivation equality asserting $LHS == RHS$.
 
----
-
-### 2. Dimensional / Unit Consistency — `verify_units.py`
-
-Assert that both sides of an equation share the same physical dimension, or that additive terms are unit-compatible.
-
-```bash
-# Equality check
-uv run python skills/turing/scripts/verify_units.py \
-    --lhs "5 watt * second" --rhs "5 joule" --check eq
-
-# Additive compatibility (comma-separated terms in --lhs)
-uv run python skills/turing/scripts/verify_units.py \
-    --lhs "10 meter / second, 3 kilometer / second" --check add
+```json
+{
+  "lhs": "(x + 1)^2 - (x - 1)^2",
+  "rhs": "4 * x",
+  "assumptions": ["x > 0"]
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--lhs` | LHS expression, or comma-separated terms for `add` mode |
-| `--rhs` | RHS expression (required for `eq` mode) |
-| `--check` | `eq` (default) or `add` |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `lhs` | string | Yes | Left-hand side mathematical expression |
+| `rhs` | string | Yes | Right-hand side mathematical expression |
+| `assumptions` | array of strings | No | Optional algebraic assumptions (e.g. `["x > 0", "n >= 1"]`) |
 
-**Status codes:** `VALID` · `DIMENSION_MISMATCH` · `ERROR`
+### 3. `scifi_check_units`
+Verify physical dimensional homogeneity across equations or additive terms via Pint.
 
----
-
-### 3. Matrix Dimension & Tensor Shape — `verify_matrix_shapes.py`
-
-Validate symbolic matrix products without substituting concrete numbers. Raises `SHAPE_ERROR` if inner dimensions do not align.
-
-```bash
-uv run python skills/turing/scripts/verify_matrix_shapes.py \
-    --matrices "A:m:n,B:n:k,C:m:k" \
-    --expr     "A * B - C"
+```json
+{
+  "lhs": "5 * watt * second",
+  "rhs": "5 * joule",
+  "check_mode": "eq"
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--matrices` | Comma-separated `NAME:ROWS:COLS` specs; dimension tokens are symbolic by default |
-| `--expr` | Python-style matrix expression using declared names |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `lhs` | string | Yes | Left-hand expression with units, or comma-separated terms if `check_mode="terms"` |
+| `rhs` | string | No | Right-hand expression with units (required for `check_mode="eq"`) |
+| `check_mode` | string | No | `"eq"` (equality check, default) or `"terms"` (additive compatibility check) |
 
-**Status codes:** `VALID` · `SHAPE_ERROR` · `ERROR`
+### 4. `scifi_check_matrix_shapes`
+Validate matrix dimensions, vector products, and tensor contractions symbolically.
 
----
-
-### 4. Boundary & Asymptotic Behaviour — `verify_limits.py`
-
-Check whether a claimed limit value is correct; detects false convergence claims and singularities.
-
-```bash
-# Two-sided limit as N → ∞
-uv run python skills/turing/scripts/verify_limits.py \
-    --expr "\\frac{1}{N}" --var "N" --point "oo" --claimed "0"
-
-# One-sided limit from the right as x → 0⁺
-uv run python skills/turing/scripts/verify_limits.py \
-    --expr "\\frac{1}{x}" --var "x" --point "0" --dir "+" --claimed "oo"
+```json
+{
+  "operation": "A * B - C",
+  "dimensions": {
+    "A": ["m", "n"],
+    "B": ["n", "k"],
+    "C": ["m", "k"]
+  }
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--expr` | Expression in LaTeX |
-| `--var` | Limit variable |
-| `--point` | Limit point: a number, `oo`, or `-oo` |
-| `--claimed` | Claimed limit value (LaTeX or `oo`/`-oo`) |
-| `--dir` | `+` (right), `-` (left), or omit for two-sided |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `operation` | string | Yes | Matrix algebra expression (e.g., `"A * B - C"`, `"A.T * B"`) |
+| `dimensions` | object or string | Yes | Map of matrix names to `[rows, cols]` dimensions (symbolic or integer) |
 
-**Status codes:** `VALID` · `INVALID_LIMIT` · `ERROR`
+### 5. `scifi_check_limits`
+Evaluate and verify asymptotic and boundary limits $\lim_{var \to point} expr$.
 
----
-
-### 5. Positive Definiteness & Convexity — `verify_convexity.py`
-
-Compute the symbolic Hessian $H_{ij} = \frac{\partial^2 f}{\partial x_i \partial x_j}$, apply Sylvester's criterion for positive definiteness, and compare against the author's claim.
-
-```bash
-uv run python skills/turing/scripts/verify_convexity.py \
-    --expr    "x^2 + y^2 + x*y" \
-    --vars    "x,y" \
-    --claimed "strictly_convex"
+```json
+{
+  "expr": "\\frac{1}{N}",
+  "var": "N",
+  "point": "oo",
+  "claimed": "0",
+  "direction": "+-"
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--expr` | Scalar function $f$ in LaTeX |
-| `--vars` | Comma-separated variable names |
-| `--claimed` | `strictly_convex` · `convex` · `indefinite` |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `expr` | string | Yes | Expression in LaTeX or Python math syntax |
+| `var` | string | Yes | Limit variable (e.g., `"N"`, `"x"`) |
+| `point` | string | Yes | Target point (`"0"`, `"oo"`, `"-oo"`, or numeric constant) |
+| `claimed` | string | Yes | Claimed limit value (`"0"`, `"oo"`, `"-oo"`, etc.) |
+| `direction` | string | No | Direction: `"+-"` (two-sided, default), `"+"` (right), or `"-"` (left) |
 
-**Status codes:** `VALID` · `INVALID_CONVEXITY_CLAIM` · `ERROR`
+### 6. `scifi_check_convexity`
+Verify convexity/concavity via second derivative (Hessian sign analysis).
 
----
-
-### 6. Equation-to-Plot Numerical Sanity — `verify_numerical.py`
-
-Convert a closed-form symbolic expression to a numerical function via `lambdify`, sweep it over parameter values, and check agreement with simulation output within tolerance.
-
-```bash
-uv run python skills/turing/scripts/verify_numerical.py \
-    --expr      "\\frac{1}{1 + x^2}" \
-    --var       "x" \
-    --sweep     "0,1,2,3,4" \
-    --simulated "[1.0, 0.5, 0.2, 0.1, 0.058]" \
-    --rtol      1e-2
+```json
+{
+  "expr": "x^2 + 3*x",
+  "var": "x",
+  "claimed": "convex"
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--expr` | Closed-form expression in LaTeX |
-| `--var` | Sweep variable name |
-| `--sweep` | Comma-separated parameter values |
-| `--simulated` | JSON array of simulation outputs (same length as sweep) |
-| `--rtol` | Relative tolerance (default `1e-3`) |
-| `--atol` | Absolute tolerance (default `1e-6`) |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `expr` | string | Yes | Scalar objective function in LaTeX or Python math |
+| `var` | string | Yes | Optimization variable (e.g., `"x"`) |
+| `claimed` | string | No | Claimed property: `"convex"` (default), `"strictly convex"`, `"concave"`, or `"strictly concave"` |
 
-**Status codes:** `VALID` · `NUMERICAL_MISMATCH` · `ERROR`
+### 7. `scifi_check_notation`
+Audit manuscript LaTeX for mathematical symbol notation consistency and collisions.
 
----
-
-### 7. Notation Consistency — `verify_notation.py`
-
-Scan all math environments in a `.tex` file. Flags symbols that appear in multiple font/case variants across sections (e.g. $P_t$ vs $p(t)$ vs $\mathbf{P}$). Produces a full cross-section symbol manifest.
-
-```bash
-uv run python skills/turing/scripts/verify_notation.py --file paper.tex
+```json
+{
+  "tex_path": "path/to/manuscript.tex",
+  "sections": ["Section 3", "Section 4"]
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--file` | Path to the `.tex` manuscript |
-
-**Status codes:** `VALID` · `NOTATION_INCONSISTENCY` · `ERROR`
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tex_path` | string | Yes | File path to `.tex` manuscript or raw LaTeX string |
+| `sections` | array of strings | No | Optional section filter |
 
 ---
 
-## Output Interpretation
+## Status Codes & Interpretation
 
-| Status | Meaning | Agent Action |
+| Status Code | Meaning | Agent Action |
 |---|---|---|
-| `VALID` | Claim is verified | Report confirmation to user |
-| `INVALID_DERIVATION` | Derivative is wrong | Show `computed_derivative` and `discrepancy` |
-| `DIMENSION_MISMATCH` | Units are incompatible | Report `lhs_dimensionality` vs `rhs_dimensionality` |
-| `SHAPE_ERROR` | Matrix inner dims don't align | Report which product failed |
-| `INVALID_LIMIT` | Limit claim is false | Show `computed_limit` and divergence hint if applicable |
-| `INVALID_CONVEXITY_CLAIM` | Hessian definiteness contradicts claim | Show `hessian` and `eigenvalues` |
-| `NUMERICAL_MISMATCH` | Analytical curve deviates from simulation | Report `max_abs_error` and `worst_at_x` |
-| `NOTATION_INCONSISTENCY` | Symbol used in multiple forms | List `multi_variant_symbols` with sections |
-| `ERROR` | Parse or runtime failure | Surface `error_message` and `hint` to user |
+| `VALID` | Mathematical claim verified symbolically | Confirm step to user; safe to incorporate in manuscript. |
+| `INVALID_DERIVATION` | Computed derivative does not match claimed | Report `computed_derivative` and `difference`. Do not assert incorrect gradient in text. |
+| `INVALID_STEP` | LHS does not equal RHS | Report simplified difference to user; highlight required algebraic assumption if missing. |
+| `DIMENSION_MISMATCH` | Incompatible physical units | Report dimensionality mismatch between LHS and RHS or additive terms. |
+| `SHAPE_ERROR` | Inner matrix dimensions do not align | Surface incompatible product and suggest transposed or corrected shapes. |
+| `INVALID_LIMIT` | Computed limit differs from claimed | Surface `computed_limit` and divergence or singularity note. |
+| `INVALID_CONVEXITY_CLAIM` | Function does not satisfy claimed convexity | Report computed second derivative / Hessian sign behavior. |
+| `NOTATION_INCONSISTENCY` | Same symbol overloaded or formatted inconsistently | Provide list of conflicting symbols with section locations. |
+| `ERROR` | Parsing or symbolic evaluation failure | Inspect LaTeX syntax error or unsupported function; prompt user for clarification. |

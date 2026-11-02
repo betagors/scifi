@@ -5,98 +5,89 @@ description: Verify academic citations via DOI, web links (arXiv, PubMed, OpenAl
 
 # Alex: Academic Literature & Citation Verifier
 
-The `alex` skill validates scientific references and literature citations against global bibliographic registries (Crossref, OpenAlex, arXiv, and DataCite). It provides verification for individual links/DOIs and batch auditing for `.bib` bibliographies.
+The `alex` skill validates scientific references and literature citations against authoritative global bibliographic registries (Crossref, OpenAlex, arXiv, and DataCite). It provides native MCP tools for verifying individual links/DOIs, searching academic literature, and batch-auditing `.bib` bibliographies.
 
 ## Core Capabilities
 
-1. **Identifier & Link Resolution**:
-   - DOIs: `10.1038/s41586-020-2649-2`, `https://doi.org/...`
-   - arXiv: `https://arxiv.org/abs/1706.03762`, `arXiv:1706.03762`, or bare ID
-   - PubMed: `https://pubmed.ncbi.nlm.nih.gov/12345678/` or `PMID:12345678`
-   - Publisher & Web URLs: Follows HTTP redirects, parses Highwire / Dublin Core `<meta>` tags (`citation_doi`, `citation_title`, `dc.identifier`).
-2. **Retraction & Errata Screening**:
-   - Queries Crossref Crossmark updates and OpenAlex's retraction index.
-   - Immediately alerts if a cited work has been retracted, withdrawn, or has published corrections.
-3. **Discrepancy & Typo Auditing**:
-   - Compares user/BibTeX claimed title, first author, year, and venue against official registry data.
-   - Detects halluncinated citations, incorrect years (e.g. preprint vs journal publication), and severe title mismatches.
-4. **Standardized Citation Formatting**:
-   - Produces clean BibTeX entries with predictable citekeys (`[FirstAuthor][Year][TitleWord]`).
-   - Generates APA 7th edition formatted text citations.
-5. **Full `.bib` File Auditing & Sanitization**:
-   - Audits every entry in a `.bib` file.
-   - Fills in missing DOIs by searching official registries by title.
-   - Exports a sanitized `.bib` file with retraction warnings embedded as comments.
+1. **Identifier & Link Resolution**: Resolves DOIs, arXiv URLs/IDs, PubMed links/PMIDs, and publisher URLs via official registries.
+2. **Retraction & Errata Screening**: Queries Crossref Crossmark updates and OpenAlex retraction indices to alert if a work was retracted, withdrawn, or amended.
+3. **Discrepancy Auditing**: Compares claimed author, title, publication year, and venue against official registry data to detect citation hallucination and drift.
+4. **Standardized Citation Formatting**: Generates normalized BibTeX entries (`[Author][Year][Word]`) and APA 7th edition references.
+5. **Batch `.bib` File Auditing & Sanitization**: Audits entire bibliographies, reports status counts, and exports sanitized clean `.bib` files.
 
 ---
 
-## Command-Line Usage
+## Native MCP Tools
 
-Run via Python in the repository virtual environment:
+Invoke the native SciFi MCP tools directly:
 
-### 1. Verify a Single DOI or Link
+### 1. `scifi_verify_citation`
+Verify a single publication reference, DOI, or URL.
 
-```bash
-uv run scifi verify 10.1038/s41586-020-2649-2
+```json
+{
+  "identifier": "10.1038/s41586-020-2649-2",
+  "claimed_title": "Array programming in NumPy",
+  "claimed_author": "Harris",
+  "claimed_year": 2020,
+  "claimed_venue": "Nature"
+}
 ```
 
-Outputs a rich markdown summary card containing verification status, metadata, citation count, APA citation, and BibTeX.
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `identifier` | string | Yes | DOI, arXiv URL/ID (`arxiv:1706.03762`), PubMed URL/PMID, or publisher URL |
+| `claimed_title` | string | No | Author's claimed title in manuscript (for mismatch auditing) |
+| `claimed_author` | string | No | Author's claimed primary author surname (for mismatch auditing) |
+| `claimed_year` | integer | No | Author's claimed publication year (for mismatch auditing) |
+| `claimed_venue` | string | No | Claimed publication journal or conference venue |
 
-#### With Claimed Discrepancy Checking
-```bash
-uv run scifi verify 10.1038/s41586-020-2649-2 \
-  --claimed-title "Array programming in NumPy" \
-  --claimed-year 2019 \
-  --claimed-author "Harris"
+### 2. `scifi_audit_bib`
+Audit an entire `.bib` bibliography file.
+
+```json
+{
+  "bib_path": "path/to/references.bib",
+  "output_bib": "path/to/clean_references.bib"
+}
 ```
 
-#### Alternate Output Formats (`markdown`, `bibtex`, `apa`, `json`, `text`)
-```bash
-uv run scifi verify https://arxiv.org/abs/1706.03762 --format bibtex
-uv run scifi verify 10.1038/s41586-020-2649-2 --format apa
-uv run scifi verify 10.1016/S0140-6736(97)11096-0 --format json
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `bib_path` | string | Yes | Path to the `.bib` file to audit |
+| `output_bib` | string | No | Destination path to write sanitized clean BibTeX with warnings |
+
+### 3. `scifi_search_literature`
+Search OpenAlex and academic registries for canonical literature by title, keyword, or topic.
+
+```json
+{
+  "query": "Attention Is All You Need",
+  "limit": 5
+}
 ```
 
-### 2. Audit a BibTeX File
-
-Audit all entries in a `.bib` file and output a comprehensive Markdown report:
-
-```bash
-uv run scifi audit references.bib --output-report audit_report.md --output-bib clean_references.bib
-```
-
-### 3. Search Official Registries by Title
-
-```bash
-uv run scifi search "Attention is all you need" --verify
-```
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `query` | string | Yes | Title, author, or research topic search query |
+| `limit` | integer | No | Maximum number of results (default: 5) |
 
 ---
 
-## Python API Usage
+## Status Codes & Interpretation
 
-```python
-from scifi.citation_verifier import verify_citation, audit_bib_file
-
-# Verify a DOI or URL
-result = verify_citation("10.1038/s41586-020-2649-2")
-print(result.status)          # VerificationStatus.VERIFIED or RETRACTED
-print(result.is_retracted)     # False
-print(result.to_bibtex())      # Standard BibTeX
-print(result.to_apa())         # APA 7th Edition
-
-# Audit a .bib file
-report = audit_bib_file("my_paper.bib")
-print(f"Total: {report.total_entries}, Retracted: {report.retracted_count}")
-print(report.summary_markdown())
-```
+| Status Code | Meaning | Agent Action |
+|---|---|---|
+| 🟢 `VERIFIED` | Publication active and verified in official registry | Safe to cite. Use returned `cite_key` and `bibtex` or `apa`. |
+| 🚨 `RETRACTED` | Paper was formally retracted or withdrawn | **Never cite silently.** Alert user immediately; excise claim or cite retraction context. |
+| ⚠️ `ERRATA_EXISTS` | Publisher published errata or expression of concern | Check `errata_details`; alert user to review published correction. |
+| 🟠 `MISMATCH` | Major discrepancy between claimed metadata and registry | Alert user to title/author/year discrepancy. Suggest corrected metadata. |
+| ❌ `UNRESOLVED` | Identifier or URL not located in registries | Search via `scifi_search_literature` by title or request verified DOI from user. |
 
 ---
 
-## Verification Status Codes
+## Remediation Workflow for Agents
 
-- 🟢 **VERIFIED**: Active, peer-reviewed, or preprint work found and verified in registry.
-- 🚨 **RETRACTED**: Work was formally retracted by the publisher or authors.
-- ⚠️ **ERRATA_EXISTS**: Formal correction or expression of concern published.
-- 🟠 **MISMATCH**: Citation exists but title/author/year deviates significantly from claimed reference.
-- ❌ **UNRESOLVED**: Could not locate DOI or link in registries.
+1. **Before writing or editing citations:** Call `scifi_verify_citation` for every paper referenced.
+2. **When given a bibliography file:** Call `scifi_audit_bib` to generate a full discrepancy and retraction report before compiling.
+3. **When identifying seminal papers:** Call `scifi_search_literature` to obtain the verified DOI and canonical BibTeX.

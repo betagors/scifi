@@ -1,61 +1,69 @@
 ---
 name: hypatia
 description: Literature synthesis, competitive benchmarking, and delta-novelty matrix generation. Extracts technical formulations, mathematical assumptions, and stated limitations from open-access PDFs and related works to build robust Related Work taxonomies and gap analyses.
-compatibility: python3, requests, pypdf
 ---
+
+# Hypatia: Literature Synthesis & Competitive Benchmarking
+
+The `hypatia` skill enables deep literature synthesis, competitive benchmarking, and delta-novelty matrix generation. It retrieves open-access scientific PDFs (via arXiv, Unpaywall, OpenAlex) and extracts key technical sections (Abstract, System Model/Methodology, Limitations & Conclusions) so that AI agents can construct gap analyses grounded directly in literature text.
 
 ## When to Use
-- Comparing the user's paper draft against candidate baselines or competing papers.
-- Downloading open-access reference papers via DOI or arXiv ID for full-text technical inspection.
-- Building a multi-variable Delta-Novelty Matrix for the Introduction or Related Work sections.
-- Synthesizing a list of 5–20 papers into orthogonal thematic taxonomies rather than chronological lists.
+- Comparing a draft against competing baseline papers.
+- Fetching and parsing open-access research papers via DOI or arXiv identifier.
+- Synthesizing related works into thematic taxonomies rather than shallow chronological summaries.
+- Building a multi-variable Delta-Novelty Matrix for Introduction and Related Work sections.
+- Extracting exact mathematical assumptions, system models, and stated limitations directly from baseline PDFs.
 
 ---
 
-## Standard Tool Procedures
+## Native MCP Tools
 
-### 1. Fetching Full-Text Open-Access Papers
+Invoke the native SciFi MCP tools directly:
 
-If the user provides a DOI, arXiv ID, or title of a reference paper to inspect:
+### 1. `scifi_fetch_paper_pdf`
+Download an open-access research PDF by DOI or arXiv ID.
 
-```bash
-uv run python skills/hypatia/scripts/fetch_oa_pdf.py \
-    --id "<DOI_OR_ARXIV_ID>" \
-    --out "workspace/baseline.pdf"
+```json
+{
+  "identifier": "1706.03762",
+  "output_dir": "workspace/papers",
+  "email": "researcher@university.edu"
+}
 ```
 
-| Arg | Description |
-|---|---|
-| `--id` | DOI (e.g. `10.1109/TWC.2023.3291234`) or arXiv ID (e.g. `2301.12345` or `arxiv:2301.12345`) |
-| `--out` | Destination path for the downloaded PDF (parent dirs created automatically) |
-| `--email` | Email passed to Unpaywall API (default: `researcher@university.edu`) |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `identifier` | string | Yes | DOI (e.g. `"10.1109/TWC.2023.3291234"`) or arXiv ID (e.g. `"1706.03762"` or `"2301.12345"`) |
+| `output_dir` | string | No | Destination directory for downloaded PDF (default: `"workspace"`) |
+| `email` | string | No | Contact email for polite OpenAlex/Unpaywall registry requests |
 
-**Status codes:** `SUCCESS` · `NO_OA_PDF` · `NOT_FOUND` · `DOWNLOAD_FAILED` · `ERROR`
+### 2. `scifi_extract_pdf_text`
+Extract structured technical sections from a scientific PDF.
 
----
-
-### 2. Extracting Core Technical Sections
-
-Once a PDF is available (downloaded or provided locally):
-
-```bash
-uv run python skills/hypatia/scripts/extract_paper_text.py \
-    --pdf "workspace/baseline.pdf"
+```json
+{
+  "pdf_path": "workspace/papers/1706.03762.pdf",
+  "max_pages": 20
+}
 ```
 
-Returns a JSON object with:
-- `abstract` — first 2 000 chars of the abstract block
-- `system_model_or_method` — problem formulation / system model section
-- `limitations_and_conclusion` — conclusion and future-work section
-- `raw_sample` — first 4 000 chars of the full extracted text
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pdf_path` | string | Yes | Absolute or relative path to the PDF file |
+| `max_pages` | integer | No | Maximum number of pages to parse (default: 20) |
 
-**Status codes:** `SUCCESS` · `ERROR`
+Returns structured sections:
+- `abstract`: Primary problem statement and contribution summary.
+- `system_model_or_method`: Mathematical formulation, state equations, and algorithms.
+- `limitations_and_conclusion`: Stated bounds, trade-offs, and open challenges.
+- `raw_sample`: Initial extracted excerpt for fast inspection.
 
 ---
 
-### 3. Generating the Delta-Novelty Matrix
+## Analytical Playbooks
 
-When comparing a paper against the current draft, **do not produce generic summaries**. Always construct a technical comparison matrix contrasting the following dimensions (adapt to the paper's domain):
+### 1. Delta-Novelty Matrix Formulation
+When contrasting the proposed paper with a baseline, never settle for superficial summaries. Construct a concrete technical delta table:
 
 | Evaluation Dimension | Baseline Work [Ref] | Proposed Approach | Exact Technical Delta |
 |---|---|---|---|
@@ -65,34 +73,27 @@ When comparing a paper against the current draft, **do not produce generic summa
 | **Information Constraints** | Centralised global CSI | Local partial state | Practical under realistic channel-estimation constraints |
 | **Objective Function** | Throughput maximisation | Age-of-Information + energy | Jointly captures freshness and sustainability trade-offs |
 
-Populate every cell from the extracted sections — never fill cells from assumptions.
+*Rule:* Populate every cell directly from extracted paper sections—never from assumptions.
 
----
-
-### 4. Drafting the Gap-to-Contribution Narrative
-
-Produce draft-ready paragraphs structured as:
+### 2. Gap-to-Contribution Narrative
+Structure Related Work narratives into three precise transitions:
 
 1. **Thematic Grouping:**
    > *"Recent advances in [Topic] broadly fall into two categories: [Category A], which ..., and [Category B], which ..."*
-
 2. **The Limitation Bridge:**
    > *"While [A] addresses parameter $\alpha$, it fundamentally relies on assumption $\beta$, which breaks down when $\gamma \to \infty$ because ..."*
-
 3. **The Proposed Resolution:**
    > *"In contrast, our proposed formulation bypasses this bottleneck by establishing [formal claim], thereby [direct benefit]."*
 
-Always anchor each narrative bridge to a specific assumption or equation extracted from the PDF — cite equation numbers where available.
-
 ---
 
-## Output Interpretation
+## Status Codes & Agent Actions
 
-| Status | Meaning | Agent Action |
+| Status Code | Meaning | Agent Action |
 |---|---|---|
-| `SUCCESS` (fetch) | PDF downloaded | Proceed to extraction |
-| `NO_OA_PDF` | Paper exists on Unpaywall but has no OA PDF link | Ask user for local PDF or alternative identifier |
-| `NOT_FOUND` | Identifier not recognised | Verify DOI/arXiv ID and retry |
-| `DOWNLOAD_FAILED` | OA host rejected the stream | Try alternative DOI or direct arXiv fallback |
-| `SUCCESS` (extract) | Sections parsed | Build Delta-Novelty Matrix from returned JSON |
-| `ERROR` | Parse or network failure | Surface `error` field to user with retry hint |
+| `SUCCESS` (fetch) | PDF successfully downloaded | Proceed to `scifi_extract_pdf_text`. |
+| `NO_OA_PDF` | Paper indexed but no open-access PDF URL found | Prompt user for local PDF copy or alternative DOI/arXiv ID. |
+| `NOT_FOUND` | Identifier not recognized by registries | Check format (`10.xxxx/...` or `YYMM.NNNNN`) with `scifi_verify_citation`. |
+| `DOWNLOAD_FAILED` | Remote server rejected stream | Retry or ask user for local copy. |
+| `SUCCESS` (extract) | Sections parsed successfully | Extract mathematical model, construct Delta-Novelty Matrix. |
+| `ERROR` | Corrupted PDF or parse exception | Inform user; fallback to raw text or abstract review. |

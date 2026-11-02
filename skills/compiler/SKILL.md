@@ -1,38 +1,40 @@
 ---
 name: compiler
 description: Autonomous LaTeX engine. Compiles manuscripts using latexmk/pdflatex, isolates compilation errors with exact file and line numbers, auto-installs missing TeX packages via tlmgr/mpm/winget, and flags undefined citations and broken cross-references.
-compatibility: python3, latexmk or pdflatex (MiKTeX / TeX Live)
 ---
+
+# Compiler: Autonomous LaTeX Compilation & Error Isolation Engine
+
+The `compiler` skill autonomously compiles LaTeX manuscripts into PDF, isolates build failures by file and line number, detects missing TeX packages, and flags broken cross-references and undefined citations.
 
 ## When to Use
-- Compiling any LaTeX manuscript into PDF.
-- Diagnosing why a `.tex` document fails to build or throws fatal errors.
-- Auditing missing packages, broken `\ref{}` / `\label{}` pairs, or undefined `\cite{}` keys.
-- Running as the final build-check step after `turing` verifies math or `alex` audits citations.
+- Compiling any LaTeX manuscript (`.tex`) into a final PDF.
+- Diagnosing compilation failures, missing packages, syntax errors, or broken macro definitions.
+- Identifying undefined citations (`\cite{...}`) and broken cross-references (`\ref{...}` / `\label{...}`).
+- Verifying manuscript integrity after automated prose rewrites, math updates, or citation insertions.
 
 ---
 
-## Compilation Script
+## Native MCP Tools
 
-The single script lives at `skills/compiler/scripts/compile_latex.py`.  
-All output is structured JSON — no raw log flooding.
+Invoke the native SciFi MCP tool directly:
 
-### Basic usage
+### `scifi_compile_latex`
+Autonomously compile LaTeX manuscripts with automated log error parsing and engine diagnostics.
 
-```bash
-uv run python skills/compiler/scripts/compile_latex.py --tex "path/to/main.tex"
+```json
+{
+  "entrypoint": "path/to/main.tex",
+  "engine": "latexmk",
+  "clean": true
+}
 ```
 
-### Disable auto-install (dry-run mode)
-
-```bash
-uv run python skills/compiler/scripts/compile_latex.py --tex "main.tex" --no-auto-fix
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--tex` | *(required)* | Path to the root `.tex` file |
-| `--no-auto-fix` | off | Skip automatic `tlmgr`/`mpm` package installation |
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `entrypoint` | string | Yes | Path to the root `.tex` manuscript file |
+| `engine` | string | No | Compiler engine: `"latexmk"` (default), `"pdflatex"`, `"xelatex"`, or `"lualatex"` |
+| `clean` | boolean | No | Whether to clean auxiliary files (`.aux`, `.log`, `.out`, etc.) upon completion (default: `true`) |
 
 ---
 
@@ -40,66 +42,40 @@ uv run python skills/compiler/scripts/compile_latex.py --tex "main.tex" --no-aut
 
 ```json
 {
-  "status":                "SUCCESS | FAILED | ENGINE_MISSING | TIMEOUT | FILE_NOT_FOUND | ERROR",
-  "pdf_generated":         true,
-  "pdf_path":              "/absolute/path/to/main.pdf",
-  "engine":                "latexmk | pdflatex",
-  "errors":                [{"file": "main.tex", "line": 42, "message": "Undefined control sequence."}],
-  "missing_packages":      ["algorithm2e.sty"],
-  "undefined_citations":   ["Smith2020"],
-  "undefined_references":  ["fig:overview"],
-  "layout_warnings":       {"overfull_hbox": 3, "underfull_hbox": 1},
-  "raw_log_tail":          "..."
+  "status": "SUCCESS | ERROR",
+  "pdf_path": "path/to/main.pdf",
+  "engine": "latexmk",
+  "errors": [
+    {"file": "main.tex", "line": 42, "message": "Undefined control sequence."}
+  ],
+  "missing_packages": ["algorithm2e.sty"],
+  "undefined_citations": ["Smith2020"],
+  "undefined_references": ["fig:overview"],
+  "layout_warnings": {"overfull_hbox": 3, "underfull_hbox": 1},
+  "log_tail": "..."
 }
 ```
-
-`raw_log_tail` is only present on `FAILED` — the last 30 lines of the compiler log.
 
 ---
 
 ## Status Codes & Agent Actions
 
-| Status | Meaning | Agent Action |
+| Status Code | Meaning | Agent Action |
 |---|---|---|
-| `SUCCESS` | PDF built cleanly | Report `pdf_path`; list any non-fatal warnings (undefined refs/cites, layout) |
-| `FAILED` | Build aborted | Navigate to each `errors[].file : errors[].line`, fix the syntax error, recompile |
-| `ENGINE_MISSING` | No `latexmk`/`pdflatex` on PATH | Run the `action_required.install_command` returned in the JSON |
-| `FILE_NOT_FOUND` | `.tex` path does not exist | Verify the path and rerun |
-| `TIMEOUT` | Build exceeded 180 s | Check for infinite loops in custom macros; try `--no-auto-fix` |
-| `ERROR` | Unexpected runtime exception | Surface `error` field to the user |
+| `SUCCESS` | PDF built cleanly | Report `pdf_path` to user. Report any non-fatal warnings (undefined references or citations, overfull hboxes). |
+| `ERROR` | Compilation aborted or engine failed | Inspect `errors` list. For each syntax error, locate `file` and `line`, fix the LaTeX markup, and recompile. |
+| Missing Packages | `missing_packages` is non-empty | Identify missing style files (`.sty`). If MiKTeX/TeX Live is installed, prompt package installation or provide fallback markup. |
+| Undefined Citations | `undefined_citations` is non-empty | Cross-check with `references.bib`. Use `scifi_verify_citation` or `scifi_search_literature` to find missing BibTeX keys. |
+| Undefined References | `undefined_references` is non-empty | Match broken `\ref{key}` against missing `\label{key}` across manuscript files. |
 
 ---
 
-## Auto-Fix Behaviour
-
-1. **Missing packages** (`! LaTeX Error: File '…' not found`):  
-   - TeX Live: runs `tlmgr install <pkg>` then recompiles once.  
-   - MiKTeX (Windows): the `--enable-installer` flag downloads packages on demand; `mpm --install=<pkg>` is the fallback.  
-   - If installation fails, `missing_packages` is reported and the agent should prompt the user.
-
-2. **Engine bootstrap**:  
-   - Windows without any TeX: invokes `winget install MiKTeX.MiKTeX --silent`.  
-   - Linux without any TeX: returns the exact `apt install` line for the agent to execute.
-
----
-
-## Integration with Other Skills
+## Integrated Verification Workflow
 
 ```
-turing   → verify math   → compiler → confirm PDF builds cleanly
-alex     → audit .bib    → compiler → catch \cite{} key mismatches in log
-human    → rewrite prose → compiler → validate no LaTeX syntax was broken
-```
-
-Typical chained workflow:
-
-```bash
-# 1. Verify derivations
-uv run python skills/turing/scripts/verify_derivation.py --expr "..." --var "x" --claimed "..."
-
-# 2. Audit citations
-uv run python skills/alex/scripts/verify_citations.py --bib refs.bib
-
-# 3. Compile and confirm
-uv run python skills/compiler/scripts/compile_latex.py --tex main.tex
+turing    → verify equations/gradients
+alex      → verify citations & .bib entries
+argus     → audit uncredited methods
+human     → rewrite prose & remove AI hallmarks
+compiler  → scifi_compile_latex (confirm clean PDF build)
 ```
