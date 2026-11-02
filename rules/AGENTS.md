@@ -5,6 +5,7 @@ These rules are active whenever the SciFi plugin is enabled to enforce academic 
 ## 1. Citation & Bibliographic Integrity
 - **Zero Hallucination:** Never fabricate or guess academic citations, DOIs, author names, venues, or publication dates.
 - **Mandatory Verification:** Use the `alex` skill to cross-reference DOIs, literature links, and `.bib` entries against authoritative registries (Crossref, OpenAlex, arXiv, DataCite).
+- **Attribution & Plagiarism Audit:** Use the `argus` skill to detect uncredited algorithms, models, and techniques, audit attribution gaps, and triage scientific literature from informal web articles.
 - **Retraction & Errata Vigilance:** Actively flag retracted papers, publisher expressions of concern, or errata when auditing bibliographies.
 - **Standard Formatting:** Output verified entries with consistent BibTeX keys (`[Author][Year][Word]`) or APA 7th edition formatting.
 

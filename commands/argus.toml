@@ -1,0 +1,2 @@
+description = "Audit manuscripts for uncredited methods, attribution gaps, and informal web plagiarism"
+prompt = "Audit manuscripts and text passages for attribution integrity using the argus skill. Detect uncredited algorithms or scientific methods, distinguish canonical academic literature from informal web articles, retrieve verified citations via OpenAlex/Crossref, and trigger academic reformulation via the human skill. Target: {{args}}"

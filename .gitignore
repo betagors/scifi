@@ -75,3 +75,4 @@ dmypy.json
 .gemini/scratch/
 .artifacts/
 *.samples.jsonl
+assets/android.exe

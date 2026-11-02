@@ -119,9 +119,14 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
+    actual_argv = sys.argv[1:] if argv is None else argv
+    if actual_argv and actual_argv[0] == "argus":
+        from scifi.argus.cli import main as argus_main
+        return argus_main(actual_argv[1:])
+
     parser = argparse.ArgumentParser(
-        prog="scifi-verify",
-        description="SciFi Citation Verifier: Audit and verify citations via DOI, URL, or BibTeX.",
+        prog="scifi",
+        description="SciFi Research & Writing Toolkit: Citation Verifier and Integrity Sentinel.",
     )
     subparsers = parser.add_subparsers(dest="command", help="Subcommand to execute")
 

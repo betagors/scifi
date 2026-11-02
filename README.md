@@ -15,8 +15,48 @@ Requires Python ≥ 3.12 and [`uv`](https://docs.astral.sh/uv/).
 | Skill | Purpose |
 |---|---|
 | [`alex`](#-alex--citation--literature-verifier) | Verify citations, DOIs, and `.bib` files against global registries |
+| [`argus`](#-argus--academic-attribution--plagiarism-sentinel) | Audit manuscripts for uncredited methods, plagiarism, and informal web articles |
 | [`human`](#-human--academic-prose-humanizer) | Rewrite AI-generated text into objective academic prose |
 | [`turing`](#-turing--mathematical-derivation-verifier) | Verify derivations, units, matrix shapes, limits, convexity, and notation in LaTeX |
+
+---
+
+## 🛡️ Argus — Academic Attribution & Plagiarism Sentinel
+
+Audits manuscripts, sections, or individual paragraphs for attribution gaps, uncredited scientific methods, and copied web/blog content. Categorizes findings into:
+
+- **`CANONICAL_ACADEMIC`:** Specific algorithm or technique lacking citation -> queries OpenAlex/Crossref, generates verified BibTeX, and injects `\cite{...}`.
+- **`COMMON_KNOWLEDGE`:** Universal concepts (e.g. *gradient descent*, *Fourier transform*, *backpropagation*) -> suppresses false alarms.
+- **`INFORMAL_WEB`:** Text or explanation derived from an online article, tutorial, or blog -> dispatches to `human` for academic reformulation or traces back to primary literature.
+- **`PREPRINT_ALIGNMENT`:** Overlap matching author's own preprints or previous papers -> flags as self-reference to ensure proper lineage.
+
+### CLI
+
+```bash
+# Audit a LaTeX manuscript
+uv run python main.py argus audit paper.tex --bib references.bib
+
+# Automatically inject citations in-place into paper.tex and update references.bib
+uv run python main.py argus audit paper.tex --bib references.bib --fix
+
+# Scan a raw text excerpt or paragraph
+uv run python main.py argus scan "We use Low-Rank Adaptation to parameterize weight updates."
+
+# Search canonical academic paper for a method
+uv run python main.py argus search "FlashAttention" --format bibtex
+```
+
+### Python API
+
+```python
+from scifi.argus import ArgusEngine
+
+engine = ArgusEngine()
+report = engine.audit_text("We optimize the model using AdamW optimizer.")
+print(f"Academic gaps: {report.academic_count}")
+for finding in report.findings:
+    print(finding.matched_entity, finding.suggested_action, finding.cite_key)
+```
 
 ---
 
