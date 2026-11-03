@@ -1,150 +1,204 @@
-# SciFi — Scientific Research & Academic Writing Toolkit
+# 🔬 SciFi — Scientific Research & Academic Writing Toolkit
 
-**SciFi** is an [Antigravity](https://antigravity.google) plugin for rigorous academic work: verifying citations, humanizing AI-generated prose, auditing mathematical derivations, and enforcing notation consistency across LaTeX manuscripts.
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB.svg?style=flat&logo=python&logoColor=white)](https://python.org)
+[![FastMCP](https://img.shields.io/badge/protocol-Model_Context_Protocol-8A2BE2.svg?style=flat)](https://modelcontextprotocol.io)
+[![Antigravity](https://img.shields.io/badge/antigravity-plugin-FF6F00.svg?style=flat)](https://antigravity.google)
+[![Tests Passing](https://img.shields.io/badge/tests-168%20passed-brightgreen.svg?style=flat)](tests/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-```
-uv sync        # install all dependencies
-```
+> **Zero-Hallucination Citations · Symbolic Calculus Auditing · Humanized Academic Prose · FastMCP Daemon**
+>
+> *SciFi transforms AI coding agents (Antigravity, Claude Code, Cursor) into rigorous, peer-review-grade research partners.*
+
+---
+
+## 💡 Why SciFi?
+
+Large Language Models are exceptional coders, but notoriously fragile in scientific publication:
+
+| LLM Vulnerability | The Academic Consequence | How SciFi Solves It |
+|---|---|---|
+| **Hallucinated DOIs & References** | Retracted papers cited, ghost citations created | **Alex:** Real-time cross-referencing against Crossref, OpenAlex, arXiv, and DataCite with local SQLite caching. |
+| **Silent Algebraic Slips** | Erroneous signs, mismatched matrix shapes, broken limit steps | **Turing:** In-memory SymPy calculus, Pint physical dimensional homogeneity, and Sylvester convexity audits. |
+| **Synthetic AI Tropes ("Slop")** | Papers rejected upfront for *"delve"*, *"tapestry"*, em dashes, and marketing buzz | **Human:** Master Academic Humanizer protocol enforcing epistemic hedging, passive voice, and objective tone. |
+| **Uncredited Methods** | Reviewers challenge lack of attribution or prior art novelty | **Argus:** Automated scanning for uncredited algorithms, canonical auto-citing, and delta-novelty matrix generation. |
+| **Unhedged Overclaims** | Sweeping claims (*"outperforms all existing"*, *"optimal"*) without proofs | **Popper:** Adversarial Reviewer 2 stress-testing for unstated physical assumptions and baseline fairness. |
+
+---
+
+## ⚡ 30-Second Quickstart
 
 Requires Python ≥ 3.12 and [`uv`](https://docs.astral.sh/uv/).
 
----
+### 1. Installation
+```bash
+# Clone the repository
+git clone https://github.com/Betagors/scifi.git
+cd scifi
 
-## Skills
+# Install dependencies and sync virtual environment
+uv sync
+```
 
-| Skill | Purpose |
-|---|---|
-| [`alex`](#-alex--citation--literature-verifier) | Verify citations, DOIs, and `.bib` files against global registries |
-| [`argus`](#-argus--academic-attribution--plagiarism-sentinel) | Audit manuscripts for uncredited methods, plagiarism, and informal web articles |
-| [`human`](#-human--academic-prose-humanizer) | Rewrite AI-generated text into objective academic prose |
-| [`turing`](#-turing--mathematical-derivation-verifier) | Verify derivations, units, matrix shapes, limits, convexity, and notation in LaTeX |
-| [`gauss`](#-gauss--numerical-sanity--statistical-auditing) | Verify theoretical curves against simulation traces and audit CLT sample size ($N \ge 30$) |
-| [`popper`](#-popper--adversarial-peer-review--claim-auditor) | Hostile peer-review simulation, unstated assumption hunting, and baseline fairness audits |
-| [`compiler`](#-compiler--autonomous-latex-engine) | Compile manuscripts with latexmk/pdflatex, isolate file:line errors, and auto-install packages |
-| [`hypatia`](#-hypatia--literature-synthesis--gap-analysis) | Download open-access PDFs, extract text, and synthesize delta-novelty matrices |
-
----
-
-## 🛡️ Argus — Academic Attribution & Plagiarism Sentinel
-
-Audits manuscripts, sections, or individual paragraphs for attribution gaps, uncredited scientific methods, and copied web/blog content. Categorizes findings into:
-
-- **`CANONICAL_ACADEMIC`:** Specific algorithm or technique lacking citation -> queries OpenAlex/Crossref, generates verified BibTeX, and injects `\cite{...}`.
-- **`COMMON_KNOWLEDGE`:** Universal concepts (e.g. *gradient descent*, *Fourier transform*, *backpropagation*) -> suppresses false alarms.
-- **`INFORMAL_WEB`:** Text or explanation derived from an online article, tutorial, or blog -> dispatches to `human` for academic reformulation or traces back to primary literature.
-- **`PREPRINT_ALIGNMENT`:** Overlap matching author's own preprints or previous papers -> flags as self-reference to ensure proper lineage.
-
-### CLI
+### 2. Configure Your AI Agents (One Command)
+Modeled directly after REA (`morluto/rea`), SciFi includes an automated setup installer that auto-discovers and configures Antigravity, Claude Desktop, and Cursor:
 
 ```bash
-# Audit a LaTeX manuscript
-uv run scifi argus audit paper.tex --bib references.bib
+# Auto-configure all detected AI environments
+uv run sf setup --auto
 
-# Automatically inject citations in-place into paper.tex and update references.bib
-uv run scifi argus audit paper.tex --bib references.bib --fix
-
-# Scan a raw text excerpt or paragraph
-uv run scifi argus scan "We use Low-Rank Adaptation to parameterize weight updates."
-
-# Search canonical academic paper for a method
-uv run scifi argus search "FlashAttention" --format bibtex
+# Or preview configuration non-destructively
+uv run sf setup --dry-run
 ```
 
-### Python API
-
-```python
-from scifi.argus import ArgusEngine
-
-engine = ArgusEngine()
-report = engine.audit_text("We optimize the model using AdamW optimizer.")
-print(f"Academic gaps: {report.academic_count}")
-for finding in report.findings:
-    print(finding.matched_entity, finding.suggested_action, finding.cite_key)
-```
-
----
-
-## 🔍 Alex — Citation & Literature Verifier
-
-Validates academic citations against **Crossref**, **OpenAlex**, **arXiv**, and **DataCite**. Works on individual DOIs/links or entire `.bib` files.
-
-**Detects:**
-- Retracted papers, expressions of concern, and published errata
-- Title, author, and year discrepancies vs. registry records
-- Missing DOIs and hallucinated references
-
-**Generates:** Clean BibTeX (predictable `[Author][Year][Word]` citekeys) and APA 7th edition citations.
-
-### CLI
+### 3. Verify Anything from Your Terminal
+Use the high-speed `sf` (or `scifi`) command:
 
 ```bash
-# Verify a single DOI or link
-uv run scifi verify 10.1038/s41586-020-2649-2
-uv run scifi verify https://arxiv.org/abs/1706.03762 --format bibtex
+# 🔍 Verify a paper by DOI or link against global registries
+uv run sf v 10.1038/s41586-020-2649-2
 
-# Check claimed metadata against the registry record
-uv run scifi verify 10.1038/s41586-020-2649-2 \
-  --claimed-title "NumPy in Python" \
-  --claimed-year 2018 \
-  --claimed-author "Smith"
+# 📑 Audit an entire .bib file for retractions and missing DOIs
+uv run sf a references.bib --output-report audit.md --output-bib clean.bib
 
-# Audit and sanitize an entire .bib file
-uv run scifi audit references.bib \
-  --output-report audit_report.md \
-  --output-bib clean_references.bib
+# 🏗️ Compile a LaTeX paper and diagnose build errors
+uv run sf c paper.tex
 
-# Search registries by title
-uv run scifi search "Attention is all you need" --verify
+# 🛡️ Audit attribution gaps and auto-inject citations into LaTeX
+uv run sf cite paper.tex --bib references.bib --fix
+
+# 🚀 Start the in-memory FastMCP server daemon
+uv run sf mcp
 ```
-
-Output formats: `markdown` (default) · `bibtex` · `apa` · `json` · `text`
-
-### Python API
-
-```python
-from scifi.citation_verifier import verify_citation, audit_bib_file
-
-result = verify_citation("10.1038/s41586-020-2649-2")
-print(result.status)        # VerificationStatus.VERIFIED
-print(result.is_retracted)  # False
-print(result.to_bibtex())   # Standard BibTeX entry
-print(result.to_apa())      # APA 7th edition string
-
-report = audit_bib_file("my_paper.bib")
-print(f"Retracted: {report.retracted_count} / {report.total_entries}")
-print(report.summary_markdown())
-```
-
-### Status Codes
-
-| Status | Meaning |
-|---|---|
-| `VERIFIED` | Active, peer-reviewed or preprint work found in registry |
-| `RETRACTED` | Formally retracted by publisher or authors |
-| `ERRATA_EXISTS` | Correction or expression of concern published |
-| `MISMATCH` | Citation found but metadata deviates from claimed values |
-| `UNRESOLVED` | Could not locate identifier in any registry |
 
 ---
 
-## ✍️ Human — Academic Prose Humanizer
+## 🏛️ Architecture: The REA Tripartite Model
 
-Rewrites AI-generated text into rigorous, objective, human-authored academic prose. Follows the **Master Academic Humanizer** protocol: eliminates AI-isms, marketing fluff, and em dashes; enforces passive voice, hedging, and discipline-specific conventions.
+SciFi separates **deterministic computation** (tools) from **cognitive reasoning** (skills), wrapped in **strict invariants** (rules):
 
-**Triggers:** Ask the agent to *humanize*, *de-AI*, or *rewrite for a journal* any piece of text.
+```mermaid
+flowchart TD
+    subgraph AgentLayer ["Agent Environment (Antigravity / Claude / Cursor)"]
+        Rules["Rules: AGENTS.md (Invariants & Standards)"]
+        Skills["Skills: alex, turing, human, gauss, popper, hypatia (Playbooks)"]
+        Subagents["Subagents: scholar, theorist, scribe, auditor, argus"]
+    end
 
-**Removes:** Hollow openers ("In this paper, we…"), superlatives ("groundbreaking"), certainty over-claims, bullet-point padding, and ChatGPT-style transitional phrases.
+    subgraph MCPLayer ["SciFi FastMCP Server (In-Memory Daemon)"]
+        CitationTools["scifi_verify_citation\nscifi_audit_bib\nscifi_search_literature"]
+        MathTools["scifi_verify_derivative\nscifi_check_units\nscifi_check_matrix_shapes\nscifi_check_limits\nscifi_check_convexity\nscifi_check_notation"]
+        LatexTools["scifi_compile_latex"]
+        StatsTools["scifi_verify_curve\nscifi_audit_statistics"]
+        ReviewTools["scifi_audit_claims\nscifi_audit_attribution"]
+        FetchTools["scifi_fetch_paper_pdf\nscifi_extract_pdf_text"]
+        Cache[("SQLite Registry Cache")]
+    end
 
-**Enforces:** Passive constructions, epistemic hedges ("it is suggested that…"), precise quantification, and citation-backed claims.
+    subgraph Engines ["Computational Engines"]
+        Registries["Crossref / OpenAlex / arXiv APIs"]
+        SymPy["SymPy & Pint Symbolic Math"]
+        SciPy["NumPy & SciPy Statistics"]
+        TeX["latexmk / pdflatex"]
+    end
+
+    Skills -->|Invokes via JSON-RPC| MCPLayer
+    Subagents -->|Invokes via JSON-RPC| MCPLayer
+    CitationTools <--> Cache
+    CitationTools <--> Registries
+    MathTools <--> SymPy
+    StatsTools <--> SciPy
+    LatexTools <--> TeX
+```
 
 ---
 
-## ⚡ FastMCP Server & Integration
+## ⌨️ Unified CLI & Shortcut Aliases (`sf`)
 
-SciFi embeds a high-performance FastMCP server daemon implementing 17 deterministic verification tools across literature, mathematics, statistics, compilation, and review.
+Every command is available through `scifi` and its short alias `sf`, complete with single-letter shortcuts:
 
-### Native Plugin Integration (`mcp_config.json`)
-The repository includes a root `mcp_config.json` configuration file, allowing Antigravity to discover and load the server automatically:
+| Full Command | Short Alias | Description |
+|---|---|---|
+| `scifi verify <id>` | `sf v <id>` / `sf check` | Verify DOI/link/arXiv against Crossref, OpenAlex, and arXiv |
+| `scifi audit <bib>` | `sf a <bib>` | Audit `.bib` file, flag retractions, fill missing DOIs, export clean BibTeX |
+| `scifi search "<title>"` | `sf s "<title>"` / `sf find` | Search global academic registries by title |
+| `scifi compile [tex]` | `sf c [tex]` / `sf build` | Compile LaTeX manuscript via `latexmk`/`pdflatex` with file:line log diagnosis |
+| `scifi argus <file>` | `sf cite <file>` | Audit text for uncredited methods and auto-inject citations |
+| `scifi setup` | `sf init` / `sf i` | Configure SciFi FastMCP server in Antigravity, Claude, and Cursor |
+| `scifi server` | `sf mcp` / `sf serve` | Launch the persistent FastMCP JSON-RPC daemon over stdio |
+
+---
+
+## 🛠️ FastMCP Server Tool Reference (17 Tools)
+
+When SciFi is enabled, coding agents interact directly with these 17 structured JSON-RPC primitives:
+
+### 1. Literature & Bibliographic Integrity (Alex)
+- **`scifi_verify_citation`**: Validates DOIs, arXiv URLs, PubMed links, or publisher URLs against global registries. Detects retractions, published errata, and metadata discrepancies.
+- **`scifi_audit_bib`**: Scans complete `.bib` bibliographies, sanitizes citekeys (`[Author][Year][Word]`), flags retractions, and searches missing DOIs.
+- **`scifi_search_literature`**: Queries OpenAlex and academic registries for canonical literature by title or query string.
+
+### 2. Attribution & Plagiarism Audit (Argus)
+- **`scifi_audit_attribution`**: Scans manuscripts for uncredited algorithms and methods. Categorizes into `CANONICAL_ACADEMIC`, `COMMON_KNOWLEDGE`, `INFORMAL_WEB`, or `PREPRINT_ALIGNMENT`. Supports `--fix` for automatic citation injection.
+
+### 3. Symbolic Mathematics & Calculus (Turing)
+- **`scifi_verify_derivative`**: Verifies that $\frac{d}{dx}f(x)$ matches claimed results symbolically via SymPy (`VALID` or `INVALID_DERIVATION`).
+- **`scifi_verify_derivation_step`**: Verifies step-by-step calculus equivalence ($LHS - RHS = 0$) under specified mathematical assumptions.
+- **`scifi_check_units`**: Validates dimensional consistency using Pint in equation mode (`eq`) or additive term mode (`terms`).
+- **`scifi_check_matrix_shapes`**: Validates matrix and tensor products symbolically with AST expression safety.
+- **`scifi_check_limits`**: Checks analytical boundaries ($N \to \infty$) and one-sided limits ($x \to 0^+$).
+- **`scifi_check_convexity`**: Computes the symbolic Hessian and tests positive/negative definiteness via Sylvester's criterion (`strictly_convex`, `convex`, `strictly_concave`, `concave`, `indefinite`).
+- **`scifi_check_notation`**: Scans LaTeX manuscripts for symbol variance ($P, p, \mathbf{P}, \boldsymbol{P}$) and undefined notation.
+
+### 4. Empirical Sanity & Statistics (Gauss)
+- **`scifi_verify_curve`**: Compares closed-form theoretical formulas against empirical simulation datasets (CSV, JSON, or inline arrays) with relational equation and power syntax support.
+- **`scifi_audit_statistics`**: Computes sample mean, standard error, 95% confidence intervals, and flags violations of the Central Limit Theorem ($N < 30$).
+
+### 5. Adversarial Review & Methodology (Popper)
+- **`scifi_audit_claims`**: Scans text for unhedged impact statements, sweeping superiority claims (*"outperforms all existing"*), unproven optimality, or fragile assumptions.
+
+### 6. LaTeX Engine (Compiler)
+- **`scifi_compile_latex`**: Autonomous TeX compilation (`latexmk`/`pdflatex`), auxiliary cleanup, and structured error log extraction.
+
+### 7. Open-Access Paper Retrieval (Hypatia)
+- **`scifi_fetch_paper_pdf`**: Downloads open-access paper PDFs by DOI or arXiv ID via arXiv API and Unpaywall.
+- **`scifi_extract_pdf_text`**: Extracts structured text and sections (Abstract, System Model/Method, Limitations, Conclusions) from paper PDFs.
+
+---
+
+## 🧠 Cognitive Skill Playbooks
+
+SciFi includes 8 modular on-demand skill playbooks:
+
+| Skill | Focus | Primary Tools / Protocol |
+|---|---|---|
+| [`alex`](skills/alex/SKILL.md) | Citation & Literature Verification | `scifi_verify_citation`, `scifi_audit_bib`, `scifi_search_literature` |
+| [`argus`](skills/argus/SKILL.md) | Academic Attribution & Plagiarism Sentinel | `scifi_audit_attribution`, canonical auto-cite |
+| [`turing`](skills/turing/SKILL.md) | Mathematical & Symbolic Derivations | `scifi_verify_derivative`, `scifi_check_units`, `scifi_check_notation`, etc. |
+| [`gauss`](skills/gauss/SKILL.md) | Numerical Sanity & Statistical Auditing | `scifi_verify_curve`, `scifi_audit_statistics` |
+| [`human`](skills/human/SKILL.md) | Academic Prose Humanizer | Master Academic Humanizer protocol (de-biasing, tone hedging, passive voice) |
+| [`popper`](skills/popper/SKILL.md) | Adversarial Peer-Review & Falsification | `scifi_audit_claims`, 4-axis hostile Reviewer 2 audit |
+| [`compiler`](skills/compiler/SKILL.md) | Autonomous LaTeX Compilation | `scifi_compile_latex`, error isolation and auto-install |
+| [`hypatia`](skills/hypatia/SKILL.md) | Literature Synthesis & Benchmark Matrix | `scifi_fetch_paper_pdf`, `scifi_extract_pdf_text`, Delta-Novelty Matrix |
+
+---
+
+## 🤖 Specialized Subagents
+
+SciFi provides 5 pre-configured autonomous personas in `agents/`:
+
+* **`scholar`**: Literature synthesis, competitive benchmarking, and Related Work taxonomies.
+* **`theorist`**: Symbolic proofs, Lemma formulations, and dimensional consistency checks.
+* **`scribe`**: LaTeX typesetting, AI-cliché eradication, and mathematical notation harmonization.
+* **`auditor`**: Hostile peer-review simulation, unstated assumption hunting, and baseline fairness audits.
+* **`argus`**: Attribution guardian detecting uncredited algorithms and triaging web sources.
+
+---
+
+## 🔌 Client Integration
+
+### Antigravity
+SciFi is a native Antigravity plugin. Antigravity automatically detects `plugin.json` and loads the FastMCP daemon from `mcp_config.json`:
 ```json
 {
   "mcpServers": {
@@ -156,183 +210,39 @@ The repository includes a root `mcp_config.json` configuration file, allowing An
 }
 ```
 
-### Automatic Setup Installer
-Configure SciFi in Antigravity, Claude Desktop, and Cursor with a single command:
-```bash
-# Interactive setup
-uv run scifi setup
-
-# Non-interactive / automated installation
-uv run scifi setup --auto
+### Claude Desktop
+Run `uv run sf setup --auto` or add to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "scifi": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "scifi.server"],
+      "cwd": "/path/to/scifi"
+    }
+  }
+}
 ```
 
-### Running the Server Daemon
-```bash
-# Standard stdio transport
-uv run scifi server
-
-# Or via Python module directly
-uv run python -m scifi.server
-```
-
-### Available FastMCP Tools
-| Tool | Domain | Description |
-|---|---|---|
-| `scifi_verify_citation` | Literature | Verify DOI/link against Crossref/OpenAlex/arXiv with cached canonical metadata |
-| `scifi_audit_bib` | Literature | Audit `.bib` file for retractions, errata, and metadata mismatches |
-| `scifi_search_literature` | Literature | Search OpenAlex and academic registries for canonical literature |
-| `scifi_audit_attribution` | Attribution | Audit LaTeX manuscripts for uncredited methods, plagiarism, and auto-cite |
-| `scifi_verify_derivative` | Mathematics | Check that $\frac{d}{dx}f(x)$ matches claimed results symbolically via SymPy |
-| `scifi_verify_derivation_step` | Mathematics | Audit step-by-step calculus derivation equivalence |
-| `scifi_check_units` | Mathematics | Dimensional consistency checking via Pint (`eq` or `terms` mode) |
-| `scifi_check_matrix_shapes` | Mathematics | Matrix product and tensor contraction shape verification with AST validation |
-| `scifi_check_limits` | Mathematics | Asymptotic boundary and one-sided limit verification |
-| `scifi_check_convexity` | Mathematics | Symbolic Hessian definiteness test (convex, strictly convex, concave, strictly concave) |
-| `scifi_check_notation` | Mathematics | Cross-section LaTeX mathematical notation consistency scanner |
-| `scifi_compile_latex` | Compilation | Autonomous `latexmk`/`pdflatex` compilation and error log diagnosis |
-| `scifi_verify_curve` | Statistics | Match theoretical closed-form LaTeX expressions with simulation data |
-| `scifi_audit_statistics` | Statistics | Compute mean, std err, 95% CI, and audit CLT sample size ($N \ge 30$) |
-| `scifi_audit_claims` | Peer Review | Scan manuscript for unhedged overclaims and fragile assumptions |
-| `scifi_fetch_paper_pdf` | Retrieval | Fetch open-access PDF by DOI or arXiv ID |
-| `scifi_extract_pdf_text` | Retrieval | Extract structured text and sections from paper PDFs |
-
----
-
-## 🧮 Turing — Mathematical Derivation Verifier
-
-Catches silent algebra errors in LaTeX manuscripts using SymPy, Pint, and NumPy. Available as native FastMCP tools and Python library functions (`from scifi.math import ...`).
-
-### 1. Derivative Verification (`scifi_verify_derivative`)
-Computes $\frac{d}{dx}f$ symbolically and checks `simplify(computed − claimed) = 0`.
-```python
-from scifi.math import verify_derivative
-
-result = verify_derivative(
-    expr=r"\frac{1}{2} x^2 + \sin(x)",
-    var="x",
-    claimed=r"x + \cos(x)",
-)
-print(result["status"])  # VALID
-```
-
-### 2. Dimensional / Unit Consistency (`scifi_check_units`)
-Ensures equations match physical dimensions or that all additive terms share identical dimensionality.
-```python
-from scifi.math import check_units
-
-# Equation equality mode
-res_eq = check_units(lhs="5 watt * second", rhs="5 joule", check_mode="eq")
-
-# Additive terms mode
-res_add = check_units(lhs="10 meter / second, 3 kilometer / second", check_mode="terms")
-```
-
-### 3. Matrix Dimension & Tensor Shape (`scifi_check_matrix_shapes`)
-Validates matrix products symbolically with safe AST parsing.
-```python
-from scifi.math import check_matrix_shapes
-
-result = check_matrix_shapes(
-    operation="A * B.T",
-    dimensions={"A": ["m", "n"], "B": ["k", "n"]},
-)
-print(result["result_shape"])  # ['m', 'k']
-```
-
-### 4. Boundary & Asymptotic Behaviour (`scifi_check_limits`)
-Validates asymptotic limits ($N \to \infty$) and one-sided limits ($x \to 0^+$).
-```python
-from scifi.math import check_limits
-
-result = check_limits(
-    expr=r"\frac{1}{x}",
-    var="x",
-    point="0",
-    claimed="oo",
-    direction="+",
-)
-```
-
-### 5. Positive Definiteness & Convexity (`scifi_check_convexity`)
-Computes the symbolic Hessian and tests positive or negative definiteness via Sylvester's criterion.
-Supports `strictly_convex`, `convex`, `strictly_concave`, `concave`, and `indefinite`.
-```python
-from scifi.math import check_convexity
-
-result = check_convexity(
-    expr=r"x^2 + y^2 + x y",
-    var="x, y",
-    claimed="strictly_convex",
-)
-```
-
-### 6. Notation Consistency (`scifi_check_notation`)
-Scans all math environments in a LaTeX document for symbol variance and collision.
-```python
-from scifi.math import check_notation
-
-result = check_notation(tex_path="paper.tex")
+### Cursor
+Run `uv run sf setup --auto` or add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "scifi": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "scifi.server"],
+      "cwd": "/path/to/scifi"
+    }
+  }
+}
 ```
 
 ---
 
-## 📈 Gauss — Numerical Sanity & Statistical Auditing
+## 🧪 Running Tests
 
-Validates empirical results and audits statistical rigor in scientific manuscripts.
-
-### 1. Curve Verification (`scifi_verify_curve`)
-Verifies closed-form theoretical formulas against empirical simulation datasets (CSV/JSON or inline arrays) with relational equation parsing and power syntax support:
-```python
-from scifi.stats import verify_curve
-
-result = verify_curve(
-    formula_latex=r"y = \frac{1}{1 + x^2}",
-    var_name="x",
-    x_vals=[0.0, 1.0, 2.0, 3.0],
-    y_vals=[1.0, 0.5, 0.2, 0.1],
-)
-```
-
-### 2. Statistical Auditing (`scifi_audit_statistics`)
-Audits sample size against Central Limit Theorem ($N \ge 30$), computing mean, standard error, and confidence intervals:
-```python
-from scifi.stats import audit_statistics
-
-result = audit_statistics(samples=[12.1, 12.4, 12.2, 12.9, 12.5], confidence=0.95)
-print(result["is_statistically_sound"])  # False (N < 30)
-```
-
----
-
-## 🏗️ Compiler — Autonomous LaTeX Engine
-
-Compiles manuscripts, isolates build errors with exact `file:line` locations, and auto-detects missing packages.
-
-```bash
-# Compile via unified CLI
-uv run scifi compile paper.tex
-
-# Or invoke the scifi_compile_latex MCP tool
-```
-
----
-
-## 🔬 Popper — Adversarial Peer-Review & Claim Auditor
-
-Stress-tests manuscripts for unstated assumptions, unsupported claims, and weak baselines.
-
-```bash
-# Scan manuscript for overclaims and fragile assumptions
-uv run python -c "from scifi.review import audit_claims; print(audit_claims('paper.tex'))"
-
-# Or invoke the scifi_audit_claims MCP tool
-```
-
----
-
-## 🧪 Testing
-
-Run the comprehensive test suite across all modules:
+The test suite contains **168 unit and integration tests** covering all modules:
 
 ```bash
 uv run pytest tests/ -v
@@ -340,15 +250,23 @@ uv run pytest tests/ -v
 
 ---
 
-## 📦 Dependencies
+## 📄 Citing SciFi
 
-| Package | Purpose |
-|---|---|
-| `mcp` | FastMCP server implementation |
-| `requests` | HTTP academic registry queries |
-| `bibtexparser` | BibTeX parsing and sanitization |
-| `sympy` + `antlr4-python3-runtime` | Symbolic mathematics & LaTeX parsing |
-| `pint` | Physical unit and dimension checking |
-| `numpy` & `scipy` | Numerical curve verification & statistics |
-| `pypdf` | Open-access PDF text extraction |
-| `pytest` | Test runner and test suite |
+If you use SciFi in your research or scientific manuscripts, please cite:
+
+```bibtex
+@software{scifi2026,
+  author = {SciFi Contributors},
+  title = {SciFi: Scientific Research & Academic Writing Toolkit for AI Agents},
+  year = {2026},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  url = {https://github.com/Betagors/scifi}
+}
+```
+
+---
+
+## 📜 License
+
+Distributed under the [MIT License](LICENSE).

@@ -303,3 +303,36 @@ def test_cli_routes_to_server() -> None:
         code = scifi.cli.main(["server"])
         assert code == 0
         mock_run.assert_called_once_with(transport="stdio")
+
+
+def test_cli_subcommand_aliases(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test subcommand aliases: v, a, s, c, mcp, init, cite."""
+    # verify alias: v
+    assert scifi.cli.main(["v", "--help"]) == 0
+    assert "query" in capsys.readouterr().out
+
+    # audit alias: a
+    assert scifi.cli.main(["a", "--help"]) == 0
+    assert "bib_file" in capsys.readouterr().out
+
+    # search alias: s
+    assert scifi.cli.main(["s", "--help"]) == 0
+    assert "title" in capsys.readouterr().out
+
+    # compile alias: c
+    assert scifi.cli.main(["c", "--help"]) == 0
+    assert "tex_file" in capsys.readouterr().out
+
+    # server alias: mcp
+    assert scifi.cli.main(["mcp", "--help"]) == 0
+    assert "--transport" in capsys.readouterr().out
+
+    # setup alias: init
+    assert scifi.cli.main(["init", "--help"]) == 0
+    assert "--auto" in capsys.readouterr().out
+
+    # route alias test: v routes to verify
+    with patch("scifi.cli.citation_cli.cmd_verify", return_value=0) as mock_verify:
+        assert scifi.cli.main(["v", "10.1038/s41586-020-2649-2"]) == 0
+        mock_verify.assert_called_once()
+        assert mock_verify.call_args[0][0].query == "10.1038/s41586-020-2649-2"

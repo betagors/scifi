@@ -77,7 +77,7 @@ def create_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Subcommand to execute")
 
     # verify
-    p_verify = subparsers.add_parser("verify", help="Verify a citation (DOI, arXiv link, PubMed URL, or publisher URL)")
+    p_verify = subparsers.add_parser("verify", aliases=["v", "check"], help="Verify a citation (DOI, arXiv link, PubMed URL, or publisher URL)")
     p_verify.add_argument("query", help="DOI, arXiv link, PubMed URL, or publisher URL")
     p_verify.add_argument(
         "--format",
@@ -92,7 +92,7 @@ def create_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--timeout", type=int, default=10, help="HTTP request timeout in seconds")
 
     # audit
-    p_audit = subparsers.add_parser("audit", help="Audit an entire BibTeX (.bib) file for retracts, errata, and missing DOIs")
+    p_audit = subparsers.add_parser("audit", aliases=["a"], help="Audit an entire BibTeX (.bib) file for retracts, errata, and missing DOIs")
     p_audit.add_argument("bib_file", help="Path to .bib file")
     p_audit.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Report format")
     p_audit.add_argument("--output-report", help="File to write audit report to")
@@ -100,12 +100,12 @@ def create_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--no-search", action="store_true", help="Do not search registry for missing DOIs")
 
     # search
-    p_search = subparsers.add_parser("search", help="Search official registries by paper title")
+    p_search = subparsers.add_parser("search", aliases=["s", "find"], help="Search official registries by paper title")
     p_search.add_argument("title", help="Paper title to search")
     p_search.add_argument("--verify", action="store_true", help="Automatically verify after locating identifier")
 
     # argus
-    p_argus = subparsers.add_parser("argus", help="Attribution sentinel, uncredited method detection, and plagiarism audit")
+    p_argus = subparsers.add_parser("argus", aliases=["cite", "attribution"], help="Attribution sentinel, uncredited method detection, and plagiarism audit")
     p_argus.add_argument("file", nargs="?", default=None, help="Path to LaTeX (.tex) or markdown/text file to audit")
     p_argus.add_argument("--bib", help="Path to target references.bib file")
     p_argus.add_argument("--format", choices=["markdown", "json", "text"], default="markdown", help="Report format")
@@ -115,20 +115,20 @@ def create_parser() -> argparse.ArgumentParser:
     p_argus.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
 
     # setup
-    p_setup = subparsers.add_parser("setup", help="Configure SciFi FastMCP server in Antigravity, Claude Desktop, and Cursor")
+    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in Antigravity, Claude Desktop, and Cursor")
     p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
     p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
     p_setup.add_argument("--scifi-root", type=str, help="Custom root directory for scifi repository")
 
     # compile
-    p_compile = subparsers.add_parser("compile", help="Compile a LaTeX manuscript and diagnose build errors")
+    p_compile = subparsers.add_parser("compile", aliases=["c", "build"], help="Compile a LaTeX manuscript and diagnose build errors")
     p_compile.add_argument("tex_file", nargs="?", default="main.tex", help="Path to main LaTeX (.tex) file (default: main.tex)")
     p_compile.add_argument("--engine", choices=["auto", "latexmk", "pdflatex"], default="auto", help="LaTeX engine to use (default: auto)")
     p_compile.add_argument("--no-clean", dest="clean", action="store_false", default=True, help="Do not remove auxiliary files")
 
     # server
-    p_server = subparsers.add_parser("server", help="Run the SciFi FastMCP server daemon")
+    p_server = subparsers.add_parser("server", aliases=["mcp", "serve"], help="Run the SciFi FastMCP server daemon")
     p_server.add_argument("--transport", choices=["stdio", "sse"], default="stdio", help="MCP transport mode (default: stdio)")
 
     return parser
@@ -154,7 +154,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     actual_argv = list(sys.argv[1:] if argv is None else argv)
 
     # Support nested Argus subcommands: `scifi argus scan ...` or `scifi argus search ...` or `scifi argus audit ...`
-    if len(actual_argv) > 1 and actual_argv[0] == "argus" and actual_argv[1] in ("audit", "scan", "search"):
+    if len(actual_argv) > 1 and actual_argv[0] in ("argus", "cite", "attribution") and actual_argv[1] in ("audit", "scan", "search"):
         from scifi.argus.cli import main as argus_main
 
         return argus_main(actual_argv[1:])
@@ -174,13 +174,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    if args.command == "verify":
+    if args.command in ("verify", "v", "check"):
         return citation_cli.cmd_verify(args)
-    elif args.command == "audit":
+    elif args.command in ("audit", "a"):
         return citation_cli.cmd_audit(args)
-    elif args.command == "search":
+    elif args.command in ("search", "s", "find"):
         return citation_cli.cmd_search(args)
-    elif args.command == "argus":
+    elif args.command in ("argus", "cite", "attribution"):
         if not args.file:
             # Print argus-specific help if file is missing
             for action in parser._subparsers._actions:
@@ -192,11 +192,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.print_help()
             return 0
         return argus_cli.cmd_audit(args)
-    elif args.command == "compile":
+    elif args.command in ("compile", "c", "build"):
         return cmd_compile(args)
-    elif args.command == "setup":
+    elif args.command in ("setup", "init", "i"):
         return setup_cli.cmd_setup(args)
-    elif args.command == "server":
+    elif args.command in ("server", "mcp", "serve"):
         return cmd_server(args)
 
     return 0
