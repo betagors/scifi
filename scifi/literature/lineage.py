@@ -13,7 +13,9 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from scifi.literature.benchmarks import BenchmarkExtractor
 from scifi.literature.gaps import GapExtractor
+from scifi.literature.sota import SotaEvaluator
 from scifi.literature.models import (
     CitationContextRecord,
     CitationRecord,
@@ -92,6 +94,8 @@ class LineageCrawler:
         max_request_budget: int = 25,
         s2_client: Optional[SemanticScholarClient] = None,
         gap_extractor: Optional[GapExtractor] = None,
+        benchmark_extractor: Optional[BenchmarkExtractor] = None,
+        sota_evaluator: Optional[SotaEvaluator] = None,
     ) -> None:
         self.resolver = resolver or PaperResolver()
         self.store = store
@@ -99,6 +103,8 @@ class LineageCrawler:
         self.request_count = 0
         self.s2_client = s2_client
         self.gap_extractor = gap_extractor
+        self.benchmark_extractor = benchmark_extractor
+        self.sota_evaluator = sota_evaluator
 
     def _can_request(self) -> bool:
         """Check whether the crawler has remaining request budget."""
@@ -380,6 +386,7 @@ class LineageCrawler:
         max_papers: int = 25,
         graph_id: Optional[str] = None,
         extract_gaps: bool = True,
+        extract_benchmarks: bool = True,
     ) -> Tuple[str, List[PaperRecord], List[CitationRecord]]:
         """
         Execute multi-signal lineage crawl starting from query or seed paper:
@@ -554,6 +561,70 @@ class LineageCrawler:
                         self.store.save_paper_gap(gap)
                     except Exception:
                         pass
+
+            if extract_benchmarks:
+                b_extractor = self.benchmark_extractor or BenchmarkExtractor()
+                s_evaluator = self.sota_evaluator or SotaEvaluator()
+
+                extracted_items: list[Any] = []
+                for p in paper_list:
+                    try:
+                        extracted = b_extractor.extract_reported_results(p)
+                        extracted_items.extend(extracted)
+                    except Exception:
+                        pass
+
+                for bm, metric, cond, res, ev in extracted_items:
+                    try:
+                        self.store.save_benchmark(bm)
+                        self.store.save_evaluation_metric(metric)
+                        if cond:
+                            self.store.save_evaluation_condition(cond)
+                        if ev:
+                            self.store.save_evidence(ev)
+                        self.store.save_benchmark_result(res)
+                    except Exception:
+                        pass
+
+                try:
+                    graph_results = self.store.get_graph_benchmark_results(assigned_graph_id)
+                    all_results = [r for rlist in graph_results.values() for r in rlist]
+                    graph_metrics = self.store.get_graph_metrics(assigned_graph_id)
+                    graph_benchmarks = self.store.get_graph_benchmarks(assigned_graph_id)
+
+                    if all_results:
+                        sota_reports = s_evaluator.evaluate_sota_frontier(
+                            papers=paper_list,
+                            benchmark_results=all_results,
+                            metrics=graph_metrics,
+                            benchmarks=graph_benchmarks,
+                            depths=topological_depths,
+                        )
+                        for r in all_results:
+                            try:
+                                self.store.save_benchmark_result(r)
+                            except Exception:
+                                pass
+
+                        enriched_roles = s_evaluator.assign_enriched_roles(
+                            papers=paper_list,
+                            depths=topological_depths,
+                            reports=sota_reports,
+                        )
+                        for p in paper_list:
+                            role = enriched_roles.get(p.id, node_roles.get(p.id, "intermediate"))
+                            d = topological_depths.get(p.id, 0)
+                            try:
+                                self.store.save_paper(
+                                    paper=p,
+                                    graph_id=assigned_graph_id,
+                                    node_role=role,
+                                    topological_depth=d,
+                                )
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
 
         return (assigned_graph_id, paper_list, rectified_citations)
 

@@ -57,6 +57,7 @@ EXPECTED_TOOLS = {
     "scifi_map_literature",
     "scifi_query_store",
     "scifi_export_bibtex",
+    "scifi_query_sota_benchmarks",
 }
 
 

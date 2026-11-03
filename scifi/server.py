@@ -1,7 +1,7 @@
 """
 FastMCP Server Daemon for SciFi: Scientific Research & Academic Writing Toolkit.
 
-Exposes 20 typed JSON-RPC tools for citation verification, bib auditing,
+Exposes 21 typed JSON-RPC tools for citation verification, bib auditing,
 attribution & plagiarism detection, symbolic calculus, physical dimensions,
 matrix shapes, LaTeX compilation, numerical curves, statistics, adversarial review,
 and open-access literature retrieval.
@@ -34,8 +34,17 @@ from scifi.citation_verifier import (
 )
 from scifi.latex import compile_latex
 from scifi.literature import extract_pdf_text, fetch_paper_pdf
+from scifi.literature.benchmarks import CANONICAL_BENCHMARKS
 from scifi.literature.lineage import LineageCrawler
+from scifi.literature.models import (
+    BenchmarkRecord,
+    BenchmarkResultRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
+    PaperRecord,
+)
 from scifi.literature.reporter import save_bibtex_file, save_markdown_report
+from scifi.literature.sota import SotaEvaluator
 from scifi.literature.store import LiteratureStore
 from scifi.literature.visualizer import save_interactive_html
 from scifi.math import (
@@ -719,6 +728,9 @@ def scifi_map_literature(
             "corroborated_gaps_count": 0,
             "gaps": [],
             "papers": [],
+            "benchmark_results_count": 0,
+            "sota_leaders": [],
+            "benchmarks": [],
             "files": None,
         }
 
@@ -727,12 +739,19 @@ def scifi_map_literature(
 
     paper_gaps = store.get_graph_gaps(assigned_graph_id)
     evidence_map = store.get_graph_evidence(assigned_graph_id)
+    benchmark_results = store.get_graph_benchmark_results(assigned_graph_id)
+    benchmarks_map = store.get_graph_benchmarks(assigned_graph_id)
+    metrics_map = store.get_graph_metrics(assigned_graph_id)
+    conditions_map = store.get_graph_conditions(assigned_graph_id)
 
     total_gaps = sum(len(glist) for glist in paper_gaps.values())
     corroborated_count = sum(
         1 for glist in paper_gaps.values() for g in glist if g.verification_status == "corroborated"
     )
     gaps_list = [gap.to_dict() for glist in paper_gaps.values() for gap in glist]
+
+    total_results = sum(len(rlist) for rlist in benchmark_results.values())
+    sota_leaders = [r for rlist in benchmark_results.values() for r in rlist if r.is_sota]
 
     if output_dir:
         out_path = Path(output_dir)
@@ -749,6 +768,10 @@ def scifi_map_literature(
             seed_paper_id=seed_id,
             paper_gaps=paper_gaps,
             evidence_map=evidence_map,
+            benchmark_results=benchmark_results,
+            benchmarks_map=benchmarks_map,
+            metrics_map=metrics_map,
+            conditions_map=conditions_map,
         )
         md_path = save_markdown_report(
             out_path / "literature_report.md",
@@ -758,6 +781,10 @@ def scifi_map_literature(
             depths=depths,
             paper_gaps=paper_gaps,
             evidence_map=evidence_map,
+            benchmark_results=benchmark_results,
+            benchmarks_map=benchmarks_map,
+            metrics_map=metrics_map,
+            conditions_map=conditions_map,
         )
         bib_path = save_bibtex_file(
             out_path / "references.bib",
@@ -779,8 +806,199 @@ def scifi_map_literature(
         "gaps_count": total_gaps,
         "corroborated_gaps_count": corroborated_count,
         "gaps": gaps_list,
+        "benchmark_results_count": total_results,
+        "sota_leaders": [r.to_dict() for r in sota_leaders],
+        "benchmarks": [b.to_dict() for b in benchmarks_map.values()],
         "papers": [p.to_dict() for p in papers],
         "files": files_dict,
+    }
+
+
+@mcp.tool()
+def scifi_query_sota_benchmarks(
+    query: str,
+    benchmark_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Query benchmarks, active evaluation metrics, reported results, and current SOTA leaders for a research topic or benchmark name.
+    Inspects canonical benchmark suites, domain taxonomies, and persisted empirical results to identify true state-of-the-art leaders and performance deltas.
+
+    Args:
+        query: Research domain, topic, paper title, DOI, or benchmark alias (e.g., 'Code Generation', 'HumanEval', 'Attention Is All You Need').
+        benchmark_name: Optional explicit canonical benchmark name or ID to filter by (e.g., 'HumanEval', 'MMLU').
+
+    Returns:
+        Dictionary containing matched benchmarks, metrics, reported benchmark results, SOTA leaders, and performance deltas.
+    """
+    store = get_literature_store()
+    q_clean = (query or "").strip().lower()
+    bm_clean = (benchmark_name or "").strip().lower()
+
+    matched_benchmarks: dict[str, BenchmarkRecord] = {}
+
+    # 1. Check canonical benchmark catalog
+    for bm_id, bm in CANONICAL_BENCHMARKS.items():
+        if bm_clean:
+            if bm_clean in bm.name.lower() or bm_clean in bm.id.lower() or bm_clean in bm.domain.lower():
+                matched_benchmarks[bm.id] = bm
+        elif q_clean:
+            if (
+                q_clean in bm.name.lower()
+                or q_clean in bm.id.lower()
+                or q_clean in bm.domain.lower()
+                or (bm.description and q_clean in bm.description.lower())
+            ):
+                matched_benchmarks[bm.id] = bm
+
+    # 2. Check benchmarks table in SQLite store
+    try:
+        with store._lock:
+            cur = store.conn.cursor()
+            cur.execute("SELECT id, name, domain, canonical_url, description FROM benchmarks")
+            for r in cur.fetchall():
+                bm = store._row_to_benchmark(r)
+                if bm_clean:
+                    if bm_clean in bm.name.lower() or bm_clean in bm.id.lower() or bm_clean in bm.domain.lower():
+                        matched_benchmarks[bm.id] = bm
+                elif q_clean:
+                    if (
+                        q_clean in bm.name.lower()
+                        or q_clean in bm.id.lower()
+                        or q_clean in bm.domain.lower()
+                        or (bm.description and q_clean in bm.description.lower())
+                    ):
+                        matched_benchmarks[bm.id] = bm
+    except Exception:
+        pass
+
+    # 3. Check matching papers by ID or title
+    matched_paper_ids: set[str] = set()
+    if q_clean:
+        try:
+            with store._lock:
+                cur = store.conn.cursor()
+                cur.execute(
+                    "SELECT id, title FROM papers WHERE lower(id) LIKE ? OR lower(title) LIKE ?",
+                    (f"%{q_clean}%", f"%{q_clean}%"),
+                )
+                for pid, ptitle in cur.fetchall():
+                    matched_paper_ids.add(pid)
+        except Exception:
+            pass
+
+    # 4. Query benchmark results for matched benchmarks and matched papers
+    all_results: list[BenchmarkResultRecord] = []
+    benchmark_ids = list(matched_benchmarks.keys())
+
+    if benchmark_ids or matched_paper_ids:
+        try:
+            with store._lock:
+                cur = store.conn.cursor()
+                clauses: list[str] = []
+                params: list[Any] = []
+                if benchmark_ids:
+                    ph = ",".join("?" for _ in benchmark_ids)
+                    clauses.append(f"br.benchmark_id IN ({ph})")
+                    params.extend(benchmark_ids)
+                if matched_paper_ids:
+                    ph = ",".join("?" for _ in matched_paper_ids)
+                    clauses.append(f"br.paper_id IN ({ph})")
+                    params.extend(list(matched_paper_ids))
+
+                sql = f"""
+                    SELECT br.id, br.paper_id, br.benchmark_id, br.metric_id, br.condition_id,
+                           br.metric_value, br.is_sota, br.rank, br.evidence_id, br.table_or_figure,
+                           br.result_date, br.provenance_source
+                    FROM benchmark_results br
+                    WHERE {" OR ".join(clauses)}
+                    ORDER BY br.benchmark_id ASC, br.metric_value DESC, br.id ASC
+                """
+                cur.execute(sql, tuple(params))
+                for r in cur.fetchall():
+                    res = store._row_to_benchmark_result(r)
+                    all_results.append(res)
+                    if res.benchmark_id not in matched_benchmarks:
+                        cur2 = store.conn.cursor()
+                        cur2.execute(
+                            "SELECT id, name, domain, canonical_url, description FROM benchmarks WHERE id = ?",
+                            (res.benchmark_id,),
+                        )
+                        bm_row = cur2.fetchone()
+                        if bm_row:
+                            matched_benchmarks[res.benchmark_id] = store._row_to_benchmark(bm_row)
+        except Exception:
+            pass
+
+    # 5. Fetch associated metrics, conditions, and paper records
+    metrics_map: dict[str, EvaluationMetricRecord] = {}
+    conditions_map: dict[str, EvaluationConditionRecord] = {}
+    papers_map: dict[str, PaperRecord] = {}
+
+    if all_results:
+        metric_ids = list({r.metric_id for r in all_results if r.metric_id})
+        condition_ids = list({r.condition_id for r in all_results if r.condition_id})
+        paper_ids = list({r.paper_id for r in all_results if r.paper_id})
+
+        try:
+            with store._lock:
+                cur = store.conn.cursor()
+                if metric_ids:
+                    ph = ",".join("?" for _ in metric_ids)
+                    cur.execute(
+                        f"SELECT id, name, goal, unit, description FROM evaluation_metrics WHERE id IN ({ph})",
+                        tuple(metric_ids),
+                    )
+                    for mr in cur.fetchall():
+                        metrics_map[mr[0]] = store._row_to_metric(mr)
+                if condition_ids:
+                    ph = ",".join("?" for _ in condition_ids)
+                    cur.execute(
+                        f"SELECT id, name, dataset_split, hardware, notes FROM evaluation_conditions WHERE id IN ({ph})",
+                        tuple(condition_ids),
+                    )
+                    for cr in cur.fetchall():
+                        conditions_map[cr[0]] = store._row_to_condition(cr)
+                if paper_ids:
+                    for pid in paper_ids:
+                        p = store.get_paper(pid)
+                        if p:
+                            papers_map[pid] = p
+        except Exception:
+            pass
+
+    # 6. Evaluate SOTA rankings and deltas if results exist
+    deltas: list[dict[str, Any]] = []
+    if all_results:
+        try:
+            evaluator = SotaEvaluator()
+            papers_list = list(papers_map.values()) or [
+                PaperRecord(id=r.paper_id, title=r.paper_id) for r in all_results
+            ]
+            sota_results = evaluator.evaluate_sota_frontier(
+                papers=papers_list,
+                benchmark_results=all_results,
+                metrics=metrics_map,
+                benchmarks=matched_benchmarks,
+            )
+            for rep in sota_results.values():
+                for d in rep.deltas:
+                    deltas.append(d.to_dict())
+        except Exception:
+            pass
+
+    sota_leaders = [r for r in all_results if r.is_sota]
+
+    return {
+        "status": "SUCCESS",
+        "query": query,
+        "benchmark_name": benchmark_name,
+        "total_benchmarks": len(matched_benchmarks),
+        "benchmarks": [b.to_dict() for b in matched_benchmarks.values()],
+        "metrics": [m.to_dict() for m in metrics_map.values()],
+        "total_results": len(all_results),
+        "results": [r.to_dict() for r in all_results],
+        "sota_leaders": [r.to_dict() for r in sota_leaders],
+        "deltas": deltas,
     }
 
 

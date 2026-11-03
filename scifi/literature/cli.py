@@ -125,6 +125,10 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     paper_gaps = store.get_graph_gaps(graph_id)
     evidence_map = store.get_graph_evidence(graph_id)
+    benchmark_results = store.get_graph_benchmark_results(graph_id)
+    benchmarks_map = store.get_graph_benchmarks(graph_id)
+    metrics_map = store.get_graph_metrics(graph_id)
+    conditions_map = store.get_graph_conditions(graph_id)
 
     md_path = save_markdown_report(
         out_dir / "literature_report.md",
@@ -134,6 +138,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         depths=depths,
         paper_gaps=paper_gaps,
         evidence_map=evidence_map,
+        benchmark_results=benchmark_results,
+        benchmarks_map=benchmarks_map,
+        metrics_map=metrics_map,
+        conditions_map=conditions_map,
     )
     html_path = save_interactive_html(
         out_dir / "literature_map.html",
@@ -144,6 +152,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         seed_paper_id=seed_id,
         paper_gaps=paper_gaps,
         evidence_map=evidence_map,
+        benchmark_results=benchmark_results,
+        benchmarks_map=benchmarks_map,
+        metrics_map=metrics_map,
+        conditions_map=conditions_map,
     )
     bib_path = save_bibtex_file(out_dir / "references.bib", papers=papers)
 
@@ -151,6 +163,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     corroborated_gaps = sum(
         1 for glist in paper_gaps.values() for g in glist if g.verification_status == "corroborated"
     )
+    total_results = sum(len(rlist) for rlist in benchmark_results.values())
+    n_benchmarks = len(benchmarks_map)
+    n_sota_leaders = sum(1 for rlist in benchmark_results.values() for r in rlist if r.is_sota)
 
     print(f"[SUCCESS] Literature report generated in {out_dir}:")
     print(f"  Report:   {md_path}")
@@ -158,6 +173,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     print(f"  BibTeX:   {bib_path}")
     print(f"  Summary:  {len(papers)} papers, {len(citations)} citations (Session: {graph_id})")
     print(f"  Evidence: {total_gaps} extracted technical limitations ({corroborated_gaps} corroborated)")
+    print(f"  Benchmarks: {total_results} results across {n_benchmarks} benchmarks ({n_sota_leaders} SOTA leaders)")
 
     if getattr(args, "open", False):
         webbrowser.open(html_path.resolve().as_uri())
@@ -190,6 +206,10 @@ def cmd_map(args: argparse.Namespace) -> int:
 
     paper_gaps = store.get_graph_gaps(graph_id)
     evidence_map = store.get_graph_evidence(graph_id)
+    benchmark_results = store.get_graph_benchmark_results(graph_id)
+    benchmarks_map = store.get_graph_benchmarks(graph_id)
+    metrics_map = store.get_graph_metrics(graph_id)
+    conditions_map = store.get_graph_conditions(graph_id)
 
     html_path = save_interactive_html(
         out_dir / "literature_map.html",
@@ -200,15 +220,23 @@ def cmd_map(args: argparse.Namespace) -> int:
         seed_paper_id=seed_id,
         paper_gaps=paper_gaps,
         evidence_map=evidence_map,
+        benchmark_results=benchmark_results,
+        benchmarks_map=benchmarks_map,
+        metrics_map=metrics_map,
+        conditions_map=conditions_map,
     )
 
     total_gaps = sum(len(glist) for glist in paper_gaps.values())
     corroborated_gaps = sum(
         1 for glist in paper_gaps.values() for g in glist if g.verification_status == "corroborated"
     )
+    total_results = sum(len(rlist) for rlist in benchmark_results.values())
+    n_benchmarks = len(benchmarks_map)
+    n_sota_leaders = sum(1 for rlist in benchmark_results.values() for r in rlist if r.is_sota)
 
     print(f"[SUCCESS] Literature map generated: {html_path} ({len(papers)} papers, {len(citations)} citations, Session: {graph_id})")
     print(f"  Evidence: {total_gaps} extracted technical limitations ({corroborated_gaps} corroborated)")
+    print(f"  Benchmarks: {total_results} results across {n_benchmarks} benchmarks ({n_sota_leaders} SOTA leaders)")
 
     if getattr(args, "open", False):
         webbrowser.open(html_path.resolve().as_uri())

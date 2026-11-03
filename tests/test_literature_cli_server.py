@@ -17,7 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import scifi.cli
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     GraphSessionRecord,
     PaperGapRecord,
@@ -224,6 +228,113 @@ class TestLiteratureCLISubcommands:
             assert "paper_gaps" in mock_save_html.call_args.kwargs
             assert "evidence_map" in mock_save_html.call_args.kwargs
 
+    def test_literature_report_forwards_benchmarks(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        sample_paper = _make_sample_paper()
+        sample_cite = CitationRecord(source_paper_id="W123", target_paper_id="W000")
+
+        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
+             patch("scifi.literature.cli.save_markdown_report") as mock_save_md, \
+             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+            instance = mock_crawler_cls.return_value
+            instance.crawl_lineage.return_value = ("graph-test-bench", [sample_paper], [sample_cite])
+            instance.compute_topological_depths.return_value = {"W123": 0}
+
+            mock_save_md.return_value = tmp_path / "lit.md"
+            mock_save_html.return_value = tmp_path / "lit.html"
+
+            db_path = tmp_path / "test.db"
+            store = LiteratureStore(db_path)
+            store.create_or_get_graph("graph-test-bench", "Bench Graph")
+            store.save_paper(sample_paper, graph_id="graph-test-bench")
+
+            bm = BenchmarkRecord(id="bm-humaneval", name="HumanEval", domain="Code Generation")
+            m = EvaluationMetricRecord(id="metric-pass-1", name="pass@1", goal="maximize", unit="%")
+            cond = EvaluationConditionRecord(id="cond-0shot", name="0-shot")
+            res = BenchmarkResultRecord(
+                id="res-1",
+                paper_id="W123",
+                benchmark_id="bm-humaneval",
+                metric_id="metric-pass-1",
+                condition_id="cond-0shot",
+                metric_value=75.0,
+                is_sota=True,
+                rank=1,
+            )
+            store.save_benchmark(bm)
+            store.save_evaluation_metric(m)
+            store.save_evaluation_condition(cond)
+            store.save_benchmark_result(res)
+            store.close()
+
+            out_dir = tmp_path / "report_out"
+            ret = scifi.cli.main([
+                "literature", "report", "Attention",
+                "--output-dir", str(out_dir),
+                "--db", str(db_path),
+            ])
+            assert ret == 0
+            captured = capsys.readouterr().out
+            assert "Benchmarks: 1 results across 1 benchmarks (1 SOTA leaders)" in captured
+
+            assert "benchmark_results" in mock_save_md.call_args.kwargs
+            assert "benchmarks_map" in mock_save_md.call_args.kwargs
+            assert "metrics_map" in mock_save_md.call_args.kwargs
+            assert "conditions_map" in mock_save_md.call_args.kwargs
+            assert "benchmark_results" in mock_save_html.call_args.kwargs
+            assert "benchmarks_map" in mock_save_html.call_args.kwargs
+            assert "metrics_map" in mock_save_html.call_args.kwargs
+            assert "conditions_map" in mock_save_html.call_args.kwargs
+
+    def test_literature_map_forwards_benchmarks(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        sample_paper = _make_sample_paper()
+
+        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
+             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+            instance = mock_crawler_cls.return_value
+            instance.crawl_lineage.return_value = ("graph-map-bench", [sample_paper], [])
+            instance.compute_topological_depths.return_value = {"W123": 0}
+
+            mock_save_html.return_value = tmp_path / "lit.html"
+
+            db_path = tmp_path / "test.db"
+            store = LiteratureStore(db_path)
+            store.create_or_get_graph("graph-map-bench", "Bench Graph")
+            store.save_paper(sample_paper, graph_id="graph-map-bench")
+
+            bm = BenchmarkRecord(id="bm-humaneval", name="HumanEval", domain="Code Generation")
+            m = EvaluationMetricRecord(id="metric-pass-1", name="pass@1", goal="maximize", unit="%")
+            cond = EvaluationConditionRecord(id="cond-0shot", name="0-shot")
+            res = BenchmarkResultRecord(
+                id="res-1",
+                paper_id="W123",
+                benchmark_id="bm-humaneval",
+                metric_id="metric-pass-1",
+                condition_id="cond-0shot",
+                metric_value=75.0,
+                is_sota=True,
+                rank=1,
+            )
+            store.save_benchmark(bm)
+            store.save_evaluation_metric(m)
+            store.save_evaluation_condition(cond)
+            store.save_benchmark_result(res)
+            store.close()
+
+            out_dir = tmp_path / "map_out"
+            ret = scifi.cli.main([
+                "literature", "map", "Attention",
+                "--output-dir", str(out_dir),
+                "--db", str(db_path),
+            ])
+            assert ret == 0
+            captured = capsys.readouterr().out
+            assert "Benchmarks: 1 results across 1 benchmarks (1 SOTA leaders)" in captured
+
+            assert "benchmark_results" in mock_save_html.call_args.kwargs
+            assert "benchmarks_map" in mock_save_html.call_args.kwargs
+            assert "metrics_map" in mock_save_html.call_args.kwargs
+            assert "conditions_map" in mock_save_html.call_args.kwargs
+
     def test_literature_map_execution(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         sample_paper = _make_sample_paper()
 
@@ -344,11 +455,12 @@ class TestFastMCPLiteratureTools:
         assert "scifi_map_literature" in registered
         assert "scifi_query_store" in registered
         assert "scifi_export_bibtex" in registered
+        assert "scifi_query_sota_benchmarks" in registered
 
     def test_tools_have_documentation(self) -> None:
         from scifi.server import mcp
 
-        for name in ("scifi_map_literature", "scifi_query_store", "scifi_export_bibtex"):
+        for name in ("scifi_map_literature", "scifi_query_store", "scifi_export_bibtex", "scifi_query_sota_benchmarks"):
             tool = mcp._tool_manager._tools[name]
             assert bool(tool.description and tool.description.strip())
             assert tool.parameters is not None
@@ -444,6 +556,138 @@ class TestFastMCPLiteratureTools:
             assert "paper_gaps" in mock_save_md.call_args.kwargs
             assert "evidence_map" in mock_save_md.call_args.kwargs
 
+    def test_scifi_map_literature_returns_benchmark_intelligence(self, tmp_path: Path) -> None:
+        from scifi.server import scifi_map_literature
+
+        sample_paper = _make_sample_paper()
+        sample_cite = CitationRecord(source_paper_id="W123", target_paper_id="W000")
+
+        db_path = tmp_path / ".scifi" / "literature_store.db"
+        store = LiteratureStore(db_path)
+        store.create_or_get_graph("graph-tool-bench", "Bench Graph")
+        store.save_paper(sample_paper, graph_id="graph-tool-bench")
+
+        bm = BenchmarkRecord(id="bm-humaneval", name="HumanEval", domain="Code Generation")
+        m = EvaluationMetricRecord(id="metric-pass-1", name="pass@1", goal="maximize", unit="%")
+        cond = EvaluationConditionRecord(id="cond-0shot", name="0-shot")
+        res = BenchmarkResultRecord(
+            id="res-1",
+            paper_id="W123",
+            benchmark_id="bm-humaneval",
+            metric_id="metric-pass-1",
+            condition_id="cond-0shot",
+            metric_value=75.0,
+            is_sota=True,
+            rank=1,
+        )
+        store.save_benchmark(bm)
+        store.save_evaluation_metric(m)
+        store.save_evaluation_condition(cond)
+        store.save_benchmark_result(res)
+        store.close()
+
+        with patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)), \
+             patch("scifi.server.LineageCrawler") as mock_crawler_cls, \
+             patch("scifi.server.save_interactive_html") as mock_save_html, \
+             patch("scifi.server.save_markdown_report") as mock_save_md:
+            instance = mock_crawler_cls.return_value
+            instance.crawl_lineage.return_value = ("graph-tool-bench", [sample_paper], [sample_cite])
+            instance.compute_topological_depths.return_value = {"W123": 0}
+
+            mock_save_html.return_value = tmp_path / "out.html"
+            mock_save_md.return_value = tmp_path / "out.md"
+
+            out_dir = tmp_path / "mcp_bench_out"
+            res_dict = scifi_map_literature(
+                query="Attention",
+                depth=2,
+                max_papers=10,
+                graph_id="graph-tool-bench",
+                output_dir=str(out_dir),
+            )
+
+            assert res_dict["status"] == "SUCCESS"
+            assert res_dict["benchmark_results_count"] == 1
+            assert len(res_dict["sota_leaders"]) == 1
+            assert res_dict["sota_leaders"][0]["benchmark_id"] == "bm-humaneval"
+            assert len(res_dict["benchmarks"]) == 1
+            assert res_dict["benchmarks"][0]["name"] == "HumanEval"
+
+            assert "benchmark_results" in mock_save_html.call_args.kwargs
+            assert "benchmarks_map" in mock_save_html.call_args.kwargs
+            assert "metrics_map" in mock_save_html.call_args.kwargs
+            assert "conditions_map" in mock_save_html.call_args.kwargs
+            assert "benchmark_results" in mock_save_md.call_args.kwargs
+            assert "benchmarks_map" in mock_save_md.call_args.kwargs
+            assert "metrics_map" in mock_save_md.call_args.kwargs
+            assert "conditions_map" in mock_save_md.call_args.kwargs
+
+    def test_scifi_query_sota_benchmarks_canonical(self) -> None:
+        from scifi.server import scifi_query_sota_benchmarks
+
+        res = scifi_query_sota_benchmarks(query="HumanEval")
+        assert res["status"] == "SUCCESS"
+        assert "benchmarks" in res
+        assert any(b["name"] == "HumanEval" for b in res["benchmarks"])
+        assert "sota_leaders" in res
+        assert "results" in res
+        assert "metrics" in res
+        assert "deltas" in res
+
+    def test_scifi_query_sota_benchmarks_with_store_results(self, tmp_path: Path) -> None:
+        from scifi.server import scifi_query_sota_benchmarks
+
+        db_path = tmp_path / ".scifi" / "literature_store.db"
+        store = LiteratureStore(db_path)
+        store.create_or_get_graph("g-bench-query", "Query Graph")
+
+        p_base = PaperRecord(id="p-base", title="Baseline Model", year=2022, citation_count=500)
+        p_sota = PaperRecord(id="p-sota", title="Winning SOTA Model", year=2024, citation_count=20)
+        store.save_paper(p_base, "g-bench-query")
+        store.save_paper(p_sota, "g-bench-query")
+
+        bm = BenchmarkRecord(id="bm-humaneval", name="HumanEval", domain="Code Generation")
+        m = EvaluationMetricRecord(id="metric-pass-1", name="pass@1", goal="maximize", unit="%")
+        cond = EvaluationConditionRecord(id="cond-0shot", name="0-shot")
+
+        r_base = BenchmarkResultRecord(
+            id="r-base",
+            paper_id="p-base",
+            benchmark_id="bm-humaneval",
+            metric_id="metric-pass-1",
+            condition_id="cond-0shot",
+            metric_value=65.0,
+            is_sota=False,
+            rank=2,
+        )
+        r_sota = BenchmarkResultRecord(
+            id="r-sota",
+            paper_id="p-sota",
+            benchmark_id="bm-humaneval",
+            metric_id="metric-pass-1",
+            condition_id="cond-0shot",
+            metric_value=85.0,
+            is_sota=True,
+            rank=1,
+        )
+        store.save_benchmark(bm)
+        store.save_evaluation_metric(m)
+        store.save_evaluation_condition(cond)
+        store.save_benchmark_result(r_base)
+        store.save_benchmark_result(r_sota)
+        store.close()
+
+        with patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)):
+            res = scifi_query_sota_benchmarks(query="Code Generation", benchmark_name="HumanEval")
+            assert res["status"] == "SUCCESS"
+            assert res["total_benchmarks"] >= 1
+            assert any(b["id"] == "bm-humaneval" for b in res["benchmarks"])
+            assert len(res["sota_leaders"]) >= 1
+            assert res["sota_leaders"][0]["paper_id"] == "p-sota"
+            assert len(res["deltas"]) >= 1
+            assert res["deltas"][0]["is_improvement"] is True
+            assert res["deltas"][0]["absolute_delta"] == 20.0
+
     def test_scifi_query_store_read_only(self, tmp_path: Path) -> None:
         from scifi.server import scifi_query_store
 
@@ -503,3 +747,59 @@ class TestFastMCPLiteratureTools:
             res = scifi_export_bibtex("missing-graph", str(out_file))
             assert res["status"] == "ERROR"
             assert "No papers found" in res["message"]
+
+
+class TestLiteratureCrawlerBenchmarks:
+    def test_lineage_crawler_extracts_and_evaluates_benchmarks(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "crawler_test.db"
+        store = LiteratureStore(db_path)
+
+        p1 = PaperRecord(
+            id="W100",
+            title="Baseline Transformer",
+            year=2021,
+            citation_count=1000,
+            abstract="We achieve 60.0% pass@1 on HumanEval.",
+        )
+        p2 = PaperRecord(
+            id="W200",
+            title="Advanced Frontier Model",
+            year=2024,
+            citation_count=50,
+            abstract="Our method achieves 85.0% pass@1 on HumanEval.",
+        )
+
+        mock_resolver = MagicMock()
+        mock_resolver.resolve_references.return_value = [p1]
+        mock_resolver.resolve_citations.return_value = []
+
+        from scifi.literature.lineage import LineageCrawler
+
+        crawler = LineageCrawler(resolver=mock_resolver, store=store)
+        graph_id, papers, cits = crawler.crawl_lineage(
+            query=p2,
+            depth=1,
+            max_papers=5,
+            extract_benchmarks=True,
+        )
+
+        assert len(papers) == 2
+        # Check benchmarks persisted
+        bms = store.get_graph_benchmarks(graph_id)
+        assert any(b.name == "HumanEval" for b in bms.values())
+
+        # Check results persisted
+        results_map = store.get_graph_benchmark_results(graph_id)
+        assert "W100" in results_map or "W200" in results_map
+
+        # Check winner is marked is_sota=True
+        all_results = [r for rlist in results_map.values() for r in rlist]
+        winner = next((r for r in all_results if r.paper_id == "W200"), None)
+        assert winner is not None
+        assert winner.is_sota is True
+
+        # Check enriched roles were assigned and updated in graph_papers
+        cursor = store.conn.cursor()
+        cursor.execute("SELECT paper_id, node_role FROM graph_papers WHERE graph_id = ?", (graph_id,))
+        role_map = dict(cursor.fetchall())
+        assert role_map.get("W200") == "sota_leader"
