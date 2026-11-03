@@ -6,6 +6,7 @@ Provides a single entry point for:
 - audit: BibTeX (.bib) file audit, retraction check & sanitization
 - search: Academic registry search by paper title
 - argus: Attribution audit, uncredited method detection & plagiarism prevention
+- literature: Literature lineage discovery, interactive map, and reporting (alias: lit)
 - setup: Automated setup installer configuring Antigravity, Claude Desktop, and Cursor
 - server: FastMCP daemon execution
 """
@@ -19,6 +20,7 @@ from typing import Sequence
 from scifi import setup_cli
 from scifi.argus import cli as argus_cli
 from scifi.citation_verifier import cli as citation_cli
+from scifi.literature.cli import cmd_literature, register_literature_subparsers
 
 cmd_verify = citation_cli.cmd_verify
 cmd_audit = citation_cli.cmd_audit
@@ -114,6 +116,14 @@ def create_parser() -> argparse.ArgumentParser:
     p_argus.add_argument("--preprint-doi", help="DOI of author's preprint")
     p_argus.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
 
+    # literature
+    p_literature = subparsers.add_parser(
+        "literature",
+        aliases=["lit"],
+        help="Academic literature lineage discovery, interactive map, and reporting",
+    )
+    register_literature_subparsers(p_literature)
+
     # setup
     p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in Antigravity, Claude Desktop, and Cursor")
     p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
@@ -192,6 +202,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.print_help()
             return 0
         return argus_cli.cmd_audit(args)
+    elif args.command in ("literature", "lit"):
+        if not getattr(args, "lit_command", None):
+            for action in parser._subparsers._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    p_lit = action.choices.get("literature")
+                    if p_lit:
+                        p_lit.print_help()
+                        return 0
+            parser.print_help()
+            return 0
+        return cmd_literature(args)
     elif args.command in ("compile", "c", "build"):
         return cmd_compile(args)
     elif args.command in ("setup", "init", "i"):

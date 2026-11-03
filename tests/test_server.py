@@ -54,6 +54,9 @@ EXPECTED_TOOLS = {
     "scifi_audit_claims",
     "scifi_fetch_paper_pdf",
     "scifi_extract_pdf_text",
+    "scifi_map_literature",
+    "scifi_query_store",
+    "scifi_export_bibtex",
 }
 
 
@@ -67,7 +70,7 @@ class TestFastMCPServerRegistry(unittest.TestCase):
             EXPECTED_TOOLS,
             f"Missing or unexpected tools: {EXPECTED_TOOLS ^ registered_tools}",
         )
-        self.assertEqual(len(registered_tools), 17)
+        self.assertEqual(len(registered_tools), len(EXPECTED_TOOLS))
 
     def test_tools_have_docstrings_and_parameters(self):
         for tool_name in EXPECTED_TOOLS:
