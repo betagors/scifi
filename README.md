@@ -3,12 +3,12 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB.svg?style=flat&logo=python&logoColor=white)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/protocol-Model_Context_Protocol-8A2BE2.svg?style=flat)](https://modelcontextprotocol.io)
 [![Antigravity](https://img.shields.io/badge/antigravity-plugin-FF6F00.svg?style=flat)](https://antigravity.google)
-[![Tests Passing](https://img.shields.io/badge/tests-168%20passed-brightgreen.svg?style=flat)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-178%20passed-brightgreen.svg?style=flat)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **Zero-Hallucination Citations · Symbolic Calculus Auditing · Humanized Academic Prose · FastMCP Daemon**
 >
-> *SciFi transforms AI coding agents (Antigravity, Claude Code, Cursor) into rigorous, peer-review-grade research partners.*
+> *SciFi transforms AI coding agents (OpenCode, Claude Code, VS Code / Cline & Roo Code, Cursor, Windsurf, Antigravity) into rigorous, peer-review-grade research partners.*
 
 ---
 
@@ -41,11 +41,20 @@ uv sync
 ```
 
 ### 2. Configure Your AI Agents (One Command)
-SciFi includes an automated setup installer that auto-discovers and configures Antigravity, Claude Desktop, and Cursor:
+SciFi includes an automated setup installer that auto-discovers and configures OpenCode, Claude Code, VS Code (Cline & Roo Code), Cursor, Windsurf, Claude Desktop, and Antigravity:
 
 ```bash
-# Auto-configure all detected AI environments
+# Auto-configure all detected AI environments globally
 uv run sf setup --auto
+
+# Configure repository workspace manifests (.cursor, .mcp.json, opencode.json)
+uv run sf setup --workspace
+
+# Synchronize academic rules to CLAUDE.md, .clinerules, .cursorrules, etc.
+uv run sf sync
+
+# List all supported environments and their detection status
+uv run sf setup --list
 
 # Or preview configuration non-destructively
 uv run sf setup --dry-run
@@ -124,7 +133,8 @@ Every command is available through `scifi` and its short alias `sf`, complete wi
 | `scifi search "<title>"` | `sf s "<title>"` / `sf find` | Search global academic registries by title |
 | `scifi compile [tex]` | `sf c [tex]` / `sf build` | Compile LaTeX manuscript via `latexmk`/`pdflatex` with file:line log diagnosis |
 | `scifi argus <file>` | `sf cite <file>` | Audit text for uncredited methods and auto-inject citations |
-| `scifi setup` | `sf init` / `sf i` | Configure SciFi FastMCP server in Antigravity, Claude, and Cursor |
+| `scifi setup` | `sf init` / `sf i` | Configure SciFi FastMCP server in OpenCode, Claude, Cursor, Cline, Roo, Windsurf |
+| `scifi sync` | `sf sync` | Synchronize SciFi scientific rules to CLAUDE.md, .clinerules, .cursorrules, etc. |
 | `scifi server` | `sf mcp` / `sf serve` | Launch the persistent FastMCP JSON-RPC daemon over stdio |
 
 ---
@@ -242,7 +252,7 @@ Run `uv run sf setup --auto` or add to `.cursor/mcp.json`:
 
 ## 🧪 Running Tests
 
-The test suite contains **168 unit and integration tests** covering all modules:
+The test suite contains **178 unit and integration tests** covering all modules:
 
 ```bash
 uv run pytest tests/ -v
