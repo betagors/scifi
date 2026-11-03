@@ -424,3 +424,122 @@ def test_cli_subcommand_aliases(capsys: pytest.CaptureFixture[str]) -> None:
         assert scifi.cli.main(["v", "10.1038/s41586-020-2649-2"]) == 0
         mock_verify.assert_called_once()
         assert mock_verify.call_args[0][0].query == "10.1038/s41586-020-2649-2"
+
+
+def test_rule_sync_new_file(tmp_path: Path) -> None:
+    """sync_rule_file on a non-existent file should create it with marker bounds."""
+    target = tmp_path / "CLAUDE.md"
+    rule_content = "# SciFi Rules\nAlways verify DOIs."
+
+    success = scifi.setup_cli.sync_rule_file(target, rule_content)
+    assert success is True
+    assert target.exists()
+
+    content = target.read_text(encoding="utf-8")
+    assert "<!-- SCIFI-RULES:START -->" in content
+    assert "<!-- SCIFI-RULES:END -->" in content
+    assert "# SciFi Rules" in content
+    assert "Always verify DOIs." in content
+
+
+def test_rule_sync_preserves_existing_user_instructions(tmp_path: Path) -> None:
+    """sync_rule_file on an existing file without markers must append rules without destroying user text."""
+    target = tmp_path / "CLAUDE.md"
+    user_header = "# Custom User Instructions\n\nAlways use 2 spaces indentation."
+    target.write_text(user_header, encoding="utf-8")
+
+    rule_content = "# SciFi Invariants\nNever hallucinate citations."
+    success = scifi.setup_cli.sync_rule_file(target, rule_content)
+
+    assert success is True
+    content = target.read_text(encoding="utf-8")
+    assert "# Custom User Instructions" in content
+    assert "Always use 2 spaces indentation." in content
+    assert "<!-- SCIFI-RULES:START -->" in content
+    assert "Never hallucinate citations." in content
+    assert "<!-- SCIFI-RULES:END -->" in content
+
+
+def test_rule_sync_idempotent_update(tmp_path: Path) -> None:
+    """sync_rule_file on a file with existing markers must update between markers only."""
+    target = tmp_path / ".clinerules"
+    initial_text = (
+        "# Custom Instructions\n\n"
+        "<!-- SCIFI-RULES:START -->\n"
+        "Old rules content\n"
+        "<!-- SCIFI-RULES:END -->\n\n"
+        "Footer note."
+    )
+    target.write_text(initial_text, encoding="utf-8")
+
+    new_rule_content = "Updated new rules content"
+    success = scifi.setup_cli.sync_rule_file(target, new_rule_content)
+
+    assert success is True
+    content = target.read_text(encoding="utf-8")
+    assert "# Custom Instructions" in content
+    assert "Footer note." in content
+    assert "Old rules content" not in content
+    assert "Updated new rules content" in content
+    assert content.count("<!-- SCIFI-RULES:START -->") == 1
+    assert content.count("<!-- SCIFI-RULES:END -->") == 1
+
+
+def test_sync_all_rules(tmp_path: Path) -> None:
+    """sync_all_rules should generate canonical rule files in the given project."""
+    rule_files = scifi.setup_cli.sync_all_rules(project_root=tmp_path)
+    file_names = {p.name for p in rule_files}
+
+    assert "AGENTS.md" in file_names
+    assert "CLAUDE.md" in file_names
+    assert ".clinerules" in file_names
+    assert ".cursorrules" in file_names
+    assert ".windsurfrules" in file_names
+    assert (tmp_path / ".github" / "copilot-instructions.md").exists()
+
+
+def test_setup_cmd_rules_flag(tmp_path: Path) -> None:
+    """setup --rules should trigger sync_all_rules in workspace."""
+    args = argparse.Namespace(
+        rules=True,
+        workspace=False,
+        auto=False,
+        dry_run=False,
+        target=None,
+        scifi_root=None,
+        list=False,
+        project_dir=tmp_path,
+    )
+    code = scifi.setup_cli.cmd_setup(args)
+    assert code == 0
+    assert (tmp_path / "CLAUDE.md").exists()
+    assert (tmp_path / ".clinerules").exists()
+
+
+def test_setup_cmd_workspace_flag(tmp_path: Path) -> None:
+    """setup --workspace should configure local MCP files and sync rules."""
+    args = argparse.Namespace(
+        rules=False,
+        workspace=True,
+        auto=False,
+        dry_run=False,
+        target=None,
+        scifi_root=None,
+        list=False,
+        project_dir=tmp_path,
+    )
+    code = scifi.setup_cli.cmd_setup(args)
+    assert code == 0
+    assert (tmp_path / ".cursor" / "mcp.json").exists()
+    assert (tmp_path / ".mcp.json").exists()
+    assert (tmp_path / "opencode.json").exists()
+    assert (tmp_path / "CLAUDE.md").exists()
+
+
+def test_cli_routes_to_sync(tmp_path: Path) -> None:
+    """sf sync should route to cmd_sync."""
+    with patch("scifi.setup_cli.cmd_sync", return_value=0) as mock_sync:
+        code = scifi.cli.main(["sync"])
+        assert code == 0
+        mock_sync.assert_called_once()
+
