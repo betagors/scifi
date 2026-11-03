@@ -11,6 +11,8 @@ import pytest
 from scifi.literature.models import (
     AuthorRecord,
     CitationRecord,
+    EvidenceRecord,
+    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -396,3 +398,177 @@ def test_save_interactive_html(tmp_path: Path, sample_papers, sample_citations, 
     assert "<!DOCTYPE html>" in content
     assert "Saved Lineage" in content
     assert "paper-1" in content
+
+
+def test_visualizer_renders_evidence_drawer_safely():
+    """Verify evidence drawer renders category badges, verification badges, quotes, and metadata safely."""
+    paper = PaperRecord(id="p-1", title="Paper One", year=2022)
+    ev = EvidenceRecord(
+        id="ev-1",
+        paper_id="p-1",
+        reporting_paper_id="paper-2",
+        evidence_type="citation_context",
+        source_section="Related Work",
+        extracted_text="Paper One requires O(N^2) memory <script>alert('xss')</script>",
+        extraction_method="semantic_scholar_api",
+    )
+    gap = PaperGapRecord(
+        id="gap-1",
+        paper_id="p-1",
+        gap_type="computational_complexity",
+        claim_summary="Quadratic memory complexity",
+        primary_evidence_id="ev-1",
+        verification_status="corroborated",
+        corroborating_count=2,
+    )
+
+    html = render_interactive_html(
+        "Evidence Test",
+        [paper],
+        [],
+        {"p-1": 0},
+        paper_gaps={"p-1": [gap]},
+        evidence_map={"ev-1": ev},
+    )
+
+    assert "Extracted Technical Limitations & Gaps" in html
+    assert "Quadratic memory complexity" in html
+    assert "corroborated" in html
+    assert "Corroborated (2 sources)" in html
+    assert "computational_complexity" in html or "badge-gap-computational-complexity" in html
+    assert "badge-verif-corroborated" in html
+    assert "Paper One requires O(N^2) memory" in html
+    assert "Related Work" in html
+    assert "paper-2" in html
+    assert "semantic_scholar_api" in html
+
+    # Strict XSS check
+    assert "<script>alert('xss')</script>" not in html
+    assert "\\u003c" in html or "&lt;" in html or "\\u0026lt;" in html
+
+
+def test_visualizer_renders_candidate_finding():
+    """Verify candidate gap renders Candidate Finding badge and various gap category classes."""
+    paper = PaperRecord(id="p-1", title="Paper One", year=2022)
+    ev = EvidenceRecord(
+        id="ev-cand",
+        paper_id="p-1",
+        evidence_type="abstract",
+        source_section="Abstract",
+        extracted_text="Assumes synchronous clock across all nodes.",
+        extraction_method="rule_based",
+    )
+    gap1 = PaperGapRecord(
+        id="gap-cand",
+        paper_id="p-1",
+        gap_type="unstated_assumption",
+        claim_summary="Assumes synchronized clocks",
+        primary_evidence_id="ev-cand",
+        verification_status="candidate",
+        corroborating_count=0,
+    )
+    gap2 = PaperGapRecord(
+        id="gap-emp",
+        paper_id="p-1",
+        gap_type="empirical_limitation",
+        claim_summary="Degrades under high noise",
+        primary_evidence_id="ev-cand",
+        verification_status="candidate",
+        corroborating_count=0,
+    )
+
+    html = render_interactive_html(
+        "Candidate Test",
+        [paper],
+        [],
+        {"p-1": 0},
+        paper_gaps={"p-1": [gap1, gap2]},
+        evidence_map={"ev-cand": ev},
+    )
+
+    assert "Candidate Finding" in html
+    assert "badge-verif-candidate" in html
+    assert "Assumes synchronized clocks" in html
+    assert "Degrades under high noise" in html
+    assert "badge-gap-unstated-assumption" in html
+    assert "badge-gap-empirical-limitation" in html
+
+
+def test_strict_xss_in_evidence_passages():
+    """Verify evidence passages containing script tags, img error handlers, and angle brackets are sanitized."""
+    paper = PaperRecord(id="p-xss", title="Safe Title", year=2024)
+    malicious_ev = EvidenceRecord(
+        id="ev-evil",
+        paper_id="p-xss",
+        evidence_type="citation_context",
+        source_section="<script>alert('sec')</script>",
+        reporting_paper_id="<script>alert('rep')</script>",
+        extracted_text="Passage with <script>alert(1)</script> and <img src=x onerror=alert('xss2')> and math a < b > c",
+        extraction_method="regex_<script>",
+    )
+    malicious_gap = PaperGapRecord(
+        id="gap-evil",
+        paper_id="p-xss",
+        gap_type="computational_complexity",
+        claim_summary="Claim with <script>alert('claim')</script> and <b>bold</b>",
+        primary_evidence_id="ev-evil",
+        verification_status="candidate",
+    )
+
+    html = render_interactive_html(
+        "XSS Test",
+        [paper],
+        [],
+        {"p-xss": 0},
+        paper_gaps={"p-xss": [malicious_gap]},
+        evidence_map={"ev-evil": malicious_ev},
+    )
+
+    # No unescaped malicious tags anywhere in generated HTML
+    assert "<script>alert(1)</script>" not in html
+    assert "<img src=x onerror=alert('xss2')>" not in html
+    assert "<script>alert('sec')</script>" not in html
+    assert "<script>alert('rep')</script>" not in html
+    assert "<script>alert('claim')</script>" not in html
+    assert "regex_<script>" not in html
+
+
+def test_save_interactive_html_with_evidence(tmp_path: Path):
+    """Verify save_interactive_html forwards evidence and gaps to file."""
+    paper = PaperRecord(id="p-save", title="Saved With Evidence", year=2023)
+    ev = EvidenceRecord(
+        id="ev-s",
+        paper_id="p-save",
+        evidence_type="abstract",
+        extracted_text="Scalability is bounded by bandwidth.",
+        extraction_method="rule_based",
+    )
+    gap = PaperGapRecord(
+        id="gap-s",
+        paper_id="p-save",
+        gap_type="generalization_bound",
+        claim_summary="Bandwidth bound on scaling",
+        primary_evidence_id="ev-s",
+        verification_status="corroborated",
+        corroborating_count=3,
+    )
+
+    out_file = tmp_path / "viz" / "evidence_lineage.html"
+    returned = save_interactive_html(
+        output_path=out_file,
+        graph_title="Lineage With Evidence",
+        papers=[paper],
+        citations=[],
+        depths={"p-save": 0},
+        paper_gaps={"p-save": [gap]},
+        evidence_map={"ev-s": ev},
+    )
+
+    assert returned == out_file
+    assert out_file.exists()
+    content = out_file.read_text(encoding="utf-8")
+    assert "Lineage With Evidence" in content
+    assert "Bandwidth bound on scaling" in content
+    assert "Scalability is bounded by bandwidth." in content
+    assert "Corroborated (3 sources)" in content
+

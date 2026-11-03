@@ -13,7 +13,12 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from scifi.literature.models import CitationRecord, PaperRecord
+from scifi.literature.models import (
+    CitationRecord,
+    EvidenceRecord,
+    PaperGapRecord,
+    PaperRecord,
+)
 from scifi.literature.resolver import clean_arxiv_id, clean_doi
 
 # Color palette for Open Access tiers
@@ -23,6 +28,15 @@ OA_COLORS: dict[str, str] = {
     "hybrid": "#f59e0b",  # Amber
     "bronze": "#d97706",  # Copper
     "closed": "#64748b",  # Slate
+}
+
+# Color palette for gap categories
+GAP_CATEGORY_COLORS: dict[str, str] = {
+    "computational_complexity": "#f59e0b",  # Amber
+    "unstated_assumption": "#a855f7",  # Purple
+    "empirical_limitation": "#f43f5e",  # Rose
+    "generalization_bound": "#06b6d4",  # Cyan
+    "unresolved_problem": "#6366f1",  # Indigo
 }
 
 SEED_BORDER_COLOR: str = "#3b82f6"  # Blue accent border
@@ -141,6 +155,8 @@ def render_interactive_html(
     citations: list[CitationRecord],
     depths: dict[str, int],
     seed_paper_id: Optional[str] = None,
+    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
+    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
 ) -> str:
     """
     Render self-contained, XSS-safe Vis.js interactive HTML visualization of a literature DAG.
@@ -198,6 +214,48 @@ def render_interactive_html(
                 "email": _safe_escape(getattr(a, "email", "") or ""),
             })
 
+        gaps_list = []
+        for gap in (paper_gaps or {}).get(paper.id, []):
+            ev = (evidence_map or {}).get(gap.primary_evidence_id) if evidence_map else None
+            ev_data = None
+            if ev:
+                ev_data = {
+                    "id": _safe_escape(ev.id),
+                    "paper_id": _safe_escape(ev.paper_id),
+                    "evidence_type": _safe_escape(ev.evidence_type),
+                    "extracted_text": _safe_escape(ev.extracted_text),
+                    "extraction_method": _safe_escape(ev.extraction_method),
+                    "reporting_paper_id": _safe_escape(ev.reporting_paper_id or ""),
+                    "source_section": _safe_escape(ev.source_section or ""),
+                    "source_location": _safe_escape(ev.source_location or ""),
+                    "confidence": ev.confidence,
+                }
+
+            verif_status = (gap.verification_status or "candidate").lower()
+            if verif_status == "corroborated":
+                count = gap.corroborating_count or 0
+                verif_label = f"Corroborated ({count} {'source' if count == 1 else 'sources'})"
+            elif verif_status == "disputed":
+                verif_label = "Disputed Finding"
+            else:
+                verif_label = "Candidate Finding"
+
+            cat_label = (gap.gap_type or "GAP").replace("_", " ").upper()
+
+            gaps_list.append({
+                "id": _safe_escape(gap.id),
+                "paper_id": _safe_escape(gap.paper_id),
+                "gap_type": _safe_escape(gap.gap_type),
+                "category_label": _safe_escape(cat_label),
+                "claim_summary": _safe_escape(gap.claim_summary),
+                "primary_evidence_id": _safe_escape(gap.primary_evidence_id),
+                "verification_status": _safe_escape(gap.verification_status),
+                "verification_label": _safe_escape(verif_label),
+                "corroborating_count": gap.corroborating_count,
+                "contradicting_count": gap.contradicting_count,
+                "evidence": ev_data,
+            })
+
         papers_data[paper.id] = {
             "id": paper.id,
             "title": _safe_escape(paper.title or "Untitled"),
@@ -213,6 +271,7 @@ def render_interactive_html(
             "pdf_url": _safe_escape(pdf_url or ""),
             "abstract": _safe_escape(paper.abstract or "No abstract available."),
             "authors": author_list,
+            "gaps": gaps_list,
         }
 
     # Prepare Vis.js edges
@@ -525,6 +584,72 @@ def render_interactive_html(
       border: 1px solid var(--border-color);
       white-space: pre-wrap;
     }}
+    /* Technical Gaps & Evidence */
+    .gaps-list {{
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }}
+    .gap-card {{
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .gap-card-header {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }}
+    .badge-gap-computational-complexity,
+    .badge-gap-computational_complexity {{ background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }}
+    .badge-gap-unstated-assumption,
+    .badge-gap-unstated_assumption {{ background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }}
+    .badge-gap-empirical-limitation,
+    .badge-gap-empirical_limitation {{ background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }}
+    .badge-gap-generalization-bound,
+    .badge-gap-generalization_bound {{ background: #cffafe; color: #155e75; border: 1px solid #a5f3fc; }}
+    .badge-gap-unresolved-problem,
+    .badge-gap-unresolved_problem {{ background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }}
+    .badge-gap-default {{ background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }}
+
+    .badge-verif-corroborated {{ background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }}
+    .badge-verif-candidate {{ background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }}
+    .badge-verif-disputed {{ background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }}
+
+    .gap-claim {{
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-main);
+      line-height: 1.4;
+    }}
+    .gap-evidence-quote {{
+      font-size: 0.825rem;
+      line-height: 1.45;
+      color: #334155;
+      background: #ffffff;
+      border-left: 3px solid var(--primary);
+      border-radius: 0 4px 4px 0;
+      padding: 8px 10px;
+      margin: 0;
+      font-style: italic;
+    }}
+    .gap-meta {{
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }}
+    .gap-meta-item {{
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }}
   </style>
 </head>
 <body>
@@ -582,6 +707,11 @@ def render_interactive_html(
       <div>
         <div class="drawer-section-heading">Abstract</div>
         <div id="drawer-abstract" class="drawer-abstract"></div>
+      </div>
+
+      <div id="drawer-gaps-section" style="display: none;">
+        <div class="drawer-section-heading">Extracted Technical Limitations & Gaps</div>
+        <div id="drawer-gaps-list" class="gaps-list"></div>
       </div>
     </div>
   </aside>
@@ -724,6 +854,92 @@ def render_interactive_html(
         linksDiv.appendChild(span);
       }}
 
+      const gapsSection = document.getElementById('drawer-gaps-section');
+      const gapsList = document.getElementById('drawer-gaps-list');
+      gapsList.innerHTML = '';
+
+      if (paper.gaps && paper.gaps.length > 0) {{
+        gapsSection.style.display = 'block';
+        paper.gaps.forEach(function(gap) {{
+          const card = document.createElement('div');
+          card.className = 'gap-card';
+
+          const header = document.createElement('div');
+          header.className = 'gap-card-header';
+
+          const catBadge = document.createElement('span');
+          const gapTypeKey = (gap.gap_type || '').toLowerCase().replace(/_/g, '-');
+          catBadge.className = 'badge badge-gap-' + (gapTypeKey || 'default');
+          catBadge.textContent = gap.category_label || (gap.gap_type || 'GAP').replace(/_/g, ' ').toUpperCase();
+          header.appendChild(catBadge);
+
+          const verifBadge = document.createElement('span');
+          let verifClass = 'badge-verif-candidate';
+          let verifLabel = 'Candidate Finding';
+
+          if (gap.verification_status === 'corroborated') {{
+            verifClass = 'badge-verif-corroborated';
+            const count = (gap.corroborating_count !== undefined && gap.corroborating_count !== null) ? gap.corroborating_count : 0;
+            verifLabel = 'Corroborated (' + count + (count === 1 ? ' source' : ' sources') + ')';
+          }} else if (gap.verification_status === 'disputed') {{
+            verifClass = 'badge-verif-disputed';
+            verifLabel = 'Disputed Finding';
+          }} else if (gap.verification_status === 'candidate') {{
+            verifClass = 'badge-verif-candidate';
+            verifLabel = 'Candidate Finding';
+          }}
+          verifBadge.className = 'badge ' + verifClass;
+          verifBadge.textContent = gap.verification_label || verifLabel;
+          header.appendChild(verifBadge);
+
+          card.appendChild(header);
+
+          const claim = document.createElement('div');
+          claim.className = 'gap-claim';
+          claim.textContent = gap.claim_summary || '';
+          card.appendChild(claim);
+
+          if (gap.evidence && gap.evidence.extracted_text) {{
+            const bq = document.createElement('blockquote');
+            bq.className = 'gap-evidence-quote';
+            bq.textContent = '“' + gap.evidence.extracted_text + '”';
+            card.appendChild(bq);
+          }}
+
+          const metaDiv = document.createElement('div');
+          metaDiv.className = 'gap-meta';
+
+          if (gap.evidence) {{
+            if (gap.evidence.source_section) {{
+              const sec = document.createElement('div');
+              sec.className = 'gap-meta-item';
+              sec.textContent = 'Section: ' + gap.evidence.source_section;
+              metaDiv.appendChild(sec);
+            }}
+            if (gap.evidence.reporting_paper_id) {{
+              const rep = document.createElement('div');
+              rep.className = 'gap-meta-item';
+              rep.textContent = 'Reported in: ' + gap.evidence.reporting_paper_id;
+              metaDiv.appendChild(rep);
+            }}
+            if (gap.evidence.extraction_method) {{
+              const meth = document.createElement('div');
+              meth.className = 'gap-meta-item';
+              meth.textContent = 'Extraction Method: ' + gap.evidence.extraction_method;
+              metaDiv.appendChild(meth);
+            }}
+          }}
+
+          if (metaDiv.children.length > 0) {{
+            card.appendChild(metaDiv);
+          }}
+
+          gapsList.appendChild(card);
+        }});
+      }} else {{
+        gapsSection.style.display = 'none';
+      }}
+
       drawer.classList.add('open');
     }}
 
@@ -770,6 +986,8 @@ def save_interactive_html(
     citations: list[CitationRecord],
     depths: dict[str, int],
     seed_paper_id: Optional[str] = None,
+    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
+    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
 ) -> Path:
     """
     Render and persist interactive HTML visualization to specified filesystem path.
@@ -782,6 +1000,8 @@ def save_interactive_html(
         citations=citations,
         depths=depths,
         seed_paper_id=seed_paper_id,
+        paper_gaps=paper_gaps,
+        evidence_map=evidence_map,
     )
     path.write_text(html_content, encoding="utf-8")
     return path
@@ -792,5 +1012,6 @@ __all__ = [
     "save_interactive_html",
     "determine_oa_status",
     "OA_COLORS",
+    "GAP_CATEGORY_COLORS",
     "SEED_BORDER_COLOR",
 ]
