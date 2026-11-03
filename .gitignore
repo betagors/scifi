@@ -78,3 +78,7 @@ dmypy.json
 assets/android.exe
 
 .scifi/
+
+literature_review/
+uav_edge_review/
+uav_*/
