@@ -10,7 +10,11 @@ import pytest
 
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     PaperGapRecord,
     PaperIdentifierRecord,
@@ -18,6 +22,7 @@ from scifi.literature.models import (
     PaperRecord,
 )
 from scifi.literature.visualizer import (
+    generate_interactive_html,
     render_interactive_html,
     save_interactive_html,
 )
@@ -572,3 +577,190 @@ def test_save_interactive_html_with_evidence(tmp_path: Path):
     assert "Scalability is bounded by bandwidth." in content
     assert "Corroborated (3 sources)" in content
 
+
+
+def test_visualizer_renders_sota_badge_and_benchmark_section():
+    """Verify Vis.js SOTA node styling, legend, and drawer benchmark performance cards."""
+    paper = PaperRecord(id="p-sota", title="Winning Method", year=2024)
+    bm = BenchmarkRecord(id="bm-1", name="HumanEval", domain="Code Generation")
+    m = EvaluationMetricRecord(id="m-1", name="pass@1", goal="maximize", unit="%")
+    cond = EvaluationConditionRecord(id="cond-1", name="0-shot Greedy", dataset_split="test", notes="greedy temp=0.0")
+    ev = EvidenceRecord(
+        id="ev-bm",
+        paper_id="p-sota",
+        evidence_type="benchmark_table",
+        source_section="Section 4.1",
+        extracted_text="Evaluated on HumanEval pass@1 achieving 88.5% outperforming baseline.",
+        extraction_method="table_parser",
+    )
+    res = BenchmarkResultRecord(
+        id="r-1",
+        paper_id="p-sota",
+        benchmark_id="bm-1",
+        metric_id="m-1",
+        condition_id="cond-1",
+        metric_value=88.5,
+        is_sota=True,
+        rank=1,
+        table_or_figure="Table 2",
+        evidence_id="ev-bm",
+    )
+
+    html = generate_interactive_html(
+        "Benchmark Map",
+        [paper],
+        [],
+        {"p-sota": 1},
+        benchmark_results={"p-sota": [res]},
+        benchmarks_map={"bm-1": bm},
+        metrics_map={"m-1": m},
+        conditions_map={"cond-1": cond},
+        evidence_map={"ev-bm": ev},
+    )
+
+    # Canvas node styling: gold border / background, SOTA leader label / title
+    assert ("#d97706" in html or "#f59e0b" in html)
+    assert "#fef3c7" in html
+    assert "SOTA Leader" in html
+
+    # Legend
+    assert "⭐ SOTA Leader (Verified Benchmark Performance)" in html
+
+    # Drawer section
+    assert ("Empirical Benchmark Performance & SOTA Results" in html or "Empirical Benchmark Performance &amp; SOTA Results" in html)
+    assert "HumanEval" in html
+    assert "Code Generation" in html
+    assert "88.5%" in html
+    assert "0-shot Greedy" in html
+    assert "Table 2" in html
+    assert "Evaluated on HumanEval pass@1 achieving 88.5%" in html
+
+
+def test_visualizer_sota_node_role_without_benchmark_results():
+    """Verify a paper marked sota_leader via node_roles receives gold styling."""
+    paper = PaperRecord(id="p-leader", title="Leader By Role", year=2023)
+    html = generate_interactive_html(
+        "Role Map",
+        [paper],
+        [],
+        {"p-leader": 0},
+        node_roles={"p-leader": "sota_leader"},
+    )
+    assert ("#d97706" in html or "#f59e0b" in html)
+    assert "#fef3c7" in html
+    assert "SOTA Leader" in html
+
+
+def test_visualizer_benchmark_xss_sanitization():
+    """Verify all benchmark fields, conditions, metrics, and quotes undergo strict XSS escaping."""
+    paper = PaperRecord(id="p-xss-bm", title="XSS Paper", year=2024)
+    bm = BenchmarkRecord(
+        id="bm-evil",
+        name="<script>alert('bm-name')</script>",
+        domain="<img src=x onerror=alert('bm-domain')>",
+    )
+    m = EvaluationMetricRecord(
+        id="m-evil",
+        name="<script>alert('metric')</script>",
+        goal="maximize",
+        unit="<b onclick=alert(1)>%</b>",
+    )
+    cond = EvaluationConditionRecord(
+        id="cond-evil",
+        name="<svg onload=alert('cond')>",
+        notes="Notes <script>alert('notes')</script>",
+    )
+    ev = EvidenceRecord(
+        id="ev-evil-bm",
+        paper_id="p-xss-bm",
+        evidence_type="table",
+        extracted_text="Quote with <script>alert('quote')</script>",
+        extraction_method="rule_based",
+    )
+    res = BenchmarkResultRecord(
+        id="r-evil",
+        paper_id="p-xss-bm",
+        benchmark_id="bm-evil",
+        metric_id="m-evil",
+        condition_id="cond-evil",
+        metric_value=99.9,
+        is_sota=True,
+        table_or_figure="<script>alert('tbl')</script>",
+        evidence_id="ev-evil-bm",
+    )
+
+    html = generate_interactive_html(
+        "XSS Benchmark Test",
+        [paper],
+        [],
+        {"p-xss-bm": 0},
+        benchmark_results={"p-xss-bm": [res]},
+        benchmarks_map={"bm-evil": bm},
+        metrics_map={"m-evil": m},
+        conditions_map={"cond-evil": cond},
+        evidence_map={"ev-evil-bm": ev},
+    )
+
+    # Zero unescaped malicious scripts
+    assert "<script>alert('bm-name')</script>" not in html
+    assert "<img src=x onerror=alert('bm-domain')>" not in html
+    assert "<script>alert('metric')</script>" not in html
+    assert "<b onclick=alert(1)>%</b>" not in html
+    assert "<svg onload=alert('cond')>" not in html
+    assert "<script>alert('notes')</script>" not in html
+    assert "<script>alert('quote')</script>" not in html
+    assert "<script>alert('tbl')</script>" not in html
+
+
+def test_save_interactive_html_with_benchmarks(tmp_path: Path):
+    """Verify save_interactive_html forwards benchmark results, metrics, and conditions."""
+    paper = PaperRecord(id="p-save-bm", title="Save Benchmark Paper", year=2024)
+    bm = BenchmarkRecord(id="bm-s", name="MMLU", domain="Reasoning")
+    m = EvaluationMetricRecord(id="m-s", name="accuracy", goal="maximize", unit="%")
+    res = BenchmarkResultRecord(
+        id="r-s",
+        paper_id="p-save-bm",
+        benchmark_id="bm-s",
+        metric_id="m-s",
+        metric_value=85.2,
+        is_sota=False,
+        table_or_figure="Figure 3",
+    )
+
+    out_file = tmp_path / "viz" / "benchmark_lineage.html"
+    returned = save_interactive_html(
+        output_path=out_file,
+        graph_title="Lineage With Benchmarks",
+        papers=[paper],
+        citations=[],
+        depths={"p-save-bm": 0},
+        benchmark_results={"p-save-bm": [res]},
+        benchmarks_map={"bm-s": bm},
+        metrics_map={"m-s": m},
+    )
+
+    assert returned == out_file
+    assert out_file.exists()
+    content = out_file.read_text(encoding="utf-8")
+    assert "Lineage With Benchmarks" in content
+    assert "MMLU" in content
+    assert "Reasoning" in content
+    assert "accuracy: 85.2%" in content
+    assert "Figure 3" in content
+
+
+def test_visualizer_backward_compatibility_none_benchmarks():
+    """Verify visualizer functions properly when benchmark arguments are None."""
+    paper = PaperRecord(id="p-compat", title="Compat Paper", year=2021)
+    html = generate_interactive_html(
+        "Compat Graph",
+        [paper],
+        [],
+        {"p-compat": 0},
+        benchmark_results=None,
+        benchmarks_map=None,
+        metrics_map=None,
+        conditions_map=None,
+    )
+    assert "Compat Graph" in html
+    assert "Compat Paper" in html

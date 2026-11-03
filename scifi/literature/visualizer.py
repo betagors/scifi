@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from scifi.literature.models import (
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     PaperGapRecord,
     PaperRecord,
@@ -40,6 +44,8 @@ GAP_CATEGORY_COLORS: dict[str, str] = {
 }
 
 SEED_BORDER_COLOR: str = "#3b82f6"  # Blue accent border
+SOTA_BORDER_COLOR: str = "#d97706"  # Gold / Amber accent border
+SOTA_BG_COLOR: str = "#fef3c7"      # Light gold tint background
 
 
 def _safe_escape(val: Optional[str]) -> str:
@@ -149,7 +155,7 @@ def format_node_label(paper: PaperRecord) -> str:
     return f"{author_str} ({year_str})\n{truncated_title}"
 
 
-def render_interactive_html(
+def generate_interactive_html(
     graph_title: str,
     papers: list[PaperRecord],
     citations: list[CitationRecord],
@@ -157,6 +163,11 @@ def render_interactive_html(
     seed_paper_id: Optional[str] = None,
     paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
     evidence_map: Optional[dict[str, EvidenceRecord]] = None,
+    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
+    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
+    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
+    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
+    node_roles: Optional[dict[str, str]] = None,
 ) -> str:
     """
     Render self-contained, XSS-safe Vis.js interactive HTML visualization of a literature DAG.
@@ -172,35 +183,72 @@ def render_interactive_html(
         oa_tier = determine_oa_status(paper)
         bg_color = OA_COLORS.get(oa_tier, OA_COLORS["closed"])
         is_seed = (paper.id == seed_paper_id) or getattr(paper, "is_seed", False) or (getattr(paper, "node_role", "") == "seed")
-        border_color = SEED_BORDER_COLOR if is_seed else bg_color
-        border_width = 4 if is_seed else 2
+
+        # Determine SOTA leader status
+        paper_bms = (benchmark_results or {}).get(paper.id, [])
+        role = (node_roles or {}).get(paper.id) or getattr(paper, "node_role", "")
+        has_sota_result = any(getattr(r, "is_sota", False) for r in paper_bms)
+        is_sota_leader = has_sota_result or (role == "sota_leader")
+
+        if is_sota_leader:
+            node_bg = SOTA_BG_COLOR
+            node_border = SOTA_BORDER_COLOR
+            border_width = 4
+            highlight_border = "#f59e0b"
+            highlight_bg = SOTA_BG_COLOR
+            hover_border = SOTA_BORDER_COLOR
+            hover_bg = SOTA_BG_COLOR
+            font_color = "#78350f"
+        elif is_seed:
+            node_bg = bg_color
+            node_border = SEED_BORDER_COLOR
+            border_width = 4
+            highlight_border = "#2563eb"
+            highlight_bg = bg_color
+            hover_border = "#3b82f6"
+            hover_bg = bg_color
+            font_color = "#ffffff"
+        else:
+            node_bg = bg_color
+            node_border = bg_color
+            border_width = 2
+            highlight_border = "#1e293b"
+            highlight_bg = bg_color
+            hover_border = "#3b82f6"
+            hover_bg = bg_color
+            font_color = "#ffffff"
 
         depth_level = depths.get(paper.id, 0)
-        label = format_node_label(paper)
+        base_label = format_node_label(paper)
+        node_label = f"[⭐ SOTA Leader]\n{base_label}" if is_sota_leader else base_label
+
+        title_prefix = "[⭐ SOTA Leader] " if is_sota_leader else ""
+        tooltip = _safe_escape(f"{title_prefix}{paper.title} ({paper.year or 'n.d.'})")
+
         doi, arxiv_id, pdf_url = extract_paper_links(paper)
 
         vis_nodes.append({
             "id": paper.id,
-            "label": label,
+            "label": node_label,
             "level": depth_level,
-            "title": _safe_escape(f"{paper.title} ({paper.year or 'n.d.'})"),
+            "title": tooltip,
             "color": {
-                "background": bg_color,
-                "border": border_color,
+                "background": node_bg,
+                "border": node_border,
                 "highlight": {
-                    "background": bg_color,
-                    "border": "#2563eb" if is_seed else "#1e293b",
+                    "background": highlight_bg,
+                    "border": highlight_border,
                 },
                 "hover": {
-                    "background": bg_color,
-                    "border": "#3b82f6",
+                    "background": hover_bg,
+                    "border": hover_border,
                 },
             },
             "borderWidth": border_width,
             "font": {
-                "color": "#ffffff",
+                "color": font_color,
                 "size": 13,
-                "bold": {"color": "#ffffff"},
+                "bold": {"color": font_color},
             },
             "shape": "box",
             "margin": 10,
@@ -256,6 +304,58 @@ def render_interactive_html(
                 "evidence": ev_data,
             })
 
+        benchmarks_list = []
+        for res in paper_bms:
+            bm = (benchmarks_map or {}).get(res.benchmark_id)
+            bm_name = bm.name if bm else res.benchmark_id
+            bm_domain = bm.domain if (bm and bm.domain) else ""
+
+            metric = (metrics_map or {}).get(res.metric_id)
+            metric_name = metric.name if metric else res.metric_id
+            metric_unit = metric.unit if (metric and metric.unit) else ""
+
+            cond = (conditions_map or {}).get(res.condition_id) if (res.condition_id and conditions_map) else None
+            cond_name = cond.name if cond else (res.condition_id or "")
+            cond_split = cond.dataset_split if (cond and cond.dataset_split) else ""
+            cond_notes = cond.notes if (cond and cond.notes) else ""
+
+            ev = (evidence_map or {}).get(res.evidence_id) if (res.evidence_id and evidence_map) else None
+            ev_data = None
+            if ev:
+                ev_data = {
+                    "id": _safe_escape(ev.id),
+                    "extracted_text": _safe_escape(ev.extracted_text),
+                    "source_section": _safe_escape(ev.source_section or ""),
+                    "source_location": _safe_escape(ev.source_location or ""),
+                    "extraction_method": _safe_escape(ev.extraction_method or ""),
+                }
+
+            if metric_unit:
+                unit_str = f"{metric_unit}" if metric_unit == "%" else f" {metric_unit}"
+                formatted_score = f"{metric_name}: {res.metric_value:g}{unit_str}"
+            else:
+                formatted_score = f"{metric_name}: {res.metric_value:g}"
+
+            benchmarks_list.append({
+                "id": _safe_escape(res.id),
+                "benchmark_id": _safe_escape(res.benchmark_id),
+                "benchmark_name": _safe_escape(bm_name),
+                "benchmark_domain": _safe_escape(bm_domain),
+                "metric_id": _safe_escape(res.metric_id),
+                "metric_name": _safe_escape(metric_name),
+                "metric_value": res.metric_value,
+                "metric_unit": _safe_escape(metric_unit),
+                "formatted_score": _safe_escape(formatted_score),
+                "is_sota": bool(res.is_sota),
+                "rank": res.rank,
+                "table_or_figure": _safe_escape(res.table_or_figure or ""),
+                "condition_name": _safe_escape(cond_name),
+                "condition_split": _safe_escape(cond_split),
+                "condition_notes": _safe_escape(cond_notes),
+                "provenance_source": _safe_escape(res.provenance_source or ""),
+                "evidence": ev_data,
+            })
+
         papers_data[paper.id] = {
             "id": paper.id,
             "title": _safe_escape(paper.title or "Untitled"),
@@ -266,12 +366,14 @@ def render_interactive_html(
             "influential_citation_count": paper.influential_citation_count,
             "oa_status": oa_tier,
             "is_seed": is_seed,
+            "is_sota_leader": is_sota_leader,
             "doi": _safe_escape(doi or ""),
             "arxiv_id": _safe_escape(arxiv_id or ""),
             "pdf_url": _safe_escape(pdf_url or ""),
             "abstract": _safe_escape(paper.abstract or "No abstract available."),
             "authors": author_list,
             "gaps": gaps_list,
+            "benchmarks": benchmarks_list,
         }
 
     # Prepare Vis.js edges
@@ -330,6 +432,8 @@ def render_interactive_html(
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
       --seed-accent: #3b82f6;
+      --sota-accent: #d97706;
+      --sota-bg: #fef3c7;
     }}
     * {{
       box-sizing: border-box;
@@ -399,6 +503,13 @@ def render_interactive_html(
       border-radius: 3px;
       background: #e2e8f0;
     }}
+    .legend-sota {{
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--sota-accent);
+      border-radius: 3px;
+      background: var(--sota-bg);
+    }}
     #network-container {{
       flex: 1;
       width: 100%;
@@ -459,6 +570,9 @@ def render_interactive_html(
     .badge-oa-bronze {{ background: #ffedd5; color: #9a3412; }}
     .badge-oa-closed {{ background: #f1f5f9; color: #475569; }}
     .badge-seed {{ background: #dbeafe; color: #1e40af; border: 1px solid #3b82f6; }}
+    .badge-sota {{ background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }}
+    .badge-benchmark-domain {{ background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }}
+    .badge-benchmark-rank {{ background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }}
     #drawer-close {{
       background: none;
       border: none;
@@ -584,6 +698,60 @@ def render_interactive_html(
       border: 1px solid var(--border-color);
       white-space: pre-wrap;
     }}
+
+    /* Empirical Benchmark Performance Cards */
+    .benchmarks-list {{
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }}
+    .benchmark-card {{
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .benchmark-card-header {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }}
+    .benchmark-name {{
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }}
+    .benchmark-score {{
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-main);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }}
+    .benchmark-condition {{
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }}
+    .benchmark-source {{
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }}
+    .benchmark-evidence-quote {{
+      font-size: 0.825rem;
+      line-height: 1.45;
+      color: #334155;
+      background: #ffffff;
+      border-left: 3px solid var(--sota-accent);
+      border-radius: 0 4px 4px 0;
+      padding: 8px 10px;
+      margin: 0;
+      font-style: italic;
+    }}
+
     /* Technical Gaps & Evidence */
     .gaps-list {{
       display: flex;
@@ -666,6 +834,7 @@ def render_interactive_html(
         <div class="legend-item"><div class="legend-color" style="background: #d97706;"></div><span>Bronze</span></div>
         <div class="legend-item"><div class="legend-color" style="background: #64748b;"></div><span>Closed</span></div>
         <div class="legend-item"><div class="legend-seed"></div><span>Seed Work</span></div>
+        <div class="legend-item"><div class="legend-sota"></div><span>⭐ SOTA Leader (Verified Benchmark Performance)</span></div>
       </div>
     </div>
     <div id="network-container"></div>
@@ -676,6 +845,7 @@ def render_interactive_html(
       <div class="drawer-badges">
         <span id="drawer-oa-status" class="badge"></span>
         <span id="drawer-seed-badge" class="badge badge-seed" style="display: none;">SEED PAPER</span>
+        <span id="drawer-sota-badge" class="badge badge-sota" style="display: none;">⭐ SOTA LEADER</span>
       </div>
       <button id="drawer-close" title="Close Drawer">&times;</button>
     </div>
@@ -707,6 +877,11 @@ def render_interactive_html(
       <div>
         <div class="drawer-section-heading">Abstract</div>
         <div id="drawer-abstract" class="drawer-abstract"></div>
+      </div>
+
+      <div id="drawer-benchmarks-section" style="display: none;">
+        <div class="drawer-section-heading">Empirical Benchmark Performance & SOTA Results</div>
+        <div id="drawer-benchmarks-list" class="benchmarks-list"></div>
       </div>
 
       <div id="drawer-gaps-section" style="display: none;">
@@ -775,6 +950,9 @@ def render_interactive_html(
 
       const seedBadge = document.getElementById('drawer-seed-badge');
       seedBadge.style.display = paper.is_seed ? 'inline-block' : 'none';
+
+      const sotaBadge = document.getElementById('drawer-sota-badge');
+      sotaBadge.style.display = paper.is_sota_leader ? 'inline-block' : 'none';
 
       const authorsDiv = document.getElementById('drawer-authors');
       authorsDiv.innerHTML = '';
@@ -854,6 +1032,92 @@ def render_interactive_html(
         linksDiv.appendChild(span);
       }}
 
+      // Empirical Benchmarks Section
+      const bmsSection = document.getElementById('drawer-benchmarks-section');
+      const bmsList = document.getElementById('drawer-benchmarks-list');
+      bmsList.innerHTML = '';
+
+      if (paper.benchmarks && paper.benchmarks.length > 0) {{
+        bmsSection.style.display = 'block';
+        paper.benchmarks.forEach(function(bm) {{
+          const card = document.createElement('div');
+          card.className = 'benchmark-card';
+
+          const header = document.createElement('div');
+          header.className = 'benchmark-card-header';
+
+          if (bm.benchmark_domain) {{
+            const domainBadge = document.createElement('span');
+            domainBadge.className = 'badge badge-benchmark-domain';
+            domainBadge.textContent = '[' + bm.benchmark_domain + ']';
+            header.appendChild(domainBadge);
+          }}
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'benchmark-name';
+          nameSpan.textContent = bm.benchmark_name;
+          header.appendChild(nameSpan);
+
+          if (bm.is_sota) {{
+            const leaderBadge = document.createElement('span');
+            leaderBadge.className = 'badge badge-sota';
+            leaderBadge.textContent = '⭐ SOTA Leader';
+            header.appendChild(leaderBadge);
+          }}
+
+          if (bm.rank !== undefined && bm.rank !== null) {{
+            const rankBadge = document.createElement('span');
+            rankBadge.className = 'badge badge-benchmark-rank';
+            rankBadge.textContent = 'Rank #' + bm.rank;
+            header.appendChild(rankBadge);
+          }}
+
+          card.appendChild(header);
+
+          const scoreDiv = document.createElement('div');
+          scoreDiv.className = 'benchmark-score';
+          scoreDiv.textContent = bm.formatted_score;
+          card.appendChild(scoreDiv);
+
+          if (bm.condition_name || bm.condition_split || bm.condition_notes) {{
+            const condDiv = document.createElement('div');
+            condDiv.className = 'benchmark-condition';
+            let condParts = [];
+            if (bm.condition_name) condParts.push(bm.condition_name);
+            if (bm.condition_split) condParts.push('split: ' + bm.condition_split);
+            if (bm.condition_notes) condParts.push('notes: ' + bm.condition_notes);
+            condDiv.textContent = 'Condition: ' + condParts.join(' | ');
+            card.appendChild(condDiv);
+          }}
+
+          if (bm.table_or_figure || bm.provenance_source) {{
+            const srcDiv = document.createElement('div');
+            srcDiv.className = 'benchmark-source';
+            let srcText = '';
+            if (bm.table_or_figure) {{
+              srcText = 'Source: ' + bm.table_or_figure;
+            }}
+            if (bm.provenance_source && bm.provenance_source !== 'author_reported') {{
+              srcText += (srcText ? ' (' : 'Source: ') + bm.provenance_source + (srcText ? ')' : '');
+            }}
+            srcDiv.textContent = srcText || ('Source: ' + bm.provenance_source);
+            card.appendChild(srcDiv);
+          }}
+
+          if (bm.evidence && bm.evidence.extracted_text) {{
+            const bq = document.createElement('blockquote');
+            bq.className = 'benchmark-evidence-quote';
+            bq.textContent = '“' + bm.evidence.extracted_text + '”';
+            card.appendChild(bq);
+          }}
+
+          bmsList.appendChild(card);
+        }});
+      }} else {{
+        bmsSection.style.display = 'none';
+      }}
+
+      // Technical Gaps Section
       const gapsSection = document.getElementById('drawer-gaps-section');
       const gapsList = document.getElementById('drawer-gaps-list');
       gapsList.innerHTML = '';
@@ -979,6 +1243,9 @@ def render_interactive_html(
 """
 
 
+render_interactive_html = generate_interactive_html
+
+
 def save_interactive_html(
     output_path: str | Path,
     graph_title: str,
@@ -988,13 +1255,18 @@ def save_interactive_html(
     seed_paper_id: Optional[str] = None,
     paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
     evidence_map: Optional[dict[str, EvidenceRecord]] = None,
+    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
+    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
+    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
+    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
+    node_roles: Optional[dict[str, str]] = None,
 ) -> Path:
     """
     Render and persist interactive HTML visualization to specified filesystem path.
     """
     path = Path(output_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    html_content = render_interactive_html(
+    html_content = generate_interactive_html(
         graph_title=graph_title,
         papers=papers,
         citations=citations,
@@ -1002,6 +1274,11 @@ def save_interactive_html(
         seed_paper_id=seed_paper_id,
         paper_gaps=paper_gaps,
         evidence_map=evidence_map,
+        benchmark_results=benchmark_results,
+        benchmarks_map=benchmarks_map,
+        metrics_map=metrics_map,
+        conditions_map=conditions_map,
+        node_roles=node_roles,
     )
     path.write_text(html_content, encoding="utf-8")
     return path
@@ -1009,9 +1286,12 @@ def save_interactive_html(
 
 __all__ = [
     "render_interactive_html",
+    "generate_interactive_html",
     "save_interactive_html",
     "determine_oa_status",
     "OA_COLORS",
     "GAP_CATEGORY_COLORS",
     "SEED_BORDER_COLOR",
+    "SOTA_BORDER_COLOR",
+    "SOTA_BG_COLOR",
 ]
