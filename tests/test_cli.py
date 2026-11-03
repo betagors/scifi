@@ -65,6 +65,7 @@ def test_cli_subcommand_helps(capsys: pytest.CaptureFixture[str]) -> None:
     captured_setup = capsys.readouterr().out
     assert "--auto" in captured_setup
     assert "--dry-run" in captured_setup
+    assert "--list" in captured_setup
 
     # compile help
     ret_compile = scifi.cli.main(["compile", "--help"])
@@ -75,6 +76,17 @@ def test_cli_subcommand_helps(capsys: pytest.CaptureFixture[str]) -> None:
     ret_server = scifi.cli.main(["server", "--help"])
     assert ret_server == 0
     assert "--transport" in capsys.readouterr().out
+
+
+def test_setup_list_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    """setup --list should display supported environments and exit 0."""
+    code = scifi.cli.main(["setup", "--list"])
+    assert code == 0
+    captured = capsys.readouterr().out
+    assert "Supported AI environments" in captured
+    assert "OpenCode" in captured
+    assert "Claude Code" in captured
+    assert "VS Code Cline" in captured
 
 
 def test_setup_validate_server() -> None:
@@ -92,11 +104,17 @@ def test_setup_detect_environments_when_present(tmp_path: Path) -> None:
     (mock_home / ".gemini").mkdir(parents=True)
     (mock_appdata / "Claude").mkdir(parents=True)
     (mock_project / ".cursor").mkdir(parents=True)
+    (mock_home / ".claude").mkdir(parents=True)
+    (mock_appdata / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings").mkdir(parents=True)
+    (mock_appdata / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings").mkdir(parents=True)
+    (mock_home / ".config" / "opencode").mkdir(parents=True)
+    (mock_home / ".codeium" / "windsurf").mkdir(parents=True)
 
     envs = scifi.setup_cli.detect_environments(
         home_dir=mock_home,
         appdata_dir=mock_appdata,
         project_dir=mock_project,
+        check_path=False,
     )
 
     names = {e.name: e for e in envs}
@@ -107,9 +125,25 @@ def test_setup_detect_environments_when_present(tmp_path: Path) -> None:
     assert "Claude Desktop" in names
     assert names["Claude Desktop"].detected is True
 
+    assert "Claude Code (Global)" in names
+    assert names["Claude Code (Global)"].detected is True
+
     assert "Cursor" in names
     assert names["Cursor"].detected is True
     assert names["Cursor"].config_path == mock_project / ".cursor" / "mcp.json"
+
+    assert "VS Code Cline" in names
+    assert names["VS Code Cline"].detected is True
+
+    assert "VS Code Roo Code" in names
+    assert names["VS Code Roo Code"].detected is True
+
+    assert "OpenCode (Global)" in names
+    assert names["OpenCode (Global)"].detected is True
+    assert names["OpenCode (Global)"].format_type == "opencode"
+
+    assert "Windsurf" in names
+    assert names["Windsurf"].detected is True
 
 
 def test_setup_detect_environments_when_absent(tmp_path: Path) -> None:
@@ -122,6 +156,7 @@ def test_setup_detect_environments_when_absent(tmp_path: Path) -> None:
         home_dir=mock_home,
         appdata_dir=mock_appdata,
         project_dir=mock_project,
+        check_path=False,
     )
 
     for e in envs:
@@ -198,6 +233,59 @@ def test_setup_install_mcp_config_dry_run(tmp_path: Path) -> None:
     assert success is True
     assert not target_cfg.exists()
     assert not target_cfg.parent.exists()
+
+
+def test_setup_install_opencode_schema(tmp_path: Path) -> None:
+    """install_mcp_config with format_type='opencode' must format using 'mcp' dict and flat command."""
+    target_cfg = tmp_path / "opencode.json"
+    fake_scifi_root = tmp_path / "scifi_repo"
+    fake_scifi_root.mkdir()
+
+    success = scifi.setup_cli.install_mcp_config(
+        target=target_cfg,
+        scifi_root=fake_scifi_root,
+        dry_run=False,
+        format_type="opencode",
+    )
+
+    assert success is True
+    assert target_cfg.exists()
+    data = json.loads(target_cfg.read_text(encoding="utf-8"))
+    assert "mcp" in data
+    assert "scifi" in data["mcp"]
+    entry = data["mcp"]["scifi"]
+    assert entry["type"] == "local"
+    assert entry["command"] == ["uv", "run", "python", "-m", "scifi.server"]
+    assert entry["cwd"] == str(fake_scifi_root.resolve())
+
+
+def test_setup_install_opencode_preserves_existing(tmp_path: Path) -> None:
+    """install_mcp_config for OpenCode must preserve existing properties and tools."""
+    target_cfg = tmp_path / "opencode.json"
+    initial_data = {
+        "model": "claude-3-5-sonnet",
+        "mcp": {
+            "custom-tool": {
+                "type": "local",
+                "command": ["echo", "hello"],
+            }
+        },
+    }
+    target_cfg.write_text(json.dumps(initial_data, indent=2), encoding="utf-8")
+
+    success = scifi.setup_cli.install_mcp_config(
+        target=target_cfg,
+        scifi_root=tmp_path,
+        dry_run=False,
+        format_type="opencode",
+    )
+
+    assert success is True
+    data = json.loads(target_cfg.read_text(encoding="utf-8"))
+    assert data["model"] == "claude-3-5-sonnet"
+    assert "custom-tool" in data["mcp"]
+    assert "scifi" in data["mcp"]
+
 
 
 def test_setup_cmd_setup_target_flag(tmp_path: Path) -> None:

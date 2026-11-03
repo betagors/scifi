@@ -115,11 +115,12 @@ def create_parser() -> argparse.ArgumentParser:
     p_argus.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
 
     # setup
-    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in Antigravity, Claude Desktop, and Cursor")
+    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
     p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
     p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
     p_setup.add_argument("--scifi-root", type=str, help="Custom root directory for scifi repository")
+    p_setup.add_argument("--list", action="store_true", help="List all supported and detected AI environments")
 
     # compile
     p_compile = subparsers.add_parser("compile", aliases=["c", "build"], help="Compile a LaTeX manuscript and diagnose build errors")
