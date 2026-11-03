@@ -1,7 +1,7 @@
 """
 FastMCP Server Daemon for SciFi: Scientific Research & Academic Writing Toolkit.
 
-Exposes 17 typed JSON-RPC tools for citation verification, bib auditing,
+Exposes 20 typed JSON-RPC tools for citation verification, bib auditing,
 attribution & plagiarism detection, symbolic calculus, physical dimensions,
 matrix shapes, LaTeX compilation, numerical curves, statistics, adversarial review,
 and open-access literature retrieval.
@@ -34,6 +34,10 @@ from scifi.citation_verifier import (
 )
 from scifi.latex import compile_latex
 from scifi.literature import extract_pdf_text, fetch_paper_pdf
+from scifi.literature.lineage import LineageCrawler
+from scifi.literature.reporter import save_bibtex_file, save_markdown_report
+from scifi.literature.store import LiteratureStore
+from scifi.literature.visualizer import save_interactive_html
 from scifi.math import (
     check_convexity,
     check_limits,
@@ -655,6 +659,167 @@ def scifi_extract_pdf_text(
         Dictionary with status, page_count, extracted text, and detected paper sections.
     """
     return extract_pdf_text(pdf_path=pdf_path, max_pages=max_pages)
+
+
+# ---------------------------------------------------------------------------
+# 8. Literature Lineage & Knowledge Store (Discovery)
+# ---------------------------------------------------------------------------
+
+DEFAULT_LITERATURE_DB_PATH = Path(".scifi/literature_store.db")
+
+
+def get_literature_store(db_path: Path | str | None = None) -> LiteratureStore:
+    """Return a LiteratureStore instance for literature intelligence."""
+    path = db_path or DEFAULT_LITERATURE_DB_PATH
+    return LiteratureStore(path)
+
+
+@mcp.tool()
+def scifi_map_literature(
+    query: str,
+    depth: int = 2,
+    max_papers: int = 25,
+    graph_id: str | None = None,
+    output_dir: str | None = None,
+) -> dict[str, Any]:
+    """
+    Discover intellectual lineage and construct an interactive literature graph from a seed paper or query.
+    Extracts foundational citations, frontier developments, persists to SQLite store, and optionally renders artifacts.
+
+    Args:
+        query: Seed paper title, DOI, arXiv ID, or OpenAlex ID.
+        depth: Traversal hops backward (foundations) and forward (frontier) (default: 2).
+        max_papers: Maximum number of papers to discover (default: 25).
+        graph_id: Optional persistent graph session identifier.
+        output_dir: Optional filesystem directory to save interactive HTML map, Markdown report, and references.bib.
+
+    Returns:
+        Dictionary with status ('SUCCESS' or 'ERROR'), graph_id, seed_paper_id, total_papers, total_citations,
+        papers list, and generated file paths if output_dir specified.
+    """
+    store = get_literature_store()
+    crawler = LineageCrawler(store=store)
+
+    assigned_graph_id, papers, citations = crawler.crawl_lineage(
+        query=query,
+        depth=depth,
+        max_papers=max_papers,
+        graph_id=graph_id,
+    )
+
+    if not papers:
+        return {
+            "status": "ERROR",
+            "message": f"Could not resolve seed paper or find literature for query: '{query}'",
+            "graph_id": assigned_graph_id,
+            "seed_paper_id": None,
+            "total_papers": 0,
+            "total_citations": 0,
+            "papers": [],
+            "files": None,
+        }
+
+    depths = crawler.compute_topological_depths(papers, citations)
+    files_dict: dict[str, str] | None = None
+
+    if output_dir:
+        out_path = Path(output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+        title = papers[0].title if papers else query
+        seed_id = papers[0].id if papers else None
+
+        html_path = save_interactive_html(
+            out_path / "literature_map.html",
+            graph_title=title,
+            papers=papers,
+            citations=citations,
+            depths=depths,
+            seed_paper_id=seed_id,
+        )
+        md_path = save_markdown_report(
+            out_path / "literature_report.md",
+            graph_title=title,
+            papers=papers,
+            citations=citations,
+            depths=depths,
+        )
+        bib_path = save_bibtex_file(
+            out_path / "references.bib",
+            papers=papers,
+        )
+
+        files_dict = {
+            "html_map": str(html_path.resolve()),
+            "report_markdown": str(md_path.resolve()),
+            "bibtex": str(bib_path.resolve()),
+        }
+
+    return {
+        "status": "SUCCESS",
+        "graph_id": assigned_graph_id,
+        "seed_paper_id": papers[0].id if papers else None,
+        "total_papers": len(papers),
+        "total_citations": len(citations),
+        "papers": [p.to_dict() for p in papers],
+        "files": files_dict,
+    }
+
+
+@mcp.tool()
+def scifi_query_store(
+    query_sql: str,
+) -> list[dict[str, Any]]:
+    """
+    Execute a read-only SQL SELECT query against the SciFi literature intelligence SQLite store.
+    Strictly enforced via SQLite authorizer callbacks; rejecting any INSERT, UPDATE, DELETE, DROP, or ALTER.
+
+    Args:
+        query_sql: Read-only SQL SELECT statement.
+
+    Returns:
+        List of dictionaries representing rows returned by the query.
+
+    Raises:
+        PermissionError: If any non-read-only SQL statement is attempted.
+    """
+    store = get_literature_store()
+    return store.execute_read_query(query_sql)
+
+
+@mcp.tool()
+def scifi_export_bibtex(
+    graph_id: str,
+    output_path: str,
+) -> dict[str, Any]:
+    """
+    Export verified and standardized BibTeX entries for all papers in a specific literature graph session.
+
+    Args:
+        graph_id: Persistent literature graph session ID.
+        output_path: Destination path for the generated .bib file.
+
+    Returns:
+        Dictionary with status ('SUCCESS' or 'ERROR'), graph_id, total_entries, and output_path.
+    """
+    store = get_literature_store()
+    papers = store.get_graph_papers(graph_id)
+
+    if not papers:
+        return {
+            "status": "ERROR",
+            "message": f"No papers found for graph session '{graph_id}'",
+            "graph_id": graph_id,
+            "total_entries": 0,
+            "output_path": None,
+        }
+
+    out_file = save_bibtex_file(output_path, papers)
+    return {
+        "status": "SUCCESS",
+        "graph_id": graph_id,
+        "total_entries": len(papers),
+        "output_path": str(out_file.resolve()),
+    }
 
 
 if __name__ == "__main__":
