@@ -25,6 +25,7 @@ cmd_audit = citation_cli.cmd_audit
 cmd_search = citation_cli.cmd_search
 cmd_argus = argus_cli.cmd_audit
 cmd_setup = setup_cli.cmd_setup
+cmd_sync = setup_cli.cmd_sync
 
 
 def cmd_server(args: argparse.Namespace) -> int:
@@ -115,11 +116,18 @@ def create_parser() -> argparse.ArgumentParser:
     p_argus.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
 
     # setup
-    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in Antigravity, Claude Desktop, and Cursor")
+    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
     p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
     p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
     p_setup.add_argument("--scifi-root", type=str, help="Custom root directory for scifi repository")
+    p_setup.add_argument("--list", action="store_true", help="List all supported and detected AI environments")
+    p_setup.add_argument("--rules", action="store_true", help="Synchronize SciFi scientific rules to project instruction files")
+    p_setup.add_argument("--workspace", action="store_true", help="Configure workspace MCP manifests (.cursor, .mcp.json, opencode.json) and sync rules")
+
+    # sync
+    p_sync = subparsers.add_parser("sync", help="Synchronize SciFi scientific rules to CLAUDE.md, .clinerules, .cursorrules, etc.")
+    p_sync.add_argument("--dry-run", action="store_true", help="Print planned rule synchronization without modifying files")
 
     # compile
     p_compile = subparsers.add_parser("compile", aliases=["c", "build"], help="Compile a LaTeX manuscript and diagnose build errors")
@@ -196,6 +204,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_compile(args)
     elif args.command in ("setup", "init", "i"):
         return setup_cli.cmd_setup(args)
+    elif args.command == "sync":
+        return setup_cli.cmd_sync(args)
     elif args.command in ("server", "mcp", "serve"):
         return cmd_server(args)
 
