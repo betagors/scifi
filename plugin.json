@@ -7,6 +7,7 @@
   "suggestedPrompts": [
     "Audit manuscript references in references.bib and verify DOIs against registries",
     "Humanize and rewrite this section into objective, publication-grade academic prose",
+    "Optimize title, 5-beat cognitive abstract, and SEO keywords for this research",
     "Verify symbolic derivations, physical units, and notation consistency in paper.tex"
   ]
 }

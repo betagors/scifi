@@ -30,3 +30,11 @@ These rules are active whenever the SciFi plugin is enabled to enforce academic 
 ## 5. LaTeX Typesetting & Compilation
 - **Notation Consistency:** Maintain uniform symbol definitions and formatting across all sections and equation environments.
 - **Clean Compilation:** Use the `compiler` skill to run `latexmk` or `pdflatex`, locate build errors by file and line number, and resolve missing packages or undefined references.
+
+## 6. Title, Abstract & Academic SEO Optimization
+- **Keyphrase Front-Loading:** Always place the primary domain search keyphrase within the first 65 characters of the title to avoid search snippet truncation.
+- **Citation Sweet-Spot Length:** Target title lengths of 10–14 words (70–110 characters) correlated with higher citation discovery.
+- **5-Beat Dual-Audience Abstracts:** Structure abstracts strictly into 150–220 words balancing an accessible lead hook for non-technical/interdisciplinary readers with quantified empirical metrics for expert reviewers.
+- **Rule of Three Keyphrase Anchoring:** Anchor primary search keyphrases across context (Beat 1), methodology (Beat 3), and conclusion (Beat 5).
+- **Metadata Vocabulary Expansion:** Ensure author keywords share <35% word overlap with the title, broadening the paper's searchable footprint across indexing databases.
+- **Empirical Validation:** Use the `shannon` skill (`test_keywords.py`) to verify the 100-point Reviewer Triage Score and search engine collision safety.

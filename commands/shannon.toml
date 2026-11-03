@@ -1,0 +1,2 @@
+description = "Engineer publication-grade titles, 5-beat abstracts, and SEO keyword strategies"
+prompt = "Engineer publication-grade title options, a 5-beat cognitive dual-audience abstract, and non-redundant SEO keywords using the shannon protocol. Front-load domain keyphrases within the first 65 characters of titles, target 10-14 words, structure the abstract into 5 beats with quantified benchmark metrics and an accessible lead hook, anchor keyphrases across 3 beats, avoid synthetic AI tropes or em dashes, and audit via test_keywords.py. Input: {{args}}"

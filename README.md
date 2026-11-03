@@ -23,6 +23,7 @@ Large Language Models are exceptional coders, but notoriously fragile in scienti
 | **Synthetic AI Tropes ("Slop")** | Papers rejected upfront for *"delve"*, *"tapestry"*, em dashes, and marketing buzz | **Human:** Master Academic Humanizer protocol enforcing epistemic hedging, passive voice, and objective tone. |
 | **Uncredited Methods** | Reviewers challenge lack of attribution or prior art novelty | **Argus:** Automated scanning for uncredited algorithms, canonical auto-citing, and delta-novelty matrix generation. |
 | **Unhedged Overclaims** | Sweeping claims (*"outperforms all existing"*, *"optimal"*) without proofs | **Popper:** Adversarial Reviewer 2 stress-testing for unstated physical assumptions and baseline fairness. |
+| **Weak Title & Vague Abstract** | Desk-rejected in 30 seconds or buried in search | **Shannon:** Publication-grade title engineering, 5-beat dual-audience abstract, and academic SEO/keyword optimization. |
 
 ---
 
@@ -90,8 +91,8 @@ SciFi separates **deterministic computation** (tools) from **cognitive reasoning
 flowchart TD
     subgraph AgentLayer ["Agent Environment (Antigravity / Claude / Cursor)"]
         Rules["Rules: AGENTS.md (Invariants & Standards)"]
-        Skills["Skills: alex, turing, human, gauss, popper, hypatia (Playbooks)"]
-        Subagents["Subagents: scholar, theorist, scribe, auditor, argus"]
+        Skills["Skills: alex, turing, human, gauss, popper, hypatia, shannon (Playbooks)"]
+        Subagents["Subagents: scholar, theorist, scribe, auditor, argus, shannon"]
     end
 
     subgraph MCPLayer ["SciFi FastMCP Server (In-Memory Daemon)"]
@@ -178,7 +179,7 @@ When SciFi is enabled, coding agents interact directly with these 17 structured 
 
 ## 🧠 Cognitive Skill Playbooks
 
-SciFi includes 8 modular on-demand skill playbooks:
+SciFi includes 9 modular on-demand skill playbooks:
 
 | Skill | Focus | Primary Tools / Protocol |
 |---|---|---|
@@ -190,18 +191,20 @@ SciFi includes 8 modular on-demand skill playbooks:
 | [`popper`](skills/popper/SKILL.md) | Adversarial Peer-Review & Falsification | `scifi_audit_claims`, 4-axis hostile Reviewer 2 audit |
 | [`compiler`](skills/compiler/SKILL.md) | Autonomous LaTeX Compilation | `scifi_compile_latex`, error isolation and auto-install |
 | [`hypatia`](skills/hypatia/SKILL.md) | Literature Synthesis & Benchmark Matrix | `scifi_fetch_paper_pdf`, `scifi_extract_pdf_text`, Delta-Novelty Matrix |
+| [`shannon`](skills/shannon/SKILL.md) | Title, Abstract & SEO Optimization | `test_keywords.py`, 5-beat dual-audience abstract, SEO tricks, 100-point rubric |
 
 ---
 
 ## 🤖 Specialized Subagents
 
-SciFi provides 5 pre-configured autonomous personas in `agents/`:
+SciFi provides 6 pre-configured autonomous personas in `agents/`:
 
 * **`scholar`**: Literature synthesis, competitive benchmarking, and Related Work taxonomies.
 * **`theorist`**: Symbolic proofs, Lemma formulations, and dimensional consistency checks.
 * **`scribe`**: LaTeX typesetting, AI-cliché eradication, and mathematical notation harmonization.
 * **`auditor`**: Hostile peer-review simulation, unstated assumption hunting, and baseline fairness audits.
 * **`argus`**: Attribution guardian detecting uncredited algorithms and triaging web sources.
+* **`shannon`**: Academic title engineering, 5-beat cognitive abstracts, search engine optimization (SEO), and non-redundant indexing keyword strategy.
 
 ---
 
