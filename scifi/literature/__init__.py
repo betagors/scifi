@@ -7,5 +7,20 @@ from scifi.literature.benchmarks import BenchmarkExtractor
 from scifi.literature.extractor import extract_pdf_text
 from scifi.literature.fetcher import fetch_paper_pdf
 from scifi.literature.resolver import PaperResolver
+from scifi.literature.sota import (
+    PerformanceDelta,
+    SotaEvaluationReport,
+    SotaEvaluationResults,
+    SotaEvaluator,
+)
 
-__all__ = ["fetch_paper_pdf", "extract_pdf_text", "PaperResolver", "BenchmarkExtractor"]
+__all__ = [
+    "fetch_paper_pdf",
+    "extract_pdf_text",
+    "PaperResolver",
+    "BenchmarkExtractor",
+    "SotaEvaluator",
+    "PerformanceDelta",
+    "SotaEvaluationReport",
+    "SotaEvaluationResults",
+]
