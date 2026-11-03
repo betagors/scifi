@@ -1,5 +1,5 @@
 """
-Canonical data models for Phase 1 literature discovery and graph sessions.
+Canonical data models for Phase 1 and Phase 2 literature discovery, evidence, and research gap sessions.
 """
 
 from __future__ import annotations
@@ -97,6 +97,70 @@ class CitationRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CitationRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class CitationContextRecord:
+    id: str
+    source_paper_id: str
+    target_paper_id: str
+    context_text: str
+    section_name: Optional[str] = None
+    intent: Optional[str] = None
+    is_influential: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CitationContextRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class EvidenceRecord:
+    id: str
+    paper_id: str
+    evidence_type: str
+    extracted_text: str
+    extraction_method: str
+    reporting_paper_id: Optional[str] = None
+    source_section: Optional[str] = None
+    source_location: Optional[str] = None
+    confidence: Optional[float] = None
+    retrieved_at: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvidenceRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class PaperGapRecord:
+    id: str
+    paper_id: str
+    gap_type: str
+    claim_summary: str
+    primary_evidence_id: str
+    verification_status: str = "candidate"
+    corroborating_count: int = 0
+    contradicting_count: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PaperGapRecord:
         known = {f.name for f in dataclasses.fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known}
         return cls(**filtered)
@@ -250,10 +314,13 @@ class PaperRecord:
 
 __all__ = [
     "AuthorRecord",
-    "PaperIdentifierRecord",
-    "PaperVersionRecord",
-    "PaperLocationRecord",
+    "CitationContextRecord",
     "CitationRecord",
+    "EvidenceRecord",
     "GraphSessionRecord",
+    "PaperGapRecord",
+    "PaperIdentifierRecord",
+    "PaperLocationRecord",
     "PaperRecord",
+    "PaperVersionRecord",
 ]

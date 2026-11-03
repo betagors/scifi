@@ -4,8 +4,11 @@ Unit tests for Core Literature Data Models (scifi.literature.models).
 
 from scifi.literature.models import (
     AuthorRecord,
+    CitationContextRecord,
     CitationRecord,
+    EvidenceRecord,
     GraphSessionRecord,
+    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -194,3 +197,144 @@ def test_serialization_roundtrip():
     d_extra["topological_depth"] = 2
     restored_extra = PaperRecord.from_dict(d_extra)
     assert restored_extra.id == "p-1"
+
+
+def test_evidence_and_gap_records():
+    # 1. CitationContextRecord
+    ctx = CitationContextRecord(
+        id="ctx-1",
+        source_paper_id="p-100",
+        target_paper_id="p-200",
+        context_text="Vaswani et al. (2017) demonstrated that attention alone is sufficient.",
+        section_name="Related Work",
+        intent="methodology",
+        is_influential=True,
+    )
+    assert ctx.id == "ctx-1"
+    assert ctx.source_paper_id == "p-100"
+    assert ctx.target_paper_id == "p-200"
+    assert ctx.context_text == "Vaswani et al. (2017) demonstrated that attention alone is sufficient."
+    assert ctx.section_name == "Related Work"
+    assert ctx.intent == "methodology"
+    assert ctx.is_influential is True
+
+    # Defaults check
+    ctx_default = CitationContextRecord(
+        id="ctx-2",
+        source_paper_id="p-100",
+        target_paper_id="p-200",
+        context_text="Some text",
+    )
+    assert ctx_default.section_name is None
+    assert ctx_default.intent is None
+    assert ctx_default.is_influential is False
+
+    # to_dict / from_dict roundtrip
+    ctx_dict = ctx.to_dict()
+    assert ctx_dict["id"] == "ctx-1"
+    assert ctx_dict["is_influential"] is True
+    ctx_dict["extra_key"] = "extra"
+    restored_ctx = CitationContextRecord.from_dict(ctx_dict)
+    assert restored_ctx.id == ctx.id
+    assert restored_ctx.context_text == ctx.context_text
+    assert not hasattr(restored_ctx, "extra_key")
+
+    # 2. EvidenceRecord
+    ev = EvidenceRecord(
+        id="ev-1",
+        paper_id="p-200",
+        reporting_paper_id="p-100",
+        evidence_type="citation_context",
+        source_section="Introduction",
+        source_location="para 2",
+        extracted_text="Quadratic self-attention complexity hinders scaling to long contexts.",
+        extraction_method="semantic_scholar_api",
+        confidence=0.88,
+        retrieved_at="2026-11-03T12:00:00Z",
+    )
+    assert ev.id == "ev-1"
+    assert ev.paper_id == "p-200"
+    assert ev.reporting_paper_id == "p-100"
+    assert ev.evidence_type == "citation_context"
+    assert ev.source_section == "Introduction"
+    assert ev.source_location == "para 2"
+    assert ev.extracted_text == "Quadratic self-attention complexity hinders scaling to long contexts."
+    assert ev.extraction_method == "semantic_scholar_api"
+    assert ev.confidence == 0.88
+    assert ev.retrieved_at == "2026-11-03T12:00:00Z"
+
+    # Nullable confidence & optional field defaults
+    ev_defaults = EvidenceRecord(
+        id="ev-2",
+        paper_id="p-200",
+        evidence_type="full_text_section",
+        extracted_text="Memory footprint is O(N^2).",
+        extraction_method="pdf_text_parser",
+    )
+    assert ev_defaults.reporting_paper_id is None
+    assert ev_defaults.source_section is None
+    assert ev_defaults.source_location is None
+    assert ev_defaults.confidence is None
+    assert ev_defaults.retrieved_at is None
+
+    # to_dict / from_dict roundtrip
+    ev_dict = ev.to_dict()
+    assert ev_dict["confidence"] == 0.88
+    ev_dict["unexpected"] = 42
+    restored_ev = EvidenceRecord.from_dict(ev_dict)
+    assert restored_ev.id == ev.id
+    assert restored_ev.confidence == 0.88
+    assert not hasattr(restored_ev, "unexpected")
+
+    # 3. PaperGapRecord
+    gap = PaperGapRecord(
+        id="gap-1",
+        paper_id="p-200",
+        gap_type="computational_complexity",
+        claim_summary="Quadratic O(N^2) memory complexity in self-attention mechanisms",
+        primary_evidence_id="ev-1",
+        verification_status="corroborated",
+        corroborating_count=3,
+        contradicting_count=0,
+    )
+    assert gap.id == "gap-1"
+    assert gap.paper_id == "p-200"
+    assert gap.gap_type == "computational_complexity"
+    assert gap.claim_summary == "Quadratic O(N^2) memory complexity in self-attention mechanisms"
+    assert gap.primary_evidence_id == "ev-1"
+    assert gap.verification_status == "corroborated"
+    assert gap.corroborating_count == 3
+    assert gap.contradicting_count == 0
+
+    # Defaults check
+    gap_default = PaperGapRecord(
+        id="gap-2",
+        paper_id="p-200",
+        gap_type="unstated_assumption",
+        claim_summary="Assumes infinite memory bandwidth",
+        primary_evidence_id="ev-2",
+    )
+    assert gap_default.verification_status == "candidate"
+    assert gap_default.corroborating_count == 0
+    assert gap_default.contradicting_count == 0
+
+    # verification_status values ('candidate', 'corroborated', 'disputed')
+    gap_disputed = PaperGapRecord(
+        id="gap-3",
+        paper_id="p-200",
+        gap_type="empirical_limitation",
+        claim_summary="Fails on sequence lengths > 8k tokens",
+        primary_evidence_id="ev-2",
+        verification_status="disputed",
+    )
+    assert gap_disputed.verification_status == "disputed"
+
+    # to_dict / from_dict roundtrip
+    gap_dict = gap.to_dict()
+    assert gap_dict["gap_type"] == "computational_complexity"
+    assert gap_dict["verification_status"] == "corroborated"
+    gap_dict["unknown_field"] = "val"
+    restored_gap = PaperGapRecord.from_dict(gap_dict)
+    assert restored_gap.id == gap.id
+    assert restored_gap.claim_summary == gap.claim_summary
+    assert not hasattr(restored_gap, "unknown_field")
