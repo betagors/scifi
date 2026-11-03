@@ -11,6 +11,8 @@ import pytest
 from scifi.literature.models import (
     AuthorRecord,
     CitationRecord,
+    EvidenceRecord,
+    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -159,10 +161,12 @@ def test_generate_markdown_report_structure(lineage_dataset):
     assert "**Topological Depth Span:** 0 to 2" in report
 
     # Section Headers
-    assert "## 1. Executive Summary & Lineage Topology" in report
-    assert "## 2. Intellectual Evolution & Progression" in report
-    assert "## 3. Baseline Summary Table" in report
-    assert "## 4. Standardized BibTeX Entries" in report
+    assert "## Executive Summary" in report
+    assert "## 1. Intellectual Evolution & Lineage" in report
+    assert "## 2. Baseline Summary Table" in report
+    assert "## 3. Evidence-Backed Delta-Novelty Matrix" in report
+    assert "## 4. Traceable Limitations & Research Opportunities" in report
+    assert "## 5. Standardized BibTeX Entries" in report
 
     # Paper details in Section 2
     assert "Vaswani2017Attention" in report
@@ -337,3 +341,182 @@ def test_empty_and_edge_cases():
     sparse_bib = export_bibtex_entries([sparse_paper])
     assert "@article{" in sparse_bib
     assert "Unknown" in sparse_bib
+
+
+def test_report_includes_delta_novelty_matrix_and_evidence(lineage_dataset):
+    papers, citations, depths = lineage_dataset
+    root_paper = papers[0]     # p0-a
+    frontier_paper = papers[3] # p2-a
+
+    ev1 = EvidenceRecord(
+        id="ev-1",
+        paper_id=root_paper.id,
+        evidence_type="citation_context",
+        extracted_text="Foundations of Deep Learning relies on static network graphs and unbounded compute.",
+        extraction_method="citation_context_mining",
+        reporting_paper_id=frontier_paper.id,
+        source_section="Related Work",
+        confidence=0.88,
+    )
+    gap1 = PaperGapRecord(
+        id="gap-1",
+        paper_id=root_paper.id,
+        gap_type="unstated_assumption",
+        claim_summary="Relies on static network graphs and unbounded compute",
+        primary_evidence_id="ev-1",
+        verification_status="corroborated",
+        corroborating_count=2,
+    )
+
+    ev2 = EvidenceRecord(
+        id="ev-2",
+        paper_id=frontier_paper.id,
+        evidence_type="abstract_limitation",
+        extracted_text="However, LLaMA struggles with catastrophic forgetting in long-horizon reasoning.",
+        extraction_method="contrastive_sentence_mining",
+        reporting_paper_id=None,
+        source_section="Abstract",
+        confidence=0.92,
+    )
+    gap2 = PaperGapRecord(
+        id="gap-2",
+        paper_id=frontier_paper.id,
+        gap_type="empirical_limitation",
+        claim_summary="Struggles with catastrophic forgetting in long-horizon reasoning",
+        primary_evidence_id="ev-2",
+        verification_status="candidate",
+        corroborating_count=0,
+    )
+
+    paper_gaps = {
+        root_paper.id: [gap1],
+        frontier_paper.id: [gap2],
+    }
+    evidence_map = {
+        "ev-1": ev1,
+        "ev-2": ev2,
+    }
+
+    report = generate_markdown_report(
+        "Deep Learning & Transformers Lineage",
+        papers,
+        citations,
+        depths,
+        paper_gaps=paper_gaps,
+        evidence_map=evidence_map,
+    )
+
+    # 1. Executive Summary includes total extracted gaps and corroborated findings count
+    assert "**Total Extracted Gaps:** 2 (1 corroborated)" in report
+    assert "2 traceable technical gaps" in report or "2" in report
+    assert "1 independently corroborated" in report or "1 corroborated" in report
+
+    # 2. Section 3: Evidence-Backed Delta-Novelty Matrix
+    assert "## 3. Evidence-Backed Delta-Novelty Matrix" in report
+    matrix_header = "| Evaluation Dimension | Baseline Work [Ref] | Baseline Paradigm / Assumption | Unresolved Gap | Proposed Approach (Yours) |"
+    assert matrix_header in report
+    assert "|---|---|---|---|---|" in report
+
+    # Evaluation Dimensions
+    assert "Theoretical Paradigm" in report
+    assert "Key Assumptions" in report
+    assert "Scalability / Complexity" in report
+    assert "Open Limitations" in report or "Open Limitation" in report
+    assert "Proposed Approach (Yours)" in report
+
+    # Baselines in matrix (foundational root and frontier)
+    assert "Foundations of Deep Learning" in report
+    assert "Llama: Open and Efficient Foundation Language Models" in report
+    assert "Relies on static network graphs and unbounded compute" in report
+
+    # 3. Section 4: Traceable Limitations & Research Opportunities
+    assert "## 4. Traceable Limitations & Research Opportunities" in report
+    assert "[Unstated Assumption]" in report
+    assert "[Corroborated: 2 sources]" in report
+    assert "[Empirical Limitation]" in report
+    assert "[Candidate Finding]" in report
+
+    # Verbatim evidence blockquotes
+    assert '> "Foundations of Deep Learning relies on static network graphs and unbounded compute."' in report
+    assert '> "However, LLaMA struggles with catastrophic forgetting in long-horizon reasoning."' in report
+
+    # Attribution lines
+    assert "*Reported by: [Touvron2023Llama] Hugo Touvron (Section: Related Work)*" in report
+    assert "*Self-reported in author abstract*" in report
+
+
+def test_delta_novelty_matrix_pipe_escaping():
+    paper = PaperRecord(
+        id="p-pipe",
+        title="Architecture | Model A | Model B",
+        year=2023,
+        citation_count=50,
+        authors=[AuthorRecord(id="a1", name="Alice Smith")],
+    )
+    ev = EvidenceRecord(
+        id="ev-pipe",
+        paper_id="p-pipe",
+        evidence_type="citation_context",
+        extracted_text="The system uses A | B pipeline which fails under load.",
+        extraction_method="citation_context_mining",
+    )
+    gap = PaperGapRecord(
+        id="gap-pipe",
+        paper_id="p-pipe",
+        gap_type="unstated_assumption",
+        claim_summary="Uses A | B pipeline with assumptions",
+        primary_evidence_id="ev-pipe",
+        verification_status="corroborated",
+        corroborating_count=2,
+    )
+
+    report = generate_markdown_report(
+        "Pipe Report",
+        [paper],
+        [],
+        {"p-pipe": 0},
+        paper_gaps={"p-pipe": [gap]},
+        evidence_map={"ev-pipe": ev},
+    )
+
+    assert "## 3. Evidence-Backed Delta-Novelty Matrix" in report
+    # Ensure vertical pipes are cleanly escaped as \| in table cells
+    assert r"Architecture \| Model A \| Model B" in report
+    assert r"Uses A \| B pipeline with assumptions" in report or r"A \| B pipeline" in report
+
+
+def test_save_markdown_report_forwards_gaps_and_evidence(tmp_path, lineage_dataset):
+    papers, citations, depths = lineage_dataset
+    gap = PaperGapRecord(
+        id="gap-test",
+        paper_id="p0-a",
+        gap_type="computational_complexity",
+        claim_summary="O(N^2) complexity bottleneck",
+        primary_evidence_id="ev-test",
+        verification_status="corroborated",
+        corroborating_count=3,
+    )
+    ev = EvidenceRecord(
+        id="ev-test",
+        paper_id="p0-a",
+        evidence_type="abstract_limitation",
+        extracted_text="Incurring O(N^2) computational complexity during training.",
+        extraction_method="contrastive_sentence_mining",
+    )
+
+    out_file = tmp_path / "report_with_evidence.md"
+    saved_path = save_markdown_report(
+        out_file,
+        "Lineage with Evidence",
+        papers,
+        citations,
+        depths,
+        paper_gaps={"p0-a": [gap]},
+        evidence_map={"ev-test": ev},
+    )
+
+    assert saved_path == out_file
+    text = saved_path.read_text(encoding="utf-8")
+    assert "## 3. Evidence-Backed Delta-Novelty Matrix" in text
+    assert "## 4. Traceable Limitations & Research Opportunities" in text
+    assert "O(N^2) complexity bottleneck" in text
