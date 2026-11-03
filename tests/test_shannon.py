@@ -3,6 +3,8 @@ from skills.shannon.scripts.test_keywords import (
     compute_title_keyword_overlap,
     compute_abstract_keyword_density,
     evaluate_accessibility,
+    evaluate_academic_seo,
+    evaluate_triage_score,
     tokenize,
 )
 
@@ -56,3 +58,51 @@ def test_evaluate_accessibility_flags_runon_sentences():
     res_normal = evaluate_accessibility(normal_sentence)
     assert res_normal["has_runon_sentences"] is False
     assert res_normal["sentence_count"] == 1
+
+def test_evaluate_academic_seo_frontloading_and_anchoring():
+    # Good SEO: keyphrase in first 65 chars, 10-14 words, keyphrase in lead, middle, end
+    title = "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints"
+    abstract = (
+        "Low Earth orbit satellite constellations rely on decentralized beamforming for inter-satellite links. "
+        "However, high orbital velocities cause severe Doppler shifts that degrade synchronization. "
+        "We introduce an adaptive decentralized beamforming algorithm using Riemannian manifold optimization. "
+        "Simulations demonstrate a 4.2 dB signal-to-noise ratio gain and 28.5% lower phase drift. "
+        "These results confirm that decentralized beamforming enables scalable satellite networking."
+    )
+    keywords = ["satellite constellations", "Doppler shift", "Riemannian manifold", "phase drift"]
+    seo = evaluate_academic_seo(title, abstract, keywords)
+    assert seo["front_loaded"] is True
+    assert seo["sweet_spot_length"] is True
+    assert seo["three_beat_anchoring"] is True
+    assert len(seo["seo_hacks_applied"]) >= 3
+
+def test_triage_score_penalizes_ai_tropes_and_em_dashes():
+    title = "Delving into Deep Learning: A Pivotal Paradigm"
+    abstract = (
+        "It is crucial to note that this paper serves as a testament to deep learning — "
+        "we delve into pivotal architectures to explore a rich tapestry of neural models."
+    )
+    keywords = ["deep learning", "neural networks"]
+    res = evaluate_triage_score(title, abstract, keywords)
+    assert res["scores"]["style_debiasing"]["points"] < 5
+    assert "em_dash" in res["scores"]["style_debiasing"]["penalties"]
+    assert "delve" in res["scores"]["style_debiasing"]["flagged_words"]
+
+def test_triage_score_awards_clean_quantified_abstract():
+    title = "Decentralized Beamforming for Distributed Satellite Clusters under Doppler Constraints"
+    abstract = (
+        "Low Earth orbit satellite constellations require coordinated beamforming. "
+        "However, severe Doppler shift and propagation delays limit existing distributed algorithms. "
+        "We formulate an adaptive synchronization algorithm based on Riemannian manifold optimization. "
+        "Simulations demonstrate a 4.2 dB signal-to-noise ratio improvement and 28.5% reduction in phase drift "
+        "compared to conventional gradient descent. "
+        "These results enable real-time inter-satellite coordination under dynamic orbital geometry."
+    )
+    keywords = ["satellite constellations", "Doppler shift", "Riemannian manifold", "phase drift"]
+    res = evaluate_triage_score(title, abstract, keywords)
+    assert res["total_score"] >= 85
+    assert res["scores"]["gap_precision"]["points"] >= 18
+    assert res["scores"]["algorithmic_specificity"]["points"] >= 18
+    assert res["scores"]["experimental_quantification"]["points"] >= 18
+    assert res["scores"]["style_debiasing"]["points"] == 20
+

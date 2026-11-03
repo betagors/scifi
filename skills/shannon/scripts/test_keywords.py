@@ -191,3 +191,277 @@ def evaluate_accessibility(abstract: str) -> Dict[str, Any]:
         "lead_accessible": lead_accessible,
         "lead_sentence": lead_sentence,
     }
+
+
+BANNED_AI_TROPES = [
+    "delve", "delving", "pivotal", "testament", "tapestry", "seamless", "seamlessly",
+    "groundbreaking", "beacon", "vital", "crucial", "it is crucial to note",
+    "underscores the importance", "revolutionize", "revolutionary"
+]
+
+GAP_MARKERS = [
+    "however", "remains limited", "remain limited", "fails to", "fail to",
+    "bottleneck", "unaddressed", "trade-off", "trade off", "tradeoffs",
+    "challenge", "challenging", "deficiency", "vulnerability", "restricted",
+    "prohibitive", "inadequate", "shortcoming", "obstacle"
+]
+
+ALGORITHM_TERMS = [
+    "algorithm", "framework", "formulation", "formulate", "manifold", "convergence",
+    "matrix", "tensor", "optimization", "optimize", "architecture", "protocol",
+    "scheme", "methodology", "heuristic", "estimator", "pipeline", "decomposition",
+    "gradient", "layer", "model", "network"
+]
+
+
+def evaluate_academic_seo(title: str, abstract: str, keywords: List[str]) -> Dict[str, Any]:
+    """
+    Evaluate academic SEO, discoverability, and visibility tricks:
+    1. Keyphrase front-loading in the first 65 characters of the title.
+    2. Sweet-spot title length (10–14 words, 70–110 characters).
+    3. 3-Beat keyphrase anchoring across abstract (opening, method, conclusion).
+    4. Non-redundant keyword vocabulary expansion.
+    5. Acronym guard (avoids obscure unsearchable abbreviations).
+    """
+    title_words = re.findall(r"\b[A-Za-z0-9-]+\b", title)
+    title_word_count = len(title_words)
+    title_char_count = len(title)
+
+    # 1. Front-loading: Are core topic words placed within first 65 chars?
+    first_65 = title[:65].lower()
+    title_content_tokens = tokenize(title, remove_stopwords=True)
+    first_65_tokens = tokenize(first_65, remove_stopwords=True)
+    front_loaded = len(first_65_tokens) >= 2 or (len(title_content_tokens) > 0 and first_65_tokens and first_65_tokens[0] in title_content_tokens[:2])
+
+    # 2. Sweet-spot title length (10–14 words)
+    sweet_spot_length = 10 <= title_word_count <= 14
+
+    # 3. 3-Beat Keyphrase Anchoring
+    # Extract candidate primary phrases from keywords or title
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", abstract) if s.strip()]
+    anchoring_success = False
+    if len(sentences) >= 3:
+        lead_text = " ".join(sentences[:2]).lower()
+        mid_text = " ".join(sentences[2:-1]).lower() if len(sentences) > 3 else sentences[1].lower()
+        tail_text = sentences[-1].lower()
+
+        # Check candidate phrases (title tokens or keywords)
+        candidate_stems = [normalize_token(t) for t in title_content_tokens[:4]]
+        lead_hits = any(s in lead_text for s in candidate_stems)
+        mid_hits = any(s in mid_text for s in candidate_stems)
+        tail_hits = any(s in tail_text for s in candidate_stems)
+        anchoring_success = lead_hits and mid_hits and tail_hits
+
+    # 4. Acronym check
+    raw_title_words = re.findall(r"\b[A-Z0-9]{2,}\b", title)
+    common_acronyms = {"AI", "CNN", "RNN", "LLM", "NLP", "GPU", "CPU", "FPGA", "UAV", "IoT", "SNR", "SINR", "MIMO", "RIS", "LEO", "GEO", "IEEE", "ACM"}
+    flagged_acronyms = [w for w in raw_title_words if w not in common_acronyms and not w.isdigit()]
+
+    # Collect applied SEO hacks
+    applied_hacks: List[str] = []
+    if front_loaded:
+        applied_hacks.append("Keyphrase front-loaded in first 65 chars of title (safe against snippet truncation)")
+    if sweet_spot_length:
+        applied_hacks.append("10-14 word sweet-spot title length (statistically optimal citation velocity)")
+    if anchoring_success:
+        applied_hacks.append("3-Beat keyphrase anchoring (anchored in context lead, method, and conclusion)")
+    
+    overlap_res = compute_title_keyword_overlap(title, keywords)
+    if overlap_res["overlap_ratio"] < 0.35:
+        applied_hacks.append("Metadata expansion: keywords provide non-redundant indexing surface area")
+
+    return {
+        "front_loaded": front_loaded,
+        "title_first_65_chars": title[:65],
+        "sweet_spot_length": sweet_spot_length,
+        "title_word_count": title_word_count,
+        "title_char_count": title_char_count,
+        "three_beat_anchoring": anchoring_success,
+        "flagged_acronyms": flagged_acronyms,
+        "seo_hacks_applied": applied_hacks,
+    }
+
+
+def score_snippet_readability(title: str) -> Dict[str, Any]:
+    """Score title snippet readability and SEO front-loading (20 points max)."""
+    words = re.findall(r"\b[A-Za-z0-9-]+\b", title)
+    word_count = len(words)
+    points = 20
+    deductions: List[str] = []
+
+    # Optimal length: 10–14 words
+    if word_count < 8:
+        points -= 8
+        deductions.append(f"Title too brief ({word_count} words; target 10-14 words)")
+    elif word_count in (8, 9, 15, 16):
+        points -= 4
+        deductions.append(f"Title slightly off sweet-spot ({word_count} words; target 10-14 words)")
+    elif word_count > 16:
+        points -= 10
+        deductions.append(f"Title too verbose ({word_count} words; causes search truncation)")
+
+    # Title trailing period is bad practice
+    if title.strip().endswith("."):
+        points -= 3
+        deductions.append("Title ends with period")
+
+    # Front loading: first 65 chars
+    first_65_tokens = tokenize(title[:65], remove_stopwords=True)
+    if len(first_65_tokens) < 2:
+        points -= 4
+        deductions.append("Primary domain keyphrase not front-loaded in first 65 characters")
+
+    return {
+        "points": max(0, points),
+        "max_points": 20,
+        "word_count": word_count,
+        "deductions": deductions,
+    }
+
+
+def score_gap_precision(abstract: str) -> Dict[str, Any]:
+    """Score contrastive gap precision and explicit bottleneck definition (20 points max)."""
+    abstract_lower = abstract.lower()
+    points = 0
+    matched_markers = []
+
+    for marker in GAP_MARKERS:
+        if re.search(r"\b" + re.escape(marker) + r"\b", abstract_lower):
+            matched_markers.append(marker)
+
+    if len(matched_markers) >= 2:
+        points = 20
+    elif len(matched_markers) == 1:
+        points = 18
+    else:
+        points = 4
+
+    return {
+        "points": points,
+        "max_points": 20,
+        "matched_markers": matched_markers,
+    }
+
+
+def score_algorithmic_specificity(abstract: str) -> Dict[str, Any]:
+    """Score concrete algorithmic and architectural formulation (20 points max)."""
+    abstract_lower = abstract.lower()
+    matched_terms = []
+
+    for term in ALGORITHM_TERMS:
+        if re.search(r"\b" + re.escape(term) + r"\b", abstract_lower):
+            matched_terms.append(term)
+
+    if len(matched_terms) >= 3:
+        points = 20
+    elif len(matched_terms) >= 1:
+        points = 18
+    else:
+        points = 5
+
+    return {
+        "points": points,
+        "max_points": 20,
+        "matched_terms": matched_terms,
+    }
+
+
+def score_experimental_quantification(abstract: str) -> Dict[str, Any]:
+    """Score empirical quantification, benchmark numbers, units, and metrics (20 points max)."""
+    # Look for quantified percentages, metrics, numbers with scientific units
+    quant_pattern = r"(\b\d+(\.\d+)?\s*(%|dB|ms|s|ns|FLOPS|bps|kbps|mbps|gbps|fps|ghz|mhz|khz|hz|fold|accuracy|gain|reduction|drift|snr|sinr)\b|\b\d+(\.\d+)?%)"
+    matches = re.findall(quant_pattern, abstract, re.IGNORECASE)
+    digit_matches = re.findall(r"\b\d+(\.\d+)?\b", abstract)
+
+    points = 0
+    if len(matches) >= 2:
+        points = 20
+    elif len(matches) >= 1 or len(digit_matches) >= 3:
+        points = 18
+    elif len(digit_matches) >= 1:
+        points = 10
+    else:
+        points = 0
+
+    return {
+        "points": points,
+        "max_points": 20,
+        "quantified_metrics_count": len(matches),
+        "raw_digits_count": len(digit_matches),
+    }
+
+
+def score_style_and_debiasing(title: str, abstract: str) -> Dict[str, Any]:
+    """Score style, accessibility, and strip AI clichés and punctuation flaws (20 points max)."""
+    combined_text = f"{title} {abstract}"
+    combined_lower = combined_text.lower()
+    points = 20
+    penalties: List[str] = []
+    flagged_words: List[str] = []
+
+    # Em dash penalty
+    if "—" in combined_text or "--" in combined_text:
+        points -= 8
+        penalties.append("em_dash")
+
+    # First-person singular pronoun
+    if re.search(r"\b(I|my|myself)\b", combined_text):
+        points -= 5
+        penalties.append("first_person_singular")
+
+    # Banned AI tropes
+    for trope in BANNED_AI_TROPES:
+        if re.search(r"\b" + re.escape(trope) + r"\b", combined_lower):
+            flagged_words.append(trope)
+            points -= 6
+
+    # Accessibility: Check for run-on sentences
+    access = evaluate_accessibility(abstract)
+    if access["has_runon_sentences"]:
+        points -= 4
+        penalties.append("runon_sentences")
+
+    return {
+        "points": max(0, points),
+        "max_points": 20,
+        "penalties": penalties,
+        "flagged_words": flagged_words,
+    }
+
+
+def evaluate_triage_score(title: str, abstract: str, keywords: List[str]) -> Dict[str, Any]:
+    """
+    Calculate the 100-Point Reviewer Triage Score:
+    - Snippet Readability & SEO: 20 pts
+    - Gap Precision: 20 pts
+    - Algorithmic Specificity: 20 pts
+    - Experimental Quantification: 20 pts
+    - Style, Accessibility & AI De-biasing: 20 pts
+    """
+    s_readability = score_snippet_readability(title)
+    s_gap = score_gap_precision(abstract)
+    s_algo = score_algorithmic_specificity(abstract)
+    s_quant = score_experimental_quantification(abstract)
+    s_style = score_style_and_debiasing(title, abstract)
+
+    total = (
+        s_readability["points"] +
+        s_gap["points"] +
+        s_algo["points"] +
+        s_quant["points"] +
+        s_style["points"]
+    )
+
+    return {
+        "total_score": total,
+        "max_score": 100,
+        "status": "PASS" if total >= 70 else "REVISE",
+        "scores": {
+            "snippet_readability": s_readability,
+            "gap_precision": s_gap,
+            "algorithmic_specificity": s_algo,
+            "experimental_quantification": s_quant,
+            "style_debiasing": s_style,
+        }
+    }
+
