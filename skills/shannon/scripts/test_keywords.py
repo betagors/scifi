@@ -465,3 +465,176 @@ def evaluate_triage_score(title: str, abstract: str, keywords: List[str]) -> Dic
         }
     }
 
+
+def compute_title_similarity(candidate: str, existing: str) -> float:
+    """
+    Compute string and token-level similarity between a candidate title and an existing title.
+    Returns a score between 0.0 and 1.0.
+    """
+    c_clean = candidate.strip().lower()
+    e_clean = existing.strip().lower()
+
+    # Direct character sequence ratio
+    seq_ratio = difflib.SequenceMatcher(None, c_clean, e_clean).ratio()
+
+    # Token set Jaccard similarity
+    c_tokens = set(tokenize(c_clean, remove_stopwords=True))
+    e_tokens = set(tokenize(e_clean, remove_stopwords=True))
+    if not c_tokens or not e_tokens:
+        jaccard = 0.0
+    else:
+        intersection = len(c_tokens & e_tokens)
+        union = len(c_tokens | e_tokens)
+        jaccard = intersection / union if union > 0 else 0.0
+
+    # Weighted blend (60% token overlap, 40% sequence match)
+    combined = 0.6 * jaccard + 0.4 * seq_ratio
+    return round(combined, 3)
+
+
+def fetch_json_url(url: str, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+    """Polite HTTP JSON fetcher with User-Agent and timeout."""
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "SciFi-Shannon-Validator/1.0 (mailto:scifi@research.org)"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status == 200:
+                data = response.read().decode("utf-8")
+                return json.loads(data)
+    except Exception:
+        return None
+    return None
+
+
+def query_openalex_titles(title: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Search OpenAlex for published works matching the candidate title."""
+    encoded = urllib.parse.quote(title)
+    url = f"https://api.openalex.org/works?search={encoded}&per_page={limit}"
+    data = fetch_json_url(url)
+    matches: List[Dict[str, Any]] = []
+    if data and "results" in data:
+        for item in data["results"]:
+            t = item.get("title") or ""
+            citations = item.get("cited_by_count", 0)
+            year = item.get("publication_year")
+            venue_info = item.get("primary_location") or {}
+            venue_source = venue_info.get("source") or {}
+            venue = venue_source.get("display_name") or "Unknown Venue"
+            matches.append({
+                "title": t,
+                "citations": citations,
+                "year": year,
+                "venue": venue,
+            })
+    return matches
+
+
+def query_crossref_titles(title: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Fallback search on Crossref for published works matching title."""
+    encoded = urllib.parse.quote(title)
+    url = f"https://api.crossref.org/works?query.title={encoded}&rows={limit}"
+    data = fetch_json_url(url)
+    matches: List[Dict[str, Any]] = []
+    if data and "message" in data and "items" in data["message"]:
+        for item in data["message"]["items"]:
+            t_list = item.get("title", [])
+            t = t_list[0] if t_list else ""
+            citations = item.get("is-referenced-by-count", 0)
+            created = item.get("created", {}).get("date-parts", [[None]])[0][0]
+            container = item.get("container-title", [])
+            venue = container[0] if container else "Unknown Venue"
+            matches.append({
+                "title": t,
+                "citations": citations,
+                "year": created,
+                "venue": venue,
+            })
+    return matches
+
+
+def check_title_collision(title: str, live: bool = False) -> Dict[str, Any]:
+    """
+    Check candidate title against published papers on OpenAlex and Crossref.
+    Categorizes risk:
+    - LOW RISK (<0.60)
+    - MODERATE OVERLAP (0.60–0.85)
+    - HIGH COLLISION (>0.85)
+    """
+    if not live:
+        return {
+            "status": "SKIPPED_OFFLINE",
+            "risk_level": "UNKNOWN",
+            "max_similarity": 0.0,
+            "matches": [],
+        }
+
+    raw_matches = query_openalex_titles(title)
+    if not raw_matches:
+        raw_matches = query_crossref_titles(title)
+
+    scored_matches: List[Dict[str, Any]] = []
+    max_sim = 0.0
+
+    for match in raw_matches:
+        ext_title = match["title"]
+        sim = compute_title_similarity(title, ext_title)
+        if sim > max_sim:
+            max_sim = sim
+        scored_matches.append({
+            "title": ext_title,
+            "similarity": sim,
+            "year": match.get("year"),
+            "citations": match.get("citations"),
+            "venue": match.get("venue"),
+        })
+
+    scored_matches.sort(key=lambda x: x["similarity"], reverse=True)
+
+    if max_sim > 0.85:
+        risk_level = "HIGH COLLISION"
+    elif max_sim >= 0.60:
+        risk_level = "MODERATE OVERLAP"
+    else:
+        risk_level = "LOW RISK"
+
+    return {
+        "status": "LIVE_OK",
+        "risk_level": risk_level,
+        "max_similarity": max_sim,
+        "matches": scored_matches[:5],
+    }
+
+
+def check_keyword_relevance(keywords: List[str], live: bool = False) -> Dict[str, Any]:
+    """
+    Query OpenAlex for candidate keywords to verify subfield hit relevance.
+    """
+    if not live:
+        return {"status": "SKIPPED_OFFLINE", "keyword_insights": {}}
+
+    insights: Dict[str, Any] = {}
+    for kw in keywords[:4]:
+        encoded = urllib.parse.quote(kw)
+        url = f"https://api.openalex.org/works?search={encoded}&per_page=3"
+        data = fetch_json_url(url)
+        venues: List[str] = []
+        if data and "results" in data:
+            for item in data["results"]:
+                loc = item.get("primary_location") or {}
+                src = loc.get("source") or {}
+                vname = src.get("display_name")
+                if vname and vname not in venues:
+                    venues.append(vname)
+        insights[kw] = {
+            "mapped_venues": venues,
+            "subfield_confirmed": len(venues) > 0,
+        }
+
+    return {
+        "status": "LIVE_OK",
+        "keyword_insights": insights,
+    }
+
+

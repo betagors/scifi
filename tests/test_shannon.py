@@ -1,7 +1,11 @@
 import pytest
+from unittest.mock import patch
 from skills.shannon.scripts.test_keywords import (
     compute_title_keyword_overlap,
     compute_abstract_keyword_density,
+    compute_title_similarity,
+    check_title_collision,
+    check_keyword_relevance,
     evaluate_accessibility,
     evaluate_academic_seo,
     evaluate_triage_score,
@@ -105,4 +109,46 @@ def test_triage_score_awards_clean_quantified_abstract():
     assert res["scores"]["algorithmic_specificity"]["points"] >= 18
     assert res["scores"]["experimental_quantification"]["points"] >= 18
     assert res["scores"]["style_debiasing"]["points"] == 20
+
+def test_title_similarity_computation():
+    t1 = "Federated Learning for Edge Computing under Latency Constraints"
+    t2 = "Federated Learning for Edge Computing with Latency Constraints"
+    t3 = "Deep Reinforcement Learning for Autonomous Drone Navigation"
+    assert compute_title_similarity(t1, t2) > 0.85
+    assert compute_title_similarity(t1, t3) < 0.40
+
+def test_title_collision_offline_mode():
+    result = check_title_collision("Adaptive Beamforming for Satellites", live=False)
+    assert result["status"] == "SKIPPED_OFFLINE"
+
+def test_title_collision_mocked_openalex_response():
+    mock_payload = {
+        "results": [
+            {
+                "title": "Adaptive Beamforming for Low Earth Orbit Satellites",
+                "cited_by_count": 42,
+                "publication_year": 2023,
+                "primary_location": {"source": {"display_name": "IEEE Transactions on Aerospace"}}
+            }
+        ]
+    }
+    with patch("skills.shannon.scripts.test_keywords.fetch_json_url", return_value=mock_payload):
+        res = check_title_collision("Adaptive Beamforming for Low Earth Orbit Satellites", live=True)
+        assert res["risk_level"] in ("MODERATE OVERLAP", "HIGH COLLISION")
+        assert len(res["matches"]) == 1
+
+def test_keyword_relevance_mocked_openalex_response():
+    mock_payload = {
+        "results": [
+            {
+                "title": "A Survey on Federated Learning",
+                "primary_location": {"source": {"display_name": "IEEE Communications Surveys & Tutorials"}}
+            }
+        ]
+    }
+    with patch("skills.shannon.scripts.test_keywords.fetch_json_url", return_value=mock_payload):
+        res = check_keyword_relevance(["federated learning"], live=True)
+        assert res["status"] == "LIVE_OK"
+        assert "federated learning" in res["keyword_insights"]
+
 
