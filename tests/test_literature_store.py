@@ -11,8 +11,11 @@ import pytest
 
 from scifi.literature.models import (
     AuthorRecord,
+    CitationContextRecord,
     CitationRecord,
+    EvidenceRecord,
     GraphSessionRecord,
+    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -360,3 +363,213 @@ def test_read_only_query_multi_statement_and_empty(tmp_path: Path):
         with pytest.raises(PermissionError):
             store.execute_read_query("SELECT 1; DROP TABLE papers;")
 
+
+
+def test_store_evidence_and_gap_persistence(tmp_path: Path):
+    db_path = tmp_path / "test_evidence.db"
+    store = LiteratureStore(db_path)
+    store.create_or_get_graph("g-1", "Test Graph")
+
+    # Save citation context
+    ctx = CitationContextRecord(
+        id="ctx-1",
+        source_paper_id="p-2",
+        target_paper_id="p-1",
+        context_text="Method A scales quadratically with sequence length.",
+        section_name="Related Work",
+        intent="methodology",
+        is_influential=True,
+    )
+    store.save_citation_context(ctx)
+
+    retrieved_contexts = store.get_citation_contexts("p-2", "p-1")
+    assert len(retrieved_contexts) == 1
+    assert retrieved_contexts[0].id == "ctx-1"
+    assert retrieved_contexts[0].source_paper_id == "p-2"
+    assert retrieved_contexts[0].target_paper_id == "p-1"
+    assert retrieved_contexts[0].context_text == ctx.context_text
+    assert retrieved_contexts[0].section_name == "Related Work"
+    assert retrieved_contexts[0].intent == "methodology"
+    assert retrieved_contexts[0].is_influential is True
+
+    # Save evidence record
+    ev = EvidenceRecord(
+        id="ev-1",
+        paper_id="p-1",
+        reporting_paper_id="p-2",
+        evidence_type="citation_context",
+        source_section="Related Work",
+        extracted_text="Method A scales quadratically with sequence length.",
+        extraction_method="semantic_scholar_api",
+        confidence=0.95,
+    )
+    store.save_evidence(ev)
+
+    retrieved_ev = store.get_paper_evidence("p-1")
+    assert len(retrieved_ev) == 1
+    assert retrieved_ev[0].id == "ev-1"
+    assert retrieved_ev[0].extracted_text == ev.extracted_text
+    assert retrieved_ev[0].reporting_paper_id == "p-2"
+    assert retrieved_ev[0].confidence == 0.95
+
+    # Save paper gap
+    gap = PaperGapRecord(
+        id="gap-1",
+        paper_id="p-1",
+        gap_type="computational_complexity",
+        claim_summary="Scales quadratically with sequence length",
+        primary_evidence_id="ev-1",
+        verification_status="corroborated",
+        corroborating_count=2,
+        contradicting_count=0,
+    )
+    store.save_paper_gap(gap)
+
+    retrieved_gaps = store.get_paper_gaps("p-1")
+    assert len(retrieved_gaps) == 1
+    assert retrieved_gaps[0].id == "gap-1"
+    assert retrieved_gaps[0].verification_status == "corroborated"
+    assert retrieved_gaps[0].corroborating_count == 2
+
+    # Verify upsert updates existing records
+    ev_updated = EvidenceRecord(
+        id="ev-1",
+        paper_id="p-1",
+        reporting_paper_id="p-2",
+        evidence_type="citation_context",
+        source_section="Discussion",
+        extracted_text="Method A scales quadratically and causes OOM.",
+        extraction_method="manual_curation",
+        confidence=0.99,
+    )
+    store.save_evidence(ev_updated)
+
+    gap_updated = PaperGapRecord(
+        id="gap-1",
+        paper_id="p-1",
+        gap_type="computational_complexity",
+        claim_summary="Quadratic scaling causes OOM",
+        primary_evidence_id="ev-1",
+        verification_status="corroborated",
+        corroborating_count=3,
+        contradicting_count=1,
+    )
+    store.save_paper_gap(gap_updated)
+
+    retrieved_ev2 = store.get_paper_evidence("p-1")
+    assert len(retrieved_ev2) == 1
+    assert retrieved_ev2[0].extracted_text == "Method A scales quadratically and causes OOM."
+    assert retrieved_ev2[0].source_section == "Discussion"
+    assert retrieved_ev2[0].confidence == 0.99
+
+    retrieved_gaps2 = store.get_paper_gaps("p-1")
+    assert len(retrieved_gaps2) == 1
+    assert retrieved_gaps2[0].claim_summary == "Quadratic scaling causes OOM"
+    assert retrieved_gaps2[0].corroborating_count == 3
+    assert retrieved_gaps2[0].contradicting_count == 1
+
+    store.close()
+
+
+def test_store_graph_scoped_gaps_and_evidence(tmp_path: Path):
+    db_path = tmp_path / "test_graph_scoped.db"
+    with LiteratureStore(db_path) as store:
+        # Create two distinct graphs
+        store.create_or_get_graph("g-alpha", "Alpha Graph")
+        store.create_or_get_graph("g-beta", "Beta Graph")
+
+        # Papers in alpha
+        p_a1 = PaperRecord(id="p-a1", title="Alpha Paper 1")
+        p_a2 = PaperRecord(id="p-a2", title="Alpha Paper 2")
+        store.save_paper(p_a1, graph_id="g-alpha")
+        store.save_paper(p_a2, graph_id="g-alpha")
+
+        # Paper in beta
+        p_b1 = PaperRecord(id="p-b1", title="Beta Paper 1")
+        store.save_paper(p_b1, graph_id="g-beta")
+
+        # Evidence in alpha
+        ev_a1 = EvidenceRecord(
+            id="ev-a1",
+            paper_id="p-a1",
+            evidence_type="limitation",
+            extracted_text="Memory bound on long contexts.",
+            extraction_method="abstract_heuristic",
+        )
+        ev_a2 = EvidenceRecord(
+            id="ev-a2",
+            paper_id="p-a2",
+            evidence_type="unstated_assumption",
+            extracted_text="Assumes synchronized clocks.",
+            extraction_method="rule_based",
+        )
+        store.save_evidence(ev_a1)
+        store.save_evidence(ev_a2)
+
+        # Gaps in alpha
+        gap_a1 = PaperGapRecord(
+            id="gap-a1",
+            paper_id="p-a1",
+            gap_type="memory_consumption",
+            claim_summary="High memory consumption",
+            primary_evidence_id="ev-a1",
+        )
+        gap_a2 = PaperGapRecord(
+            id="gap-a2",
+            paper_id="p-a2",
+            gap_type="unstated_assumption",
+            claim_summary="Assumes synchrony",
+            primary_evidence_id="ev-a2",
+        )
+        store.save_paper_gap(gap_a1)
+        store.save_paper_gap(gap_a2)
+
+        # Evidence & Gap in beta
+        ev_b1 = EvidenceRecord(
+            id="ev-b1",
+            paper_id="p-b1",
+            evidence_type="limitation",
+            extracted_text="Limited to 2D inputs.",
+            extraction_method="abstract_heuristic",
+        )
+        gap_b1 = PaperGapRecord(
+            id="gap-b1",
+            paper_id="p-b1",
+            gap_type="dimensionality",
+            claim_summary="2D input constraint",
+            primary_evidence_id="ev-b1",
+        )
+        store.save_evidence(ev_b1)
+        store.save_paper_gap(gap_b1)
+
+        # Test graph-scoped gaps
+        alpha_gaps = store.get_graph_gaps("g-alpha")
+        assert len(alpha_gaps) == 2
+        assert "p-a1" in alpha_gaps
+        assert "p-a2" in alpha_gaps
+        assert len(alpha_gaps["p-a1"]) == 1
+        assert alpha_gaps["p-a1"][0].id == "gap-a1"
+        assert "p-b1" not in alpha_gaps
+
+        beta_gaps = store.get_graph_gaps("g-beta")
+        assert len(beta_gaps) == 1
+        assert "p-b1" in beta_gaps
+        assert "p-a1" not in beta_gaps
+
+        # Test graph-scoped evidence
+        alpha_ev = store.get_graph_evidence("g-alpha")
+        assert len(alpha_ev) == 2
+        assert "ev-a1" in alpha_ev
+        assert "ev-a2" in alpha_ev
+        assert "ev-b1" not in alpha_ev
+        assert isinstance(alpha_ev["ev-a1"], EvidenceRecord)
+
+        beta_ev = store.get_graph_evidence("g-beta")
+        assert len(beta_ev) == 1
+        assert "ev-b1" in beta_ev
+        assert "ev-a1" not in beta_ev
+
+        # Empty graph returns empty dicts
+        store.create_or_get_graph("g-empty", "Empty Graph")
+        assert store.get_graph_gaps("g-empty") == {}
+        assert store.get_graph_evidence("g-empty") == {}

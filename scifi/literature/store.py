@@ -14,8 +14,11 @@ from typing import Any, Iterator, Optional
 
 from scifi.literature.models import (
     AuthorRecord,
+    CitationContextRecord,
     CitationRecord,
+    EvidenceRecord,
     GraphSessionRecord,
+    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -678,6 +681,319 @@ class LiteratureStore:
                 )
                 for row in rows
             ]
+
+    def save_citation_context(self, context: CitationContextRecord) -> None:
+        """
+        Persist an in-text citation context record between two papers.
+        Ensures foreign key requirements are satisfied and uses upsert semantics.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (context.source_paper_id, context.source_paper_id),
+            )
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (context.target_paper_id, context.target_paper_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO citation_contexts (
+                    id, source_paper_id, target_paper_id, context_text,
+                    section_name, intent, is_influential
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    source_paper_id = excluded.source_paper_id,
+                    target_paper_id = excluded.target_paper_id,
+                    context_text = excluded.context_text,
+                    section_name = excluded.section_name,
+                    intent = excluded.intent,
+                    is_influential = excluded.is_influential
+                """,
+                (
+                    context.id,
+                    context.source_paper_id,
+                    context.target_paper_id,
+                    context.context_text,
+                    context.section_name,
+                    context.intent,
+                    int(context.is_influential),
+                ),
+            )
+
+    def save_evidence(self, evidence: EvidenceRecord) -> None:
+        """
+        Persist an extracted evidence record into the evidence provenance registry.
+        Ensures foreign key requirements are satisfied and uses upsert semantics.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (evidence.paper_id, evidence.paper_id),
+            )
+            if evidence.reporting_paper_id:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                    (evidence.reporting_paper_id, evidence.reporting_paper_id),
+                )
+            if evidence.retrieved_at is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO evidence (
+                        id, paper_id, reporting_paper_id, evidence_type,
+                        source_section, source_location, extracted_text,
+                        extraction_method, confidence, retrieved_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        paper_id = excluded.paper_id,
+                        reporting_paper_id = excluded.reporting_paper_id,
+                        evidence_type = excluded.evidence_type,
+                        source_section = excluded.source_section,
+                        source_location = excluded.source_location,
+                        extracted_text = excluded.extracted_text,
+                        extraction_method = excluded.extraction_method,
+                        confidence = excluded.confidence,
+                        retrieved_at = excluded.retrieved_at
+                    """,
+                    (
+                        evidence.id,
+                        evidence.paper_id,
+                        evidence.reporting_paper_id,
+                        evidence.evidence_type,
+                        evidence.source_section,
+                        evidence.source_location,
+                        evidence.extracted_text,
+                        evidence.extraction_method,
+                        evidence.confidence,
+                        evidence.retrieved_at,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO evidence (
+                        id, paper_id, reporting_paper_id, evidence_type,
+                        source_section, source_location, extracted_text,
+                        extraction_method, confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        paper_id = excluded.paper_id,
+                        reporting_paper_id = excluded.reporting_paper_id,
+                        evidence_type = excluded.evidence_type,
+                        source_section = excluded.source_section,
+                        source_location = excluded.source_location,
+                        extracted_text = excluded.extracted_text,
+                        extraction_method = excluded.extraction_method,
+                        confidence = excluded.confidence
+                    """,
+                    (
+                        evidence.id,
+                        evidence.paper_id,
+                        evidence.reporting_paper_id,
+                        evidence.evidence_type,
+                        evidence.source_section,
+                        evidence.source_location,
+                        evidence.extracted_text,
+                        evidence.extraction_method,
+                        evidence.confidence,
+                    ),
+                )
+
+    def save_paper_gap(self, gap: PaperGapRecord) -> None:
+        """
+        Persist a candidate or corroborated research gap record.
+        Ensures foreign key requirements are satisfied and uses upsert semantics.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (gap.paper_id, gap.paper_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO paper_gaps (
+                    id, paper_id, gap_type, claim_summary,
+                    primary_evidence_id, verification_status,
+                    corroborating_count, contradicting_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    gap_type = excluded.gap_type,
+                    claim_summary = excluded.claim_summary,
+                    primary_evidence_id = excluded.primary_evidence_id,
+                    verification_status = excluded.verification_status,
+                    corroborating_count = excluded.corroborating_count,
+                    contradicting_count = excluded.contradicting_count
+                """,
+                (
+                    gap.id,
+                    gap.paper_id,
+                    gap.gap_type,
+                    gap.claim_summary,
+                    gap.primary_evidence_id,
+                    gap.verification_status,
+                    gap.corroborating_count,
+                    gap.contradicting_count,
+                ),
+            )
+
+    def get_paper_evidence(self, paper_id: str) -> list[EvidenceRecord]:
+        """
+        Retrieve all evidence records associated with a given paper ID.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, paper_id, reporting_paper_id, evidence_type,
+                       source_section, source_location, extracted_text,
+                       extraction_method, confidence, retrieved_at
+                FROM evidence
+                WHERE paper_id = ?
+                ORDER BY retrieved_at ASC, id ASC
+                """,
+                (paper_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_evidence(r) for r in rows]
+
+    def get_paper_gaps(self, paper_id: str) -> list[PaperGapRecord]:
+        """
+        Retrieve all candidate and corroborated research gaps for a given paper ID.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, paper_id, gap_type, claim_summary,
+                       primary_evidence_id, verification_status,
+                       corroborating_count, contradicting_count
+                FROM paper_gaps
+                WHERE paper_id = ?
+                ORDER BY id ASC
+                """,
+                (paper_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_gap(r) for r in rows]
+
+    def get_citation_contexts(
+        self, source_id: str, target_id: str
+    ) -> list[CitationContextRecord]:
+        """
+        Retrieve granular in-text citation contexts between source and target papers.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, source_paper_id, target_paper_id, context_text,
+                   section_name, intent, is_influential
+                FROM citation_contexts
+                WHERE source_paper_id = ? AND target_paper_id = ?
+                ORDER BY id ASC
+                """,
+                (source_id, target_id),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_citation_context(r) for r in rows]
+
+    def get_graph_gaps(self, graph_id: str) -> dict[str, list[PaperGapRecord]]:
+        """
+        Retrieve all research gaps whose paper_id belongs to the specified graph session,
+        grouped by paper_id.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT pg.id, pg.paper_id, pg.gap_type, pg.claim_summary,
+                       pg.primary_evidence_id, pg.verification_status,
+                       pg.corroborating_count, pg.contradicting_count
+                FROM paper_gaps pg
+                JOIN graph_papers gp ON pg.paper_id = gp.paper_id
+                WHERE gp.graph_id = ?
+                ORDER BY pg.paper_id ASC, pg.id ASC
+                """,
+                (graph_id,),
+            )
+            rows = cursor.fetchall()
+            gaps_by_paper: dict[str, list[PaperGapRecord]] = {}
+            for r in rows:
+                gap = self._row_to_gap(r)
+                gaps_by_paper.setdefault(gap.paper_id, []).append(gap)
+            return gaps_by_paper
+
+    def get_graph_evidence(self, graph_id: str) -> dict[str, EvidenceRecord]:
+        """
+        Retrieve all evidence records referenced by gaps or papers in the given graph session
+        as an {id: EvidenceRecord} dictionary.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT e.id, e.paper_id, e.reporting_paper_id, e.evidence_type,
+                       e.source_section, e.source_location, e.extracted_text,
+                       e.extraction_method, e.confidence, e.retrieved_at
+                FROM evidence e
+                WHERE e.paper_id IN (SELECT paper_id FROM graph_papers WHERE graph_id = ?)
+                   OR e.reporting_paper_id IN (SELECT paper_id FROM graph_papers WHERE graph_id = ?)
+                   OR e.id IN (
+                       SELECT pg.primary_evidence_id
+                       FROM paper_gaps pg
+                       JOIN graph_papers gp ON pg.paper_id = gp.paper_id
+                       WHERE gp.graph_id = ?
+                   )
+                ORDER BY e.retrieved_at ASC, e.id ASC
+                """,
+                (graph_id, graph_id, graph_id),
+            )
+            rows = cursor.fetchall()
+            return {r[0]: self._row_to_evidence(r) for r in rows}
+
+    @staticmethod
+    def _row_to_evidence(row: tuple[Any, ...]) -> EvidenceRecord:
+        return EvidenceRecord(
+            id=row[0],
+            paper_id=row[1],
+            reporting_paper_id=row[2],
+            evidence_type=row[3],
+            source_section=row[4],
+            source_location=row[5],
+            extracted_text=row[6],
+            extraction_method=row[7],
+            confidence=float(row[8]) if row[8] is not None else None,
+            retrieved_at=str(row[9]) if row[9] is not None else None,
+        )
+
+    @staticmethod
+    def _row_to_gap(row: tuple[Any, ...]) -> PaperGapRecord:
+        return PaperGapRecord(
+            id=row[0],
+            paper_id=row[1],
+            gap_type=row[2],
+            claim_summary=row[3],
+            primary_evidence_id=row[4],
+            verification_status=row[5],
+            corroborating_count=row[6] or 0,
+            contradicting_count=row[7] or 0,
+        )
+
+    @staticmethod
+    def _row_to_citation_context(row: tuple[Any, ...]) -> CitationContextRecord:
+        return CitationContextRecord(
+            id=row[0],
+            source_paper_id=row[1],
+            target_paper_id=row[2],
+            context_text=row[3],
+            section_name=row[4],
+            intent=row[5],
+            is_influential=bool(row[6]),
+        )
 
     def execute_read_query(self, query_sql: str) -> list[dict[str, Any]]:
         """
