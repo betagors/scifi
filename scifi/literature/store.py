@@ -14,8 +14,12 @@ from typing import Any, Iterator, Optional
 
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationContextRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     GraphSessionRecord,
     PaperGapRecord,
@@ -199,22 +203,42 @@ CREATE TABLE IF NOT EXISTS paper_gaps (
 CREATE TABLE IF NOT EXISTS benchmarks (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    task_type TEXT NOT NULL,
-    domain TEXT NOT NULL
+    domain TEXT,
+    canonical_url TEXT,
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now', 'utc'))
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_metrics (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    goal TEXT NOT NULL DEFAULT 'maximize',
+    unit TEXT,
+    description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_conditions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    dataset_split TEXT DEFAULT 'test',
+    hardware TEXT,
+    notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS benchmark_results (
     id TEXT PRIMARY KEY,
-    benchmark_id TEXT NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
     paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
-    version_id TEXT REFERENCES paper_versions(id) ON DELETE SET NULL,
-    metric_name TEXT NOT NULL,
+    benchmark_id TEXT NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    metric_id TEXT NOT NULL REFERENCES evaluation_metrics(id) ON DELETE CASCADE,
+    condition_id TEXT REFERENCES evaluation_conditions(id) ON DELETE SET NULL,
     metric_value REAL NOT NULL,
-    is_higher_better BOOLEAN NOT NULL DEFAULT 1,
-    evaluation_conditions TEXT,
-    evidence_id TEXT REFERENCES evidence(id) ON DELETE RESTRICT,
-    is_verified_sota BOOLEAN DEFAULT 0,
-    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    is_sota INTEGER DEFAULT 0,
+    rank INTEGER,
+    evidence_id TEXT REFERENCES evidence(id) ON DELETE SET NULL,
+    table_or_figure TEXT,
+    result_date TEXT,
+    provenance_source TEXT DEFAULT 'author_reported',
+    created_at TEXT DEFAULT (datetime('now', 'utc'))
 );
 
 -- Performance Indexes
@@ -224,6 +248,9 @@ CREATE INDEX IF NOT EXISTS idx_paper_identifiers_paper ON paper_identifiers(pape
 CREATE INDEX IF NOT EXISTS idx_paper_authors_paper ON paper_authors(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_versions_paper ON paper_versions(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_locations_paper ON paper_locations(paper_id);
+CREATE INDEX IF NOT EXISTS idx_bench_results_paper ON benchmark_results(paper_id);
+CREATE INDEX IF NOT EXISTS idx_bench_results_bench ON benchmark_results(benchmark_id);
+CREATE INDEX IF NOT EXISTS idx_bench_results_sota ON benchmark_results(benchmark_id, metric_id, is_sota);
 """
 
 
@@ -242,6 +269,7 @@ class LiteratureStore:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.RLock()
+        self.write_lock = self._lock
         self.conn = sqlite3.connect(
             str(self.db_path),
             timeout=5.0,
@@ -260,7 +288,18 @@ class LiteratureStore:
     def _init_db(self) -> None:
         """Create tables, foreign keys, and indexes if not already existing."""
         with self._lock:
+            # Upgrade legacy prototype benchmarks/benchmark_results tables if present
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='benchmarks'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(benchmarks)")
+                cols = {row[1] for row in cursor.fetchall()}
+                if "canonical_url" not in cols:
+                    self.conn.execute("DROP TABLE IF EXISTS benchmark_results")
+                    self.conn.execute("DROP TABLE IF EXISTS benchmarks")
             self.conn.executescript(SCHEMA_SQL)
+
+    _init_schema = _init_db
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -840,6 +879,141 @@ class LiteratureStore:
                 ),
             )
 
+    def save_benchmark(self, benchmark: BenchmarkRecord) -> None:
+        """
+        Persist a benchmark dataset or suite record using upsert semantics.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO benchmarks (id, name, domain, canonical_url, description)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    domain = coalesce(excluded.domain, benchmarks.domain),
+                    canonical_url = coalesce(excluded.canonical_url, benchmarks.canonical_url),
+                    description = coalesce(excluded.description, benchmarks.description)
+                """,
+                (
+                    benchmark.id,
+                    benchmark.name,
+                    benchmark.domain,
+                    benchmark.canonical_url,
+                    benchmark.description,
+                ),
+            )
+
+    def save_evaluation_metric(self, metric: EvaluationMetricRecord) -> None:
+        """
+        Persist an evaluation metric definition using upsert semantics.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO evaluation_metrics (id, name, goal, unit, description)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    goal = excluded.goal,
+                    unit = coalesce(excluded.unit, evaluation_metrics.unit),
+                    description = coalesce(excluded.description, evaluation_metrics.description)
+                """,
+                (
+                    metric.id,
+                    metric.name,
+                    metric.goal,
+                    metric.unit,
+                    metric.description,
+                ),
+            )
+
+    def save_evaluation_condition(self, condition: EvaluationConditionRecord) -> None:
+        """
+        Persist an evaluation condition/protocol record using upsert semantics.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO evaluation_conditions (id, name, dataset_split, hardware, notes)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    dataset_split = coalesce(excluded.dataset_split, evaluation_conditions.dataset_split),
+                    hardware = coalesce(excluded.hardware, evaluation_conditions.hardware),
+                    notes = coalesce(excluded.notes, evaluation_conditions.notes)
+                """,
+                (
+                    condition.id,
+                    condition.name,
+                    condition.dataset_split,
+                    condition.hardware,
+                    condition.notes,
+                ),
+            )
+
+    def save_benchmark_result(self, result: BenchmarkResultRecord) -> None:
+        """
+        Persist an individual benchmark score/result with full provenance and upsert semantics.
+        Ensures foreign key dependencies are satisfied.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (result.paper_id, result.paper_id),
+            )
+            cursor.execute(
+                "INSERT OR IGNORE INTO benchmarks (id, name) VALUES (?, ?)",
+                (result.benchmark_id, result.benchmark_id),
+            )
+            cursor.execute(
+                "INSERT OR IGNORE INTO evaluation_metrics (id, name) VALUES (?, ?)",
+                (result.metric_id, result.metric_id),
+            )
+            if result.condition_id:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO evaluation_conditions (id, name) VALUES (?, ?)",
+                    (result.condition_id, result.condition_id),
+                )
+            cursor.execute(
+                """
+                INSERT INTO benchmark_results (
+                    id, paper_id, benchmark_id, metric_id, condition_id,
+                    metric_value, is_sota, rank, evidence_id, table_or_figure,
+                    result_date, provenance_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    benchmark_id = excluded.benchmark_id,
+                    metric_id = excluded.metric_id,
+                    condition_id = excluded.condition_id,
+                    metric_value = excluded.metric_value,
+                    is_sota = excluded.is_sota,
+                    rank = excluded.rank,
+                    evidence_id = excluded.evidence_id,
+                    table_or_figure = excluded.table_or_figure,
+                    result_date = excluded.result_date,
+                    provenance_source = excluded.provenance_source
+                """,
+                (
+                    result.id,
+                    result.paper_id,
+                    result.benchmark_id,
+                    result.metric_id,
+                    result.condition_id,
+                    result.metric_value,
+                    int(result.is_sota),
+                    result.rank,
+                    result.evidence_id,
+                    result.table_or_figure,
+                    result.result_date,
+                    result.provenance_source,
+                ),
+            )
+
     def get_paper_evidence(self, paper_id: str) -> list[EvidenceRecord]:
         """
         Retrieve all evidence records associated with a given paper ID.
@@ -993,6 +1167,191 @@ class LiteratureStore:
             section_name=row[4],
             intent=row[5],
             is_influential=bool(row[6]),
+        )
+
+    def get_paper_benchmark_results(self, paper_id: str) -> list[BenchmarkResultRecord]:
+        """
+        Retrieve all benchmark results associated with a given paper ID,
+        ordered by metric_value DESC.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, paper_id, benchmark_id, metric_id, condition_id,
+                       metric_value, is_sota, rank, evidence_id, table_or_figure,
+                       result_date, provenance_source
+                FROM benchmark_results
+                WHERE paper_id = ?
+                ORDER BY metric_value DESC, id ASC
+                """,
+                (paper_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_benchmark_result(r) for r in rows]
+
+    def get_graph_benchmark_results(
+        self, graph_id: str
+    ) -> dict[str, list[BenchmarkResultRecord]]:
+        """
+        Retrieve all benchmark results for papers belonging to the specified graph session,
+        grouped by paper_id.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT br.id, br.paper_id, br.benchmark_id, br.metric_id, br.condition_id,
+                       br.metric_value, br.is_sota, br.rank, br.evidence_id, br.table_or_figure,
+                       br.result_date, br.provenance_source
+                FROM benchmark_results br
+                JOIN graph_papers gp ON br.paper_id = gp.paper_id
+                WHERE gp.graph_id = ?
+                ORDER BY br.paper_id ASC, br.metric_value DESC, br.id ASC
+                """,
+                (graph_id,),
+            )
+            rows = cursor.fetchall()
+            results_by_paper: dict[str, list[BenchmarkResultRecord]] = {}
+            for r in rows:
+                result = self._row_to_benchmark_result(r)
+                results_by_paper.setdefault(result.paper_id, []).append(result)
+            return results_by_paper
+
+    def get_graph_benchmarks(self, graph_id: str) -> dict[str, BenchmarkRecord]:
+        """
+        Retrieve all benchmarks referenced by results for papers in the given graph session
+        as a {benchmark_id: BenchmarkRecord} mapping.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT b.id, b.name, b.domain, b.canonical_url, b.description
+                FROM benchmarks b
+                JOIN benchmark_results br ON b.id = br.benchmark_id
+                JOIN graph_papers gp ON br.paper_id = gp.paper_id
+                WHERE gp.graph_id = ?
+                ORDER BY b.name ASC, b.id ASC
+                """,
+                (graph_id,),
+            )
+            rows = cursor.fetchall()
+            return {r[0]: self._row_to_benchmark(r) for r in rows}
+
+    def get_graph_metrics(self, graph_id: str) -> dict[str, EvaluationMetricRecord]:
+        """
+        Retrieve all evaluation metrics referenced by results for papers in the given graph session
+        as a {metric_id: EvaluationMetricRecord} mapping.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT m.id, m.name, m.goal, m.unit, m.description
+                FROM evaluation_metrics m
+                JOIN benchmark_results br ON m.id = br.metric_id
+                JOIN graph_papers gp ON br.paper_id = gp.paper_id
+                WHERE gp.graph_id = ?
+                ORDER BY m.name ASC, m.id ASC
+                """,
+                (graph_id,),
+            )
+            rows = cursor.fetchall()
+            return {r[0]: self._row_to_metric(r) for r in rows}
+
+    def get_graph_conditions(self, graph_id: str) -> dict[str, EvaluationConditionRecord]:
+        """
+        Retrieve all evaluation conditions referenced by results for papers in the given graph session
+        as a {condition_id: EvaluationConditionRecord} mapping.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT c.id, c.name, c.dataset_split, c.hardware, c.notes
+                FROM evaluation_conditions c
+                JOIN benchmark_results br ON c.id = br.condition_id
+                JOIN graph_papers gp ON br.paper_id = gp.paper_id
+                WHERE gp.graph_id = ?
+                ORDER BY c.name ASC, c.id ASC
+                """,
+                (graph_id,),
+            )
+            rows = cursor.fetchall()
+            return {r[0]: self._row_to_condition(r) for r in rows}
+
+    def get_sota_leaders(
+        self, benchmark_id: str, metric_id: str
+    ) -> list[BenchmarkResultRecord]:
+        """
+        Retrieve all benchmark results marked as is_sota = 1 for the specified benchmark and metric.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT br.id, br.paper_id, br.benchmark_id, br.metric_id, br.condition_id,
+                       br.metric_value, br.is_sota, br.rank, br.evidence_id, br.table_or_figure,
+                       br.result_date, br.provenance_source
+                FROM benchmark_results br
+                LEFT JOIN evaluation_metrics m ON br.metric_id = m.id
+                WHERE br.benchmark_id = ? AND br.metric_id = ? AND br.is_sota = 1
+                ORDER BY
+                    CASE WHEN m.goal = 'minimize' THEN br.metric_value END ASC,
+                    CASE WHEN m.goal != 'minimize' OR m.goal IS NULL THEN br.metric_value END DESC,
+                    br.id ASC
+                """,
+                (benchmark_id, metric_id),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_benchmark_result(r) for r in rows]
+
+    @staticmethod
+    def _row_to_benchmark(row: tuple[Any, ...]) -> BenchmarkRecord:
+        return BenchmarkRecord(
+            id=row[0],
+            name=row[1],
+            domain=row[2] if row[2] is not None else "",
+            canonical_url=row[3],
+            description=row[4],
+        )
+
+    @staticmethod
+    def _row_to_metric(row: tuple[Any, ...]) -> EvaluationMetricRecord:
+        return EvaluationMetricRecord(
+            id=row[0],
+            name=row[1],
+            goal=row[2] or "maximize",
+            unit=row[3],
+            description=row[4],
+        )
+
+    @staticmethod
+    def _row_to_condition(row: tuple[Any, ...]) -> EvaluationConditionRecord:
+        return EvaluationConditionRecord(
+            id=row[0],
+            name=row[1],
+            dataset_split=row[2] if row[2] is not None else "test",
+            hardware=row[3],
+            notes=row[4],
+        )
+
+    @staticmethod
+    def _row_to_benchmark_result(row: tuple[Any, ...]) -> BenchmarkResultRecord:
+        return BenchmarkResultRecord(
+            id=row[0],
+            paper_id=row[1],
+            benchmark_id=row[2],
+            metric_id=row[3],
+            condition_id=row[4],
+            metric_value=float(row[5]) if row[5] is not None else 0.0,
+            is_sota=bool(row[6]),
+            rank=int(row[7]) if row[7] is not None else None,
+            evidence_id=row[8],
+            table_or_figure=row[9],
+            result_date=str(row[10]) if row[10] is not None else None,
+            provenance_source=row[11] if row[11] is not None else "author_reported",
         )
 
     def execute_read_query(self, query_sql: str) -> list[dict[str, Any]]:

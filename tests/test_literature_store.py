@@ -11,8 +11,12 @@ import pytest
 
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationContextRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     GraphSessionRecord,
     PaperGapRecord,
@@ -573,3 +577,153 @@ def test_store_graph_scoped_gaps_and_evidence(tmp_path: Path):
         store.create_or_get_graph("g-empty", "Empty Graph")
         assert store.get_graph_gaps("g-empty") == {}
         assert store.get_graph_evidence("g-empty") == {}
+
+
+def test_store_saves_and_retrieves_benchmarks_and_results(tmp_path: Path):
+    db_path = tmp_path / "benchmarks_test.db"
+    with LiteratureStore(db_path) as store:
+        # Create graphs
+        store.create_or_get_graph("g-bench", "Benchmark Test Graph")
+        store.create_or_get_graph("g-other", "Other Graph")
+
+        # Papers
+        p1 = PaperRecord(id="p-sota-1", title="SOTA Model Paper", year=2024)
+        p2 = PaperRecord(id="p-base-1", title="Baseline Paper", year=2023)
+        p_other = PaperRecord(id="p-other-1", title="Unrelated Paper", year=2022)
+        store.save_paper(p1, "g-bench", node_role="frontier")
+        store.save_paper(p2, "g-bench", node_role="intermediate")
+        store.save_paper(p_other, "g-other", node_role="seed")
+
+        # Evidence
+        ev1 = EvidenceRecord(
+            id="ev-res-1",
+            paper_id="p-sota-1",
+            evidence_type="benchmark_claim",
+            extracted_text="Achieves 92.5% accuracy on GLUE benchmark test set.",
+            extraction_method="benchmark_pattern_mining",
+        )
+        store.save_evidence(ev1)
+
+        # Benchmark entities
+        bm = BenchmarkRecord(
+            id="bm-glue",
+            name="GLUE",
+            domain="NLP",
+            canonical_url="https://gluebenchmark.com",
+            description="General Language Understanding Evaluation benchmark",
+        )
+        metric = EvaluationMetricRecord(
+            id="m-acc",
+            name="Accuracy",
+            goal="maximize",
+            unit="%",
+            description="Overall test set classification accuracy",
+        )
+        cond = EvaluationConditionRecord(
+            id="c-test",
+            name="Test Set",
+            dataset_split="test",
+            hardware="8x A100",
+            notes="standard evaluation",
+        )
+
+        store.save_benchmark(bm)
+        store.save_evaluation_metric(metric)
+        store.save_evaluation_condition(cond)
+
+        # Results
+        res1 = BenchmarkResultRecord(
+            id="res-01",
+            paper_id="p-sota-1",
+            benchmark_id="bm-glue",
+            metric_id="m-acc",
+            condition_id="c-test",
+            metric_value=92.5,
+            is_sota=True,
+            rank=1,
+            evidence_id="ev-res-1",
+            table_or_figure="Table 1",
+            result_date="2024-05-01",
+            provenance_source="author_reported",
+        )
+        res2 = BenchmarkResultRecord(
+            id="res-02",
+            paper_id="p-base-1",
+            benchmark_id="bm-glue",
+            metric_id="m-acc",
+            condition_id="c-test",
+            metric_value=88.0,
+            is_sota=False,
+            rank=2,
+        )
+        store.save_benchmark_result(res1)
+        store.save_benchmark_result(res2)
+
+        # 1. get_paper_benchmark_results
+        paper1_results = store.get_paper_benchmark_results("p-sota-1")
+        assert len(paper1_results) == 1
+        assert paper1_results[0].id == "res-01"
+        assert paper1_results[0].metric_value == 92.5
+        assert paper1_results[0].is_sota is True
+        assert paper1_results[0].evidence_id == "ev-res-1"
+        assert paper1_results[0].table_or_figure == "Table 1"
+
+        # 2. get_graph_benchmark_results
+        graph_results = store.get_graph_benchmark_results("g-bench")
+        assert "p-sota-1" in graph_results
+        assert "p-base-1" in graph_results
+        assert "p-other-1" not in graph_results
+        assert len(graph_results["p-sota-1"]) == 1
+        assert len(graph_results["p-base-1"]) == 1
+
+        # 3. get_graph_benchmarks
+        graph_bms = store.get_graph_benchmarks("g-bench")
+        assert "bm-glue" in graph_bms
+        assert graph_bms["bm-glue"].name == "GLUE"
+        assert graph_bms["bm-glue"].canonical_url == "https://gluebenchmark.com"
+
+        # 4. get_graph_metrics
+        graph_metrics = store.get_graph_metrics("g-bench")
+        assert "m-acc" in graph_metrics
+        assert graph_metrics["m-acc"].goal == "maximize"
+        assert graph_metrics["m-acc"].unit == "%"
+
+        # 5. get_graph_conditions
+        graph_conditions = store.get_graph_conditions("g-bench")
+        assert "c-test" in graph_conditions
+        assert graph_conditions["c-test"].dataset_split == "test"
+        assert graph_conditions["c-test"].hardware == "8x A100"
+
+        # 6. get_sota_leaders
+        leaders = store.get_sota_leaders("bm-glue", "m-acc")
+        assert len(leaders) == 1
+        assert leaders[0].id == "res-01"
+        assert leaders[0].paper_id == "p-sota-1"
+        assert leaders[0].is_sota is True
+
+        # 7. Upsert update test
+        res1_updated = BenchmarkResultRecord(
+            id="res-01",
+            paper_id="p-sota-1",
+            benchmark_id="bm-glue",
+            metric_id="m-acc",
+            condition_id="c-test",
+            metric_value=93.1,
+            is_sota=True,
+            rank=1,
+            evidence_id="ev-res-1",
+            table_or_figure="Table 2 (Re-evaluated)",
+        )
+        store.save_benchmark_result(res1_updated)
+        re_results = store.get_paper_benchmark_results("p-sota-1")
+        assert len(re_results) == 1
+        assert re_results[0].metric_value == 93.1
+        assert re_results[0].table_or_figure == "Table 2 (Re-evaluated)"
+
+        # 8. Isolation: other graph has no benchmark results
+        other_results = store.get_graph_benchmark_results("g-other")
+        assert other_results == {}
+        assert store.get_graph_benchmarks("g-other") == {}
+        assert store.get_graph_metrics("g-other") == {}
+        assert store.get_graph_conditions("g-other") == {}
+
