@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS papers (
     recent_citation_growth REAL DEFAULT 0.0,
     is_retracted BOOLEAN DEFAULT 0,
     abstract TEXT,
+    venue_name TEXT,
+    venue_tier TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -297,6 +299,14 @@ class LiteratureStore:
                 if "canonical_url" not in cols:
                     self.conn.execute("DROP TABLE IF EXISTS benchmark_results")
                     self.conn.execute("DROP TABLE IF EXISTS benchmarks")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='papers'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(papers)")
+                pcols = {row[1] for row in cursor.fetchall()}
+                if "venue_name" not in pcols:
+                    self.conn.execute("ALTER TABLE papers ADD COLUMN venue_name TEXT")
+                if "venue_tier" not in pcols:
+                    self.conn.execute("ALTER TABLE papers ADD COLUMN venue_tier TEXT")
             self.conn.executescript(SCHEMA_SQL)
 
     _init_schema = _init_db
@@ -396,8 +406,8 @@ class LiteratureStore:
                 INSERT INTO papers (
                     id, title, year, publication_date, citation_count,
                     influential_citation_count, recent_citation_growth,
-                    is_retracted, abstract
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_retracted, abstract, venue_name, venue_tier
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     year = coalesce(excluded.year, papers.year),
@@ -406,7 +416,9 @@ class LiteratureStore:
                     influential_citation_count = excluded.influential_citation_count,
                     recent_citation_growth = excluded.recent_citation_growth,
                     is_retracted = excluded.is_retracted,
-                    abstract = coalesce(excluded.abstract, papers.abstract)
+                    abstract = coalesce(excluded.abstract, papers.abstract),
+                    venue_name = coalesce(excluded.venue_name, papers.venue_name),
+                    venue_tier = coalesce(excluded.venue_tier, papers.venue_tier)
                 """,
                 (
                     paper.id,
@@ -418,6 +430,8 @@ class LiteratureStore:
                     paper.recent_citation_growth,
                     int(paper.is_retracted),
                     paper.abstract,
+                    paper.venue_name,
+                    paper.venue_tier,
                 ),
             )
 
@@ -563,7 +577,7 @@ class LiteratureStore:
                 """
                 SELECT p.id, p.title, p.year, p.publication_date, p.citation_count,
                        p.influential_citation_count, p.recent_citation_growth,
-                       p.is_retracted, p.abstract
+                       p.is_retracted, p.abstract, p.venue_name, p.venue_tier
                 FROM papers p
                 JOIN graph_papers gp ON p.id = gp.paper_id
                 WHERE gp.graph_id = ?
@@ -584,7 +598,7 @@ class LiteratureStore:
                 """
                 SELECT id, title, year, publication_date, citation_count,
                        influential_citation_count, recent_citation_growth,
-                       is_retracted, abstract
+                       is_retracted, abstract, venue_name, venue_tier
                 FROM papers
                 WHERE id = ?
                 """,
@@ -691,6 +705,8 @@ class LiteratureStore:
             identifiers=identifiers,
             versions=versions,
             locations=locations,
+            venue_name=row[9] if len(row) > 9 else None,
+            venue_tier=row[10] if len(row) > 10 else None,
         )
 
     def get_graph_citations(self, graph_id: str) -> list[CitationRecord]:

@@ -690,6 +690,10 @@ def scifi_map_literature(
     max_papers: int = 25,
     graph_id: str | None = None,
     output_dir: str | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
+    venue_tier: str | None = None,
+    require_evidence: bool = False,
 ) -> dict[str, Any]:
     """
     Discover intellectual lineage and construct an interactive literature graph from a seed paper or query.
@@ -714,6 +718,10 @@ def scifi_map_literature(
         depth=depth,
         max_papers=max_papers,
         graph_id=graph_id,
+        min_year=min_year,
+        max_year=max_year,
+        venue_tier=venue_tier,
+        require_evidence=require_evidence,
     )
 
     if not papers:

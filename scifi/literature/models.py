@@ -198,6 +198,8 @@ class PaperRecord:
     versions: list[PaperVersionRecord] = field(default_factory=list)
     locations: list[PaperLocationRecord] = field(default_factory=list)
     abstract: Optional[str] = None
+    venue_name: Optional[str] = None
+    venue_tier: Optional[str] = None
 
     def generate_cite_key(self) -> str:
         """
@@ -281,6 +283,8 @@ class PaperRecord:
             "versions": [v.to_dict() if hasattr(v, "to_dict") else v for v in self.versions],
             "locations": [loc.to_dict() if hasattr(loc, "to_dict") else loc for loc in self.locations],
             "abstract": self.abstract,
+            "venue_name": self.venue_name,
+            "venue_tier": self.venue_tier,
         }
 
     @classmethod

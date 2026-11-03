@@ -127,7 +127,68 @@ class LineageCrawler:
             return clean_id
         return None
 
-    def resolve_seed(self, query: str | PaperRecord) -> Optional[PaperRecord]:
+    def is_paper_accepted(
+        self,
+        paper: PaperRecord,
+        min_year: Optional[int] = None,
+        max_year: Optional[int] = None,
+        venue_tier: Optional[str] = None,
+        require_evidence: bool = False,
+    ) -> bool:
+        """
+        Evaluate domain-agnostic filters on a candidate paper record:
+        - min_year / max_year: publication year window.
+        - venue_tier: prestige filtering ('top' vs 'all').
+        - require_evidence: requires extractable limitations or benchmark metrics.
+        """
+        year, _ = _extract_year_and_date(paper)
+        if year != 9999:
+            if min_year is not None and year < min_year:
+                return False
+            if max_year is not None and year > max_year:
+                return False
+
+        if venue_tier and venue_tier.lower() == "top":
+            tier = (paper.venue_tier or "").lower()
+            if tier != "top":
+                return False
+
+        if require_evidence:
+            has_evidence = False
+            extractor = self.gap_extractor or GapExtractor()
+            bm_extractor = self.benchmark_extractor or BenchmarkExtractor()
+
+            if paper.abstract:
+                try:
+                    gaps = extractor.extract_abstract_gaps(paper)
+                    if gaps:
+                        has_evidence = True
+                except Exception:
+                    pass
+
+                if not has_evidence:
+                    try:
+                        bms = bm_extractor.extract_benchmarks(paper)
+                        if bms:
+                            has_evidence = True
+                    except Exception:
+                        pass
+
+                if not has_evidence:
+                    if re.search(r"\b(?:\d+(?:\.\d+)?%|\baccuracy\b|\blatency\b|\bthroughput\b|\bbenchmark\b|\bempirical(?:ly)?\b|\bevaluation\b)", paper.abstract, re.IGNORECASE):
+                        has_evidence = True
+
+            if not has_evidence:
+                return False
+
+        return True
+
+    def resolve_seed(
+        self,
+        query: str | PaperRecord,
+        min_year: Optional[int] = None,
+        max_year: Optional[int] = None,
+    ) -> Optional[PaperRecord]:
         """
         Resolve a seed paper from a query string (title, DOI, arXiv ID, OpenAlex ID)
         or pass through if already a PaperRecord.
@@ -179,7 +240,7 @@ class LineageCrawler:
         # 4. Resolve by title
         if not self._record_request():
             return None
-        return self.resolver.resolve_by_title(clean_q)
+        return self.resolver.resolve_by_title(clean_q, min_year=min_year, max_year=max_year)
 
     def rank_foundations(
         self, candidate_refs: List[PaperRecord], top_k: int = 5
@@ -203,12 +264,15 @@ class LineageCrawler:
         return [p for _, p in scored[:top_k]]
 
     def rank_frontier(
-        self, candidate_citing: List[PaperRecord], top_k: int = 5
+        self,
+        candidate_citing: List[PaperRecord],
+        top_k: int = 5,
+        min_year: Optional[int] = None,
     ) -> List[PaperRecord]:
         """
         Forward (Frontier) ranking:
         Papers citing seed ranked by annualized velocity: C / max(0.5, CurrentYear - Year + 1).
-        Filter to recent works (<= 3 years old). Select top_k per expansion.
+        Filter to recent works (<= 3 years old) or within min_year window. Select top_k per expansion.
         """
         cur_year = datetime.date.today().year
         scored: List[Tuple[float, PaperRecord]] = []
@@ -218,10 +282,14 @@ class LineageCrawler:
             if year == 9999:
                 year = cur_year
 
-            age = cur_year - year
-            if age > 3:
-                # Exclude works older than 3 years from frontier
-                continue
+            if min_year is not None:
+                if year < min_year:
+                    continue
+            else:
+                age = cur_year - year
+                if age > 3:
+                    # Exclude works older than 3 years from frontier
+                    continue
 
             c = max(0, p.citation_count)
             velocity = c / max(0.5, float(cur_year - year + 1))
@@ -387,6 +455,10 @@ class LineageCrawler:
         graph_id: Optional[str] = None,
         extract_gaps: bool = True,
         extract_benchmarks: bool = True,
+        min_year: Optional[int] = None,
+        max_year: Optional[int] = None,
+        venue_tier: Optional[str] = None,
+        require_evidence: bool = False,
     ) -> Tuple[str, List[PaperRecord], List[CitationRecord]]:
         """
         Execute multi-signal lineage crawl starting from query or seed paper:
@@ -399,7 +471,7 @@ class LineageCrawler:
         self.request_count = 0
         assigned_graph_id = graph_id or f"graph-{uuid.uuid4().hex[:12]}"
 
-        seed = self.resolve_seed(query)
+        seed = self.resolve_seed(query, min_year=min_year, max_year=max_year)
         if not seed:
             return (assigned_graph_id, [], [])
 
@@ -445,7 +517,17 @@ class LineageCrawler:
                 except Exception:
                     raw_refs = []
 
-                ranked_refs = self.rank_foundations(raw_refs, top_k=5)
+                filtered_refs = [
+                    ref for ref in raw_refs
+                    if self.is_paper_accepted(
+                        ref,
+                        min_year=min_year,
+                        max_year=max_year,
+                        venue_tier=venue_tier,
+                        require_evidence=require_evidence,
+                    )
+                ]
+                ranked_refs = self.rank_foundations(filtered_refs, top_k=5)
                 for ref in ranked_refs:
                     _add_citation(p.id, ref.id, influential=(ref.influential_citation_count > 0))
                     if ref.id not in discovered_papers:
@@ -468,7 +550,17 @@ class LineageCrawler:
                 except Exception:
                     raw_cits = []
 
-                ranked_cits = self.rank_frontier(raw_cits, top_k=5)
+                filtered_cits = [
+                    cit for cit in raw_cits
+                    if self.is_paper_accepted(
+                        cit,
+                        min_year=min_year,
+                        max_year=max_year,
+                        venue_tier=venue_tier,
+                        require_evidence=require_evidence,
+                    )
+                ]
+                ranked_cits = self.rank_frontier(filtered_cits, top_k=5, min_year=min_year)
                 for cit in ranked_cits:
                     _add_citation(cit.id, p.id, influential=(cit.influential_citation_count > 0))
                     if cit.id not in discovered_papers:

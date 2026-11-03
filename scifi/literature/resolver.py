@@ -116,6 +116,128 @@ def reconstruct_abstract(inverted_index: Optional[Dict[str, List[int]]]) -> Opti
     return " ".join(w for _, w in pos_words).strip()
 
 
+TOP_VENUE_PATTERNS = [
+    # Top Journals & Multidisciplinary
+    r"\bNature\b",
+    r"\bScience\b",
+    r"\bPNAS\b",
+    r"Proceedings of the National Academy of Sciences",
+    r"Nature Communications",
+    r"Science Advances",
+    r"\bCell\b",
+    r"\bLancet\b",
+    r"New England Journal of Medicine",
+    r"Physical Review Letters",
+    r"\bPRL\b",
+    r"\bJACS\b",
+    r"Journal of the American Chemical Society",
+    # Society Flagships (IEEE, ACM, SIAM)
+    r"IEEE Transactions\b",
+    r"IEEE Trans\b",
+    r"IEEE/ACM Transactions\b",
+    r"IEEE Journal\b",
+    r"Proceedings of the IEEE\b",
+    r"ACM Transactions\b",
+    r"ACM Trans\b",
+    r"ACM Computing Surveys",
+    r"SIAM Journal\b",
+    r"SIAM Review\b",
+    # AI / ML / CV / NLP
+    r"\bNeurIPS\b",
+    r"Neural Information Processing Systems",
+    r"\bICML\b",
+    r"International Conference on Machine Learning",
+    r"\bICLR\b",
+    r"International Conference on Learning Representations",
+    r"\bCVPR\b",
+    r"Conference on Computer Vision and Pattern Recognition",
+    r"\bICCV\b",
+    r"International Conference on Computer Vision",
+    r"\bECCV\b",
+    r"European Conference on Computer Vision",
+    r"\bACL\b",
+    r"Association for Computational Linguistics",
+    r"\bEMNLP\b",
+    r"\bNAACL\b",
+    r"\bAAAI\b",
+    r"\bIJCAI\b",
+    r"\bCOLT\b",
+    # Systems / Networking / Architecture
+    r"\bINFOCOM\b",
+    r"\bSIGCOMM\b",
+    r"\bMobiCom\b",
+    r"\bNSDI\b",
+    r"\bOSDI\b",
+    r"\bSOSP\b",
+    r"\bFAST\b",
+    r"\bSIGMETRICS\b",
+    r"USENIX",
+    r"\bEuroSys\b",
+    r"\bCoNEXT\b",
+    r"\bSECON\b",
+    r"\bICDCS\b",
+    r"\bGLOBECOM\b",
+    r"\bICC\b",
+    # Software Engineering / PL
+    r"\bICSE\b",
+    r"\bFSE\b",
+    r"\bASE\b",
+    r"\bISSTA\b",
+    r"\bPLDI\b",
+    r"\bPOPL\b",
+    r"\bOOPSLA\b",
+    # Security
+    r"IEEE Symposium on Security and Privacy",
+    r"ACM Conference on Computer and Communications Security",
+    r"\bCCS\b",
+    r"\bNDSS\b",
+    # Data / Web
+    r"\bSIGMOD\b",
+    r"\bVLDB\b",
+    r"Very Large Data Bases",
+    r"\bICDE\b",
+    r"\bKDD\b",
+    r"Knowledge Discovery and Data Mining",
+    r"\bSIGIR\b",
+    r"\bWSDM\b",
+    r"The Web Conference",
+    r"\bWWW\b",
+    # Robotics & Control
+    r"\bICRA\b",
+    r"\bIROS\b",
+    r"Robotics: Science and Systems",
+    r"\bRSS\b",
+    r"\bAutomatica\b",
+]
+
+COMPILED_TOP_VENUE_REGEX = [re.compile(p, re.IGNORECASE) for p in TOP_VENUE_PATTERNS]
+
+
+def classify_venue_tier(venue_name: Optional[str]) -> str:
+    """
+    Classify a publication venue into domain-agnostic prestige tiers:
+    - 'top': CORE A*/A flagship conferences or SJR Q1 / IEEE / ACM / Nature / Science journals.
+    - 'preprint': arXiv, bioRxiv, chemRxiv, medRxiv, or unspecified venue.
+    - 'standard': peer-reviewed venues not matching top-tier flagship patterns.
+    """
+    if not venue_name or not str(venue_name).strip():
+        return "preprint"
+
+    name_clean = str(venue_name).strip()
+    # Check if preprint
+    if re.search(r"\b(arxiv|biorxiv|medrxiv|chemrxiv|techrxiv|pre-?print|ssrn)\b", name_clean, re.IGNORECASE):
+        for pattern in COMPILED_TOP_VENUE_REGEX:
+            if pattern.search(name_clean):
+                return "top"
+        return "preprint"
+
+    for pattern in COMPILED_TOP_VENUE_REGEX:
+        if pattern.search(name_clean):
+            return "top"
+
+    return "standard"
+
+
 class PaperResolver:
     """
     Canonical paper resolver interfacing with OpenAlex and arXiv registries.
@@ -349,6 +471,33 @@ class PaperResolver:
             )
         )
 
+        # Venue extraction for OpenAlex
+        venue_name: Optional[str] = None
+        primary_loc = data.get("primary_location") or {}
+        source = primary_loc.get("source") or {}
+        if source and isinstance(source, dict):
+            venue_name = source.get("display_name")
+
+        if not venue_name:
+            host_venue = data.get("host_venue") or {}
+            if isinstance(host_venue, dict):
+                venue_name = host_venue.get("display_name")
+
+        if not venue_name:
+            locations_list = data.get("locations") or []
+            for loc in locations_list:
+                if isinstance(loc, dict):
+                    s = loc.get("source") or {}
+                    if s and isinstance(s, dict) and s.get("display_name"):
+                        name = s.get("display_name")
+                        if (s.get("type") or "").lower() != "repository":
+                            venue_name = name
+                            break
+                        elif not venue_name:
+                            venue_name = name
+
+        venue_tier = classify_venue_tier(venue_name)
+
         return PaperRecord(
             id=paper_id,
             title=title,
@@ -363,6 +512,8 @@ class PaperResolver:
             versions=versions,
             locations=locations,
             abstract=abstract,
+            venue_name=venue_name,
+            venue_tier=venue_tier,
         )
 
     def _parse_arxiv_atom(self, entry: ET.Element, arxiv_id: str) -> Optional[PaperRecord]:
@@ -429,6 +580,15 @@ class PaperResolver:
             )
         ]
 
+        # Venue extraction for arXiv
+        journal_ref_node = entry.find("arxiv:journal_ref", ns)
+        if journal_ref_node is not None and journal_ref_node.text:
+            venue_name = journal_ref_node.text.strip()
+            venue_tier = classify_venue_tier(venue_name)
+        else:
+            venue_name = "arXiv"
+            venue_tier = "preprint"
+
         return PaperRecord(
             id=paper_id,
             title=title,
@@ -443,11 +603,18 @@ class PaperResolver:
             versions=versions,
             locations=locations,
             abstract=abstract,
+            venue_name=venue_name,
+            venue_tier=venue_tier,
         )
 
-    def resolve_by_title(self, title: str) -> Optional[PaperRecord]:
+    def resolve_by_title(
+        self,
+        title: str,
+        min_year: Optional[int] = None,
+        max_year: Optional[int] = None,
+    ) -> Optional[PaperRecord]:
         """
-        Resolve a paper by its title using OpenAlex search.
+        Resolve a paper by its title using OpenAlex search, optionally filtering by year range.
         """
         clean_title = (title or "").strip()
         if not clean_title:
@@ -456,10 +623,15 @@ class PaperResolver:
         cache_key = f"openalex:title:{clean_title.lower()}"
         cached = self._get_cached_paper(cache_key)
         if cached:
-            return cached
+            if min_year is not None and cached.year is not None and cached.year < min_year:
+                pass
+            elif max_year is not None and cached.year is not None and cached.year > max_year:
+                pass
+            else:
+                return cached
 
         try:
-            params = {"search": clean_title, "per-page": 5}
+            params = {"search": clean_title, "per-page": 10}
             resp = requests.get(
                 OPENALEX_WORKS_URL,
                 headers=self.headers,
@@ -470,9 +642,18 @@ class PaperResolver:
                 data = resp.json()
                 results = data.get("results") or []
                 if results and isinstance(results, list):
-                    paper = self._parse_openalex_work(results[0])
-                    self._set_cached_paper(cache_key, paper)
-                    return paper
+                    for r in results:
+                        p = self._parse_openalex_work(r)
+                        if min_year is not None and p.year is not None and p.year < min_year:
+                            continue
+                        if max_year is not None and p.year is not None and p.year > max_year:
+                            continue
+                        self._set_cached_paper(cache_key, p)
+                        return p
+                    if not min_year and not max_year and results:
+                        paper = self._parse_openalex_work(results[0])
+                        self._set_cached_paper(cache_key, paper)
+                        return paper
         except Exception:
             return None
 

@@ -42,6 +42,19 @@ def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
         help="Output directory (default: ./literature_review)",
     )
     p_report.add_argument("--open", action="store_true", help="Open generated interactive map in default web browser")
+    p_report.add_argument("--min-year", type=int, default=None, help="Minimum publication year filter (e.g. 2020)")
+    p_report.add_argument("--max-year", type=int, default=None, help="Maximum publication year filter (e.g. 2026)")
+    p_report.add_argument(
+        "--venue-tier",
+        choices=["all", "top"],
+        default="all",
+        help="Venue prestige tier filter (default: all)",
+    )
+    p_report.add_argument(
+        "--require-evidence",
+        action="store_true",
+        help="Only retain papers with verifiable benchmarks or self-reported limitations",
+    )
     p_report.add_argument(
         "--db",
         default=str(DEFAULT_DB_PATH),
@@ -62,6 +75,19 @@ def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
         help="Output directory (default: ./literature_review)",
     )
     p_map.add_argument("--open", action="store_true", help="Open generated interactive map in default web browser")
+    p_map.add_argument("--min-year", type=int, default=None, help="Minimum publication year filter (e.g. 2020)")
+    p_map.add_argument("--max-year", type=int, default=None, help="Maximum publication year filter (e.g. 2026)")
+    p_map.add_argument(
+        "--venue-tier",
+        choices=["all", "top"],
+        default="all",
+        help="Venue prestige tier filter (default: all)",
+    )
+    p_map.add_argument(
+        "--require-evidence",
+        action="store_true",
+        help="Only retain papers with verifiable benchmarks or self-reported limitations",
+    )
     p_map.add_argument(
         "--db",
         default=str(DEFAULT_DB_PATH),
@@ -110,6 +136,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         query=args.query,
         depth=args.depth,
         max_papers=args.max_papers,
+        min_year=getattr(args, "min_year", None),
+        max_year=getattr(args, "max_year", None),
+        venue_tier=getattr(args, "venue_tier", None),
+        require_evidence=bool(getattr(args, "require_evidence", False)),
     )
 
     if not papers:
@@ -191,6 +221,10 @@ def cmd_map(args: argparse.Namespace) -> int:
         query=args.query,
         depth=args.depth,
         max_papers=args.max_papers,
+        min_year=getattr(args, "min_year", None),
+        max_year=getattr(args, "max_year", None),
+        venue_tier=getattr(args, "venue_tier", None),
+        require_evidence=bool(getattr(args, "require_evidence", False)),
     )
 
     if not papers:
