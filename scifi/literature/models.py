@@ -312,10 +312,102 @@ class PaperRecord:
         return cls(**filtered)
 
 
+@dataclass
+class BenchmarkRecord:
+    id: str
+    name: str
+    domain: str = ""
+    canonical_url: Optional[str] = None
+    description: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BenchmarkRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class EvaluationMetricRecord:
+    id: str
+    name: str
+    goal: str = "maximize"
+    unit: Optional[str] = None
+    description: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.goal, str) or self.goal.lower() not in ("maximize", "minimize"):
+            raise ValueError(f"Invalid evaluation metric goal '{self.goal}'. Must be 'maximize' or 'minimize'.")
+        self.goal = self.goal.lower()
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvaluationMetricRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class EvaluationConditionRecord:
+    id: str
+    name: str
+    dataset_split: Optional[str] = "test"
+    hardware: Optional[str] = None
+    notes: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvaluationConditionRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class BenchmarkResultRecord:
+    id: str
+    paper_id: str
+    benchmark_id: str
+    metric_id: str
+    condition_id: Optional[str] = None
+    metric_value: float = 0.0
+    is_sota: bool = False
+    rank: Optional[int] = None
+    evidence_id: Optional[str] = None
+    table_or_figure: Optional[str] = None
+    result_date: Optional[str] = None
+    provenance_source: str = "author_reported"
+
+    def __post_init__(self) -> None:
+        if self.metric_value is not None:
+            self.metric_value = float(self.metric_value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BenchmarkResultRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
 __all__ = [
     "AuthorRecord",
+    "BenchmarkRecord",
+    "BenchmarkResultRecord",
     "CitationContextRecord",
     "CitationRecord",
+    "EvaluationConditionRecord",
+    "EvaluationMetricRecord",
     "EvidenceRecord",
     "GraphSessionRecord",
     "PaperGapRecord",

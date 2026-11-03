@@ -2,10 +2,16 @@
 Unit tests for Core Literature Data Models (scifi.literature.models).
 """
 
+import pytest
+
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationContextRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     GraphSessionRecord,
     PaperGapRecord,
@@ -338,3 +344,156 @@ def test_evidence_and_gap_records():
     assert restored_gap.id == gap.id
     assert restored_gap.claim_summary == gap.claim_summary
     assert not hasattr(restored_gap, "unknown_field")
+
+
+def test_benchmark_models_serialization():
+    # 1. BenchmarkRecord
+    b = BenchmarkRecord(
+        id="bench-1",
+        name="MMLU",
+        domain="NLP",
+        canonical_url="https://github.com/hendrycks/test",
+        description="Massive Multitask Language Understanding",
+    )
+    assert b.id == "bench-1"
+    assert b.name == "MMLU"
+    assert b.domain == "NLP"
+    assert b.canonical_url == "https://github.com/hendrycks/test"
+    assert b.description == "Massive Multitask Language Understanding"
+
+    # BenchmarkRecord defaults
+    b_default = BenchmarkRecord(id="bench-2", name="HumanEval")
+    assert b_default.domain == ""
+    assert b_default.canonical_url is None
+    assert b_default.description is None
+
+    # BenchmarkRecord to_dict / from_dict roundtrip
+    b_dict = b.to_dict()
+    assert b_dict["id"] == "bench-1"
+    assert b_dict["domain"] == "NLP"
+    b_dict["extraneous"] = 123
+    restored_b = BenchmarkRecord.from_dict(b_dict)
+    assert restored_b.id == b.id
+    assert restored_b.name == b.name
+    assert not hasattr(restored_b, "extraneous")
+
+    # 2. EvaluationMetricRecord
+    m = EvaluationMetricRecord(
+        id="metric-1",
+        name="Accuracy",
+        goal="maximize",
+        unit="%",
+        description="Percentage of correct answers",
+    )
+    assert m.id == "metric-1"
+    assert m.name == "Accuracy"
+    assert m.goal == "maximize"
+    assert m.unit == "%"
+    assert m.description == "Percentage of correct answers"
+
+    # EvaluationMetricRecord defaults
+    m_default = EvaluationMetricRecord(id="metric-2", name="Loss", goal="minimize")
+    assert m_default.goal == "minimize"
+    assert m_default.unit is None
+    assert m_default.description is None
+
+    # Case insensitivity / normalization for goal
+    m_upper = EvaluationMetricRecord(id="metric-3", name="WER", goal="MINIMIZE")
+    assert m_upper.goal == "minimize"
+
+    # Invalid goal should raise ValueError
+    with pytest.raises(ValueError, match="goal"):
+        EvaluationMetricRecord(id="metric-bad", name="Bad", goal="arbitrary")
+
+    # EvaluationMetricRecord to_dict / from_dict roundtrip
+    m_dict = m.to_dict()
+    assert m_dict["goal"] == "maximize"
+    m_dict["extra"] = "drop"
+    restored_m = EvaluationMetricRecord.from_dict(m_dict)
+    assert restored_m.id == m.id
+    assert restored_m.goal == "maximize"
+    assert not hasattr(restored_m, "extra")
+
+    # 3. EvaluationConditionRecord
+    cond = EvaluationConditionRecord(
+        id="cond-1",
+        name="5-shot standard",
+        dataset_split="test",
+        hardware="8x A100 80GB",
+        notes="Prompt template v2",
+    )
+    assert cond.id == "cond-1"
+    assert cond.name == "5-shot standard"
+    assert cond.dataset_split == "test"
+    assert cond.hardware == "8x A100 80GB"
+    assert cond.notes == "Prompt template v2"
+
+    # EvaluationConditionRecord defaults
+    cond_default = EvaluationConditionRecord(id="cond-2", name="zero-shot")
+    assert cond_default.dataset_split == "test"
+    assert cond_default.hardware is None
+    assert cond_default.notes is None
+
+    # EvaluationConditionRecord to_dict / from_dict roundtrip
+    c_dict = cond.to_dict()
+    assert c_dict["hardware"] == "8x A100 80GB"
+    c_dict["extra"] = True
+    restored_cond = EvaluationConditionRecord.from_dict(c_dict)
+    assert restored_cond.id == cond.id
+    assert restored_cond.hardware == "8x A100 80GB"
+    assert not hasattr(restored_cond, "extra")
+
+    # 4. BenchmarkResultRecord
+    res = BenchmarkResultRecord(
+        id="res-1",
+        paper_id="paper-100",
+        benchmark_id="bench-1",
+        metric_id="metric-1",
+        condition_id="cond-1",
+        metric_value=86.4,
+        is_sota=True,
+        rank=1,
+        evidence_id="ev-100",
+        table_or_figure="Table 1",
+        result_date="2024-03-01",
+        provenance_source="author_reported",
+    )
+    assert res.id == "res-1"
+    assert res.paper_id == "paper-100"
+    assert res.benchmark_id == "bench-1"
+    assert res.metric_id == "metric-1"
+    assert res.condition_id == "cond-1"
+    assert res.metric_value == 86.4
+    assert res.is_sota is True
+    assert res.rank == 1
+    assert res.evidence_id == "ev-100"
+    assert res.table_or_figure == "Table 1"
+    assert res.result_date == "2024-03-01"
+    assert res.provenance_source == "author_reported"
+
+    # BenchmarkResultRecord defaults
+    res_default = BenchmarkResultRecord(
+        id="res-2",
+        paper_id="paper-100",
+        benchmark_id="bench-1",
+        metric_id="metric-1",
+    )
+    assert res_default.condition_id is None
+    assert res_default.metric_value == 0.0
+    assert res_default.is_sota is False
+    assert res_default.rank is None
+    assert res_default.evidence_id is None
+    assert res_default.table_or_figure is None
+    assert res_default.result_date is None
+    assert res_default.provenance_source == "author_reported"
+
+    # BenchmarkResultRecord to_dict / from_dict roundtrip
+    r_dict = res.to_dict()
+    assert r_dict["is_sota"] is True
+    assert r_dict["metric_value"] == 86.4
+    r_dict["unexpected"] = "foo"
+    restored_res = BenchmarkResultRecord.from_dict(r_dict)
+    assert restored_res.id == res.id
+    assert restored_res.metric_value == 86.4
+    assert restored_res.is_sota is True
+    assert not hasattr(restored_res, "unexpected")
