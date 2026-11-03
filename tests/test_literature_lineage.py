@@ -419,3 +419,54 @@ def test_crawl_lineage_integration_with_store(tmp_path: Path):
     assert ("W-front", "W-seed") in cit_pairs  # Frontier cites Seed
 
     store.close()
+
+
+def test_crawl_lineage_extracts_and_persists_gaps(tmp_path: Path):
+    """Verify that LineageCrawler extracts abstract/citation gaps, corroborates, and persists."""
+    from scifi.literature.models import CitationContextRecord
+
+    db_path = tmp_path / "gaps_crawl.db"
+    store = LiteratureStore(db_path)
+
+    seed_paper = PaperRecord(
+        id="P-seed",
+        title="Scalable Transformers",
+        year=2021,
+        citation_count=50,
+        abstract="We introduce Scalable Transformers. However, the computational complexity remains quadratic and prohibitive for long sequences.",
+        identifiers=[PaperIdentifierRecord(paper_id="P-seed", provider="doi", external_id="10.1234/st2021")],
+    )
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve_by_title.return_value = seed_paper
+    mock_resolver.resolve_references.return_value = []
+    mock_resolver.resolve_citations.return_value = []
+
+    mock_s2 = MagicMock()
+    mock_s2.fetch_citation_contexts.return_value = [
+        CitationContextRecord(
+            id="ctx-1",
+            source_paper_id="P-citing",
+            target_paper_id="P-seed",
+            context_text="While Scalable Transformers improves throughput, its quadratic complexity limits long-context tasks.",
+            section_name="Related Work",
+        )
+    ]
+
+    crawler = LineageCrawler(resolver=mock_resolver, store=store, s2_client=mock_s2)
+    graph_id, papers, citations = crawler.crawl_lineage("Scalable Transformers", depth=1, extract_gaps=True)
+
+    assert len(papers) == 1
+    gaps_by_paper = store.get_graph_gaps(graph_id)
+    assert "P-seed" in gaps_by_paper
+    assert len(gaps_by_paper["P-seed"]) >= 1
+
+    ev_map = store.get_graph_evidence(graph_id)
+    assert len(ev_map) >= 1
+
+    # Verify citation context was persisted
+    contexts = store.get_citation_contexts("P-citing", "P-seed")
+    assert len(contexts) == 1
+    assert contexts[0].id == "ctx-1"
+
+    store.close()

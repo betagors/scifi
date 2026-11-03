@@ -303,6 +303,9 @@ class SemanticScholarClient:
 
         return records
 
+    # Convenience alias for pipeline integrations
+    fetch_citation_contexts = get_paper_citations_with_contexts
+
     def get_paper_metadata(
         self, paper_id_or_doi: str, fields: Optional[str] = None
     ) -> Optional[dict[str, Any]]:

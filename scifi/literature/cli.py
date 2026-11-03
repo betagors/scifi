@@ -123,15 +123,41 @@ def cmd_report(args: argparse.Namespace) -> int:
     title = papers[0].title if papers else args.query
     seed_id = papers[0].id if papers else None
 
-    md_path = save_markdown_report(out_dir / "literature_report.md", graph_title=title, papers=papers, citations=citations, depths=depths)
-    html_path = save_interactive_html(out_dir / "literature_map.html", graph_title=title, papers=papers, citations=citations, depths=depths, seed_paper_id=seed_id)
+    paper_gaps = store.get_graph_gaps(graph_id)
+    evidence_map = store.get_graph_evidence(graph_id)
+
+    md_path = save_markdown_report(
+        out_dir / "literature_report.md",
+        graph_title=title,
+        papers=papers,
+        citations=citations,
+        depths=depths,
+        paper_gaps=paper_gaps,
+        evidence_map=evidence_map,
+    )
+    html_path = save_interactive_html(
+        out_dir / "literature_map.html",
+        graph_title=title,
+        papers=papers,
+        citations=citations,
+        depths=depths,
+        seed_paper_id=seed_id,
+        paper_gaps=paper_gaps,
+        evidence_map=evidence_map,
+    )
     bib_path = save_bibtex_file(out_dir / "references.bib", papers=papers)
+
+    total_gaps = sum(len(glist) for glist in paper_gaps.values())
+    corroborated_gaps = sum(
+        1 for glist in paper_gaps.values() for g in glist if g.verification_status == "corroborated"
+    )
 
     print(f"[SUCCESS] Literature report generated in {out_dir}:")
     print(f"  Report:   {md_path}")
     print(f"  Map:      {html_path}")
     print(f"  BibTeX:   {bib_path}")
     print(f"  Summary:  {len(papers)} papers, {len(citations)} citations (Session: {graph_id})")
+    print(f"  Evidence: {total_gaps} extracted technical limitations ({corroborated_gaps} corroborated)")
 
     if getattr(args, "open", False):
         webbrowser.open(html_path.resolve().as_uri())
@@ -162,6 +188,9 @@ def cmd_map(args: argparse.Namespace) -> int:
     title = papers[0].title if papers else args.query
     seed_id = papers[0].id if papers else None
 
+    paper_gaps = store.get_graph_gaps(graph_id)
+    evidence_map = store.get_graph_evidence(graph_id)
+
     html_path = save_interactive_html(
         out_dir / "literature_map.html",
         graph_title=title,
@@ -169,9 +198,17 @@ def cmd_map(args: argparse.Namespace) -> int:
         citations=citations,
         depths=depths,
         seed_paper_id=seed_id,
+        paper_gaps=paper_gaps,
+        evidence_map=evidence_map,
+    )
+
+    total_gaps = sum(len(glist) for glist in paper_gaps.values())
+    corroborated_gaps = sum(
+        1 for glist in paper_gaps.values() for g in glist if g.verification_status == "corroborated"
     )
 
     print(f"[SUCCESS] Literature map generated: {html_path} ({len(papers)} papers, {len(citations)} citations, Session: {graph_id})")
+    print(f"  Evidence: {total_gaps} extracted technical limitations ({corroborated_gaps} corroborated)")
 
     if getattr(args, "open", False):
         webbrowser.open(html_path.resolve().as_uri())

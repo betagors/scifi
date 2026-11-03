@@ -13,9 +13,51 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from scifi.literature.models import CitationRecord, PaperRecord
+from scifi.literature.gaps import GapExtractor
+from scifi.literature.models import (
+    CitationContextRecord,
+    CitationRecord,
+    EvidenceRecord,
+    PaperGapRecord,
+    PaperRecord,
+)
 from scifi.literature.resolver import PaperResolver, clean_arxiv_id, clean_doi
+from scifi.literature.semantic_scholar import SemanticScholarClient
 from scifi.literature.store import LiteratureStore
+
+
+def _extract_external_id_for_s2(paper: PaperRecord) -> Optional[str]:
+    """
+    Find best external identifier (DOI or arXiv ID) for Semantic Scholar citation context lookup.
+    """
+    # 1. Check identifiers list
+    for ident in paper.identifiers:
+        prov = (ident.provider or "").lower()
+        if prov == "doi" and ident.external_id:
+            c = clean_doi(ident.external_id)
+            if c:
+                return f"DOI:{c}"
+        elif prov == "arxiv" and ident.external_id:
+            c = clean_arxiv_id(ident.external_id)
+            if c:
+                return f"ARXIV:{c}"
+
+    # 2. Check versions for DOI
+    for v in paper.versions:
+        if v.doi:
+            c = clean_doi(v.doi)
+            if c:
+                return f"DOI:{c}"
+
+    # 3. Check paper.id directly
+    c_doi = clean_doi(paper.id)
+    if c_doi and ("10." in c_doi or "doi.org" in paper.id.lower()):
+        return f"DOI:{c_doi}"
+    c_arx = clean_arxiv_id(paper.id)
+    if c_arx and (paper.id.lower().startswith("arxiv:") or re.match(r"^\d{4}\.\d{4,5}(?:v\d+)?$", paper.id)):
+        return f"ARXIV:{c_arx}"
+
+    return None
 
 
 def _extract_year_and_date(paper: PaperRecord | None) -> Tuple[int, str]:
@@ -48,11 +90,15 @@ class LineageCrawler:
         resolver: Optional[PaperResolver] = None,
         store: Optional[LiteratureStore] = None,
         max_request_budget: int = 25,
+        s2_client: Optional[SemanticScholarClient] = None,
+        gap_extractor: Optional[GapExtractor] = None,
     ) -> None:
         self.resolver = resolver or PaperResolver()
         self.store = store
         self.max_request_budget = max_request_budget
         self.request_count = 0
+        self.s2_client = s2_client
+        self.gap_extractor = gap_extractor
 
     def _can_request(self) -> bool:
         """Check whether the crawler has remaining request budget."""
@@ -333,6 +379,7 @@ class LineageCrawler:
         depth: int = 2,
         max_papers: int = 25,
         graph_id: Optional[str] = None,
+        extract_gaps: bool = True,
     ) -> Tuple[str, List[PaperRecord], List[CitationRecord]]:
         """
         Execute multi-signal lineage crawl starting from query or seed paper:
@@ -452,6 +499,61 @@ class LineageCrawler:
                 )
             for c in rectified_citations:
                 self.store.save_citation(c)
+
+            if extract_gaps:
+                s2 = self.s2_client or SemanticScholarClient()
+                extractor = self.gap_extractor or GapExtractor()
+
+                raw_gaps: List[Tuple[EvidenceRecord, PaperGapRecord]] = []
+
+                for p in paper_list:
+                    # 1. Extract self-reported abstract limitations
+                    try:
+                        abstract_gaps = extractor.extract_abstract_gaps(p)
+                        raw_gaps.extend(abstract_gaps)
+                    except Exception:
+                        pass
+
+                    # 2. Extract citation context limitations via S2
+                    ext_id = _extract_external_id_for_s2(p)
+                    if ext_id:
+                        contexts: List[CitationContextRecord] = []
+                        try:
+                            fetch_fn = (
+                                getattr(s2, "fetch_citation_contexts", None)
+                                or getattr(s2, "get_paper_citations_with_contexts", None)
+                            )
+                            if fetch_fn:
+                                contexts = fetch_fn(ext_id) or []
+                        except Exception:
+                            contexts = []
+
+                        for ctx in contexts:
+                            try:
+                                self.store.save_citation_context(ctx)
+                            except Exception:
+                                pass
+
+                        if contexts:
+                            try:
+                                ctx_gaps = extractor.extract_citation_context_gaps(p, contexts)
+                                raw_gaps.extend(ctx_gaps)
+                            except Exception:
+                                pass
+
+                # 3. Corroborate findings across papers
+                try:
+                    corroborated_gaps = extractor.corroborate_gaps(raw_gaps)
+                except Exception:
+                    corroborated_gaps = raw_gaps
+
+                # 4. Persist evidence and gaps to store
+                for ev, gap in corroborated_gaps:
+                    try:
+                        self.store.save_evidence(ev)
+                        self.store.save_paper_gap(gap)
+                    except Exception:
+                        pass
 
         return (assigned_graph_id, paper_list, rectified_citations)
 

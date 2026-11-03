@@ -18,7 +18,9 @@ import scifi.cli
 from scifi.literature.models import (
     AuthorRecord,
     CitationRecord,
+    EvidenceRecord,
     GraphSessionRecord,
+    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -124,6 +126,103 @@ class TestLiteratureCLISubcommands:
             assert (out_dir / "literature_report.md").exists()
             assert (out_dir / "literature_map.html").exists()
             assert (out_dir / "references.bib").exists()
+
+    def test_literature_report_forwards_gaps_and_evidence(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        sample_paper = _make_sample_paper()
+        sample_cite = CitationRecord(source_paper_id="W123", target_paper_id="W000")
+
+        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
+             patch("scifi.literature.cli.save_markdown_report") as mock_save_md, \
+             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+            instance = mock_crawler_cls.return_value
+            instance.crawl_lineage.return_value = ("graph-test-gaps", [sample_paper], [sample_cite])
+            instance.compute_topological_depths.return_value = {"W123": 0}
+
+            mock_save_md.return_value = tmp_path / "lit.md"
+            mock_save_html.return_value = tmp_path / "lit.html"
+
+            db_path = tmp_path / "test.db"
+            store = LiteratureStore(db_path)
+            ev = EvidenceRecord(
+                id="ev-1",
+                paper_id="W123",
+                evidence_type="abstract_limitation",
+                extracted_text="High computational complexity",
+                extraction_method="contrastive",
+            )
+            gap = PaperGapRecord(
+                id="gap-1",
+                paper_id="W123",
+                gap_type="computational_complexity",
+                claim_summary="High complexity",
+                primary_evidence_id="ev-1",
+                verification_status="corroborated",
+            )
+            store.save_paper(sample_paper, graph_id="graph-test-gaps")
+            store.save_evidence(ev)
+            store.save_paper_gap(gap)
+            store.close()
+
+            out_dir = tmp_path / "report_out"
+            ret = scifi.cli.main([
+                "literature", "report", "Attention",
+                "--output-dir", str(out_dir),
+                "--db", str(db_path),
+            ])
+            assert ret == 0
+            captured = capsys.readouterr().out
+            assert "Evidence: 1 extracted technical limitations (1 corroborated)" in captured
+
+            assert "paper_gaps" in mock_save_md.call_args.kwargs
+            assert "evidence_map" in mock_save_md.call_args.kwargs
+            assert "paper_gaps" in mock_save_html.call_args.kwargs
+            assert "evidence_map" in mock_save_html.call_args.kwargs
+
+    def test_literature_map_forwards_gaps_and_evidence(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        sample_paper = _make_sample_paper()
+
+        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
+             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+            instance = mock_crawler_cls.return_value
+            instance.crawl_lineage.return_value = ("graph-map-gaps", [sample_paper], [])
+            instance.compute_topological_depths.return_value = {"W123": 0}
+
+            mock_save_html.return_value = tmp_path / "lit.html"
+
+            db_path = tmp_path / "test.db"
+            store = LiteratureStore(db_path)
+            ev = EvidenceRecord(
+                id="ev-2",
+                paper_id="W123",
+                evidence_type="abstract_limitation",
+                extracted_text="Unstated assumption",
+                extraction_method="contrastive",
+            )
+            gap = PaperGapRecord(
+                id="gap-2",
+                paper_id="W123",
+                gap_type="unstated_assumption",
+                claim_summary="Unstated assumption",
+                primary_evidence_id="ev-2",
+                verification_status="candidate",
+            )
+            store.save_paper(sample_paper, graph_id="graph-map-gaps")
+            store.save_evidence(ev)
+            store.save_paper_gap(gap)
+            store.close()
+
+            out_dir = tmp_path / "map_out"
+            ret = scifi.cli.main([
+                "literature", "map", "Attention",
+                "--output-dir", str(out_dir),
+                "--db", str(db_path),
+            ])
+            assert ret == 0
+            captured = capsys.readouterr().out
+            assert "Evidence: 1 extracted technical limitations (0 corroborated)" in captured
+
+            assert "paper_gaps" in mock_save_html.call_args.kwargs
+            assert "evidence_map" in mock_save_html.call_args.kwargs
 
     def test_literature_map_execution(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         sample_paper = _make_sample_paper()
@@ -283,6 +382,67 @@ class TestFastMCPLiteratureTools:
             assert Path(res["files"]["html_map"]).exists()
             assert Path(res["files"]["report_markdown"]).exists()
             assert Path(res["files"]["bibtex"]).exists()
+
+    def test_scifi_map_literature_returns_gaps_metadata(self, tmp_path: Path) -> None:
+        from scifi.server import scifi_map_literature
+
+        sample_paper = _make_sample_paper()
+        sample_cite = CitationRecord(source_paper_id="W123", target_paper_id="W000")
+
+        db_path = tmp_path / ".scifi" / "literature_store.db"
+        store = LiteratureStore(db_path)
+        store.create_or_get_graph("graph-tool-gaps", "Gaps Graph")
+        store.save_paper(sample_paper, graph_id="graph-tool-gaps")
+        ev = EvidenceRecord(
+            id="ev-tool-1",
+            paper_id="W123",
+            evidence_type="abstract_limitation",
+            extracted_text="Scalability bottleneck",
+            extraction_method="contrastive",
+        )
+        gap = PaperGapRecord(
+            id="gap-tool-1",
+            paper_id="W123",
+            gap_type="computational_complexity",
+            claim_summary="Scalability bottleneck",
+            primary_evidence_id="ev-tool-1",
+            verification_status="corroborated",
+        )
+        store.save_evidence(ev)
+        store.save_paper_gap(gap)
+        store.close()
+
+        with patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)), \
+             patch("scifi.server.LineageCrawler") as mock_crawler_cls, \
+             patch("scifi.server.save_interactive_html") as mock_save_html, \
+             patch("scifi.server.save_markdown_report") as mock_save_md:
+            instance = mock_crawler_cls.return_value
+            instance.crawl_lineage.return_value = ("graph-tool-gaps", [sample_paper], [sample_cite])
+            instance.compute_topological_depths.return_value = {"W123": 0}
+
+            mock_save_html.return_value = tmp_path / "out.html"
+            mock_save_md.return_value = tmp_path / "out.md"
+
+            out_dir = tmp_path / "mcp_gaps_out"
+            res = scifi_map_literature(
+                query="Attention",
+                depth=2,
+                max_papers=10,
+                graph_id="graph-tool-gaps",
+                output_dir=str(out_dir),
+            )
+
+            assert res["status"] == "SUCCESS"
+            assert res["gaps_count"] == 1
+            assert res["corroborated_gaps_count"] == 1
+            assert len(res["gaps"]) == 1
+            assert res["gaps"][0]["gap_type"] == "computational_complexity"
+            assert res["gaps"][0]["verification_status"] == "corroborated"
+
+            assert "paper_gaps" in mock_save_html.call_args.kwargs
+            assert "evidence_map" in mock_save_html.call_args.kwargs
+            assert "paper_gaps" in mock_save_md.call_args.kwargs
+            assert "evidence_map" in mock_save_md.call_args.kwargs
 
     def test_scifi_query_store_read_only(self, tmp_path: Path) -> None:
         from scifi.server import scifi_query_store

@@ -715,12 +715,24 @@ def scifi_map_literature(
             "seed_paper_id": None,
             "total_papers": 0,
             "total_citations": 0,
+            "gaps_count": 0,
+            "corroborated_gaps_count": 0,
+            "gaps": [],
             "papers": [],
             "files": None,
         }
 
     depths = crawler.compute_topological_depths(papers, citations)
     files_dict: dict[str, str] | None = None
+
+    paper_gaps = store.get_graph_gaps(assigned_graph_id)
+    evidence_map = store.get_graph_evidence(assigned_graph_id)
+
+    total_gaps = sum(len(glist) for glist in paper_gaps.values())
+    corroborated_count = sum(
+        1 for glist in paper_gaps.values() for g in glist if g.verification_status == "corroborated"
+    )
+    gaps_list = [gap.to_dict() for glist in paper_gaps.values() for gap in glist]
 
     if output_dir:
         out_path = Path(output_dir)
@@ -735,6 +747,8 @@ def scifi_map_literature(
             citations=citations,
             depths=depths,
             seed_paper_id=seed_id,
+            paper_gaps=paper_gaps,
+            evidence_map=evidence_map,
         )
         md_path = save_markdown_report(
             out_path / "literature_report.md",
@@ -742,6 +756,8 @@ def scifi_map_literature(
             papers=papers,
             citations=citations,
             depths=depths,
+            paper_gaps=paper_gaps,
+            evidence_map=evidence_map,
         )
         bib_path = save_bibtex_file(
             out_path / "references.bib",
@@ -760,6 +776,9 @@ def scifi_map_literature(
         "seed_paper_id": papers[0].id if papers else None,
         "total_papers": len(papers),
         "total_citations": len(citations),
+        "gaps_count": total_gaps,
+        "corroborated_gaps_count": corroborated_count,
+        "gaps": gaps_list,
         "papers": [p.to_dict() for p in papers],
         "files": files_dict,
     }
