@@ -638,3 +638,146 @@ def check_keyword_relevance(keywords: List[str], live: bool = False) -> Dict[str
     }
 
 
+def generate_diagnostic_report(evaluation: Dict[str, Any]) -> str:
+    """Format evaluation data into an authoritative, publication-grade terminal report."""
+    triage = evaluation["triage_score"]
+    seo = evaluation["seo"]
+    access = evaluation["accessibility"]
+    overlap = evaluation["overlap"]
+    density = evaluation["density"]
+    collision = evaluation["collision"]
+
+    lines = []
+    lines.append("=" * 78)
+    lines.append("🔬 SHANNON MANUSCRIPT AUDIT: TITLE, ABSTRACT & SEO REPORT")
+    lines.append("=" * 78)
+
+    # 1. Reviewer Triage Scorecard
+    status_icon = "✅" if triage["status"] == "PASS" else "⚠️"
+    lines.append(f"\n{status_icon} REVIEWER TRIAGE SCORECARD: {triage['total_score']} / {triage['max_score']} [{triage['status']}]")
+    lines.append("-" * 78)
+    scores = triage["scores"]
+    lines.append(f"  • Snippet Readability & Title SEO : {scores['snippet_readability']['points']:2d} / 20")
+    for d in scores['snippet_readability'].get('deductions', []):
+        lines.append(f"    - Penalty: {d}")
+    lines.append(f"  • Gap Precision & Bottleneck      : {scores['gap_precision']['points']:2d} / 20")
+    if scores['gap_precision'].get('matched_markers'):
+        lines.append(f"    - Markers: {', '.join(scores['gap_precision']['matched_markers'])}")
+    lines.append(f"  • Algorithmic Specificity         : {scores['algorithmic_specificity']['points']:2d} / 20")
+    if scores['algorithmic_specificity'].get('matched_terms'):
+        lines.append(f"    - Terms  : {', '.join(scores['algorithmic_specificity']['matched_terms'])}")
+    lines.append(f"  • Experimental Quantification     : {scores['experimental_quantification']['points']:2d} / 20")
+    lines.append(f"    - Metrics: {scores['experimental_quantification']['quantified_metrics_count']} quantified metrics, {scores['experimental_quantification']['raw_digits_count']} digits")
+    lines.append(f"  • Style, Accessibility & De-biasing: {scores['style_debiasing']['points']:2d} / 20")
+    for p in scores['style_debiasing'].get('penalties', []):
+        lines.append(f"    - Flag   : {p}")
+    for f in scores['style_debiasing'].get('flagged_words', []):
+        lines.append(f"    - Trope  : '{f}'")
+
+    # 2. Academic SEO & Discoverability
+    lines.append("\n📈 ACADEMIC SEO & DISCOVERABILITY HACKS")
+    lines.append("-" * 78)
+    lines.append(f"  • First 65 Chars Truncation Check: \"{seo['title_first_65_chars']}\"")
+    lines.append(f"    - Front-Loaded Keyphrase  : {'[PASS]' if seo['front_loaded'] else '[WARN - keyphrase not in first 65 chars]'}")
+    lines.append(f"  • Title Length Sweet-Spot   : {seo['title_word_count']} words ({seo['title_char_count']} chars) {'[PASS]' if seo['sweet_spot_length'] else '[WARN - optimal is 10-14 words]'}")
+    lines.append(f"  • 3-Beat Keyphrase Anchoring: {'[PASS]' if seo['three_beat_anchoring'] else '[NOTICE - anchor core phrase in lead, method, and conclusion]'}")
+    if seo.get("flagged_acronyms"):
+        lines.append(f"  • Title Acronym Trap Alert : {', '.join(seo['flagged_acronyms'])} (Ensure defined/searchable)")
+    if seo.get("seo_hacks_applied"):
+        lines.append("  • Active SEO Visibility Hacks:")
+        for h in seo["seo_hacks_applied"]:
+            lines.append(f"    ✓ {h}")
+
+    # 3. Dual-Audience Accessibility
+    lines.append("\n👥 DUAL-AUDIENCE ACCESSIBILITY & COGNITIVE LOAD")
+    lines.append("-" * 78)
+    lines.append(f"  • Sentence Count            : {access['sentence_count']} sentences (avg {access['avg_sentence_length']} words/sentence)")
+    lines.append(f"  • Maximum Sentence Length   : {access['max_sentence_length']} words {'[WARN >35]' if access['has_runon_sentences'] else '[OPTIMAL]'}")
+    lines.append(f"  • Lead Sentence Clarity     : {'[ACCESSIBLE]' if access['lead_accessible'] else '[DENSE - consider simplifying opening hook]'}")
+
+    # 4. Metadata Vocabulary Expansion & Density
+    lines.append("\n🏷️ KEYWORD METADATA EXPANSION & ABSTRACT DENSITY")
+    lines.append("-" * 78)
+    lines.append(f"  • Non-Redundancy Overlap    : {overlap['overlap_ratio']*100:.1f}% title overlap ({overlap['distinct_keywords_count']}/{overlap['total_keywords']} distinct keywords)")
+    if overlap["overlapping_words"]:
+        lines.append(f"    - Duplicated Title Words  : {', '.join(overlap['overlapping_words'])} (Replace to expand search footprint)")
+    lines.append("  • Abstract Keyphrase Density:")
+    for kw, stats in density.get("densities", {}).items():
+        status_label = f"[{stats['status']}]"
+        lines.append(f"    - {kw:<28}: {stats['count']} occurrences {status_label}")
+
+    # 5. Live Search Diagnostics
+    if collision.get("status") == "LIVE_OK":
+        lines.append("\n🌐 LIVE SEARCH & TITLE COLLISION DIAGNOSTICS")
+        lines.append("-" * 78)
+        lines.append(f"  • Title Collision Risk      : {collision['risk_level']} (max similarity {collision['max_similarity']:.2f})")
+        if collision.get("matches"):
+            lines.append("    Top Matching Works in Literature:")
+            for m in collision["matches"][:3]:
+                lines.append(f"      * \"{m['title']}\" ({m.get('year')}) — {m.get('venue')}")
+
+    lines.append("=" * 78)
+    return "\n".join(lines)
+
+
+def run_cli(args: Optional[List[str]] = None) -> int:
+    """Execute the Shannon command-line validator."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="test_keywords.py",
+        description="Shannon: Academic Title, Abstract & Keyword Optimization Engine"
+    )
+    parser.add_argument("--title", required=True, help="Draft manuscript title")
+    parser.add_argument("--abstract", required=True, help="Draft manuscript abstract")
+    parser.add_argument("--keywords", required=True, help="Comma-separated candidate author keywords")
+    parser.add_argument("--target-venue", default=None, help="Target publisher or venue (e.g. ieee, elsevier, springer)")
+    parser.add_argument("--live", action="store_true", help="Perform live search against OpenAlex/Crossref")
+    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    parsed = parser.parse_args(args)
+
+    raw_keywords = [k.strip() for k in parsed.keywords.split(",") if k.strip()]
+
+    # Run evaluations
+    triage = evaluate_triage_score(parsed.title, parsed.abstract, raw_keywords)
+    seo = evaluate_academic_seo(parsed.title, parsed.abstract, raw_keywords)
+    accessibility = evaluate_accessibility(parsed.abstract)
+    overlap = compute_title_keyword_overlap(parsed.title, raw_keywords)
+    density = compute_abstract_keyword_density(parsed.abstract, raw_keywords)
+    collision = check_title_collision(parsed.title, live=parsed.live)
+    relevance = check_keyword_relevance(raw_keywords, live=parsed.live)
+
+    full_evaluation = {
+        "title": parsed.title,
+        "abstract": parsed.abstract,
+        "target_venue": parsed.target_venue,
+        "triage_score": triage,
+        "seo": seo,
+        "accessibility": accessibility,
+        "overlap": overlap,
+        "density": density,
+        "collision": collision,
+        "relevance": relevance,
+    }
+
+    if parsed.json:
+        print(json.dumps(full_evaluation, indent=2))
+    else:
+        report = generate_diagnostic_report(full_evaluation)
+        print(report)
+
+    # Return exit code: 0 if triage score >= 70, else 1
+    return 0 if triage["total_score"] >= 70 else 1
+
+
+def main() -> int:
+    """Entry point for CLI execution."""
+    return run_cli(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+
+

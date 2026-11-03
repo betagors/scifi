@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch
 from skills.shannon.scripts.test_keywords import (
@@ -9,6 +10,7 @@ from skills.shannon.scripts.test_keywords import (
     evaluate_accessibility,
     evaluate_academic_seo,
     evaluate_triage_score,
+    run_cli,
     tokenize,
 )
 
@@ -150,5 +152,36 @@ def test_keyword_relevance_mocked_openalex_response():
         res = check_keyword_relevance(["federated learning"], live=True)
         assert res["status"] == "LIVE_OK"
         assert "federated learning" in res["keyword_insights"]
+
+def test_cli_json_output(capsys):
+    args = [
+        "--title", "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints",
+        "--abstract", "Satellite networks require coordination. However, existing schemes fail under high latency. We formulate an algorithm achieving 3.5 dB gain. This enables robust links.",
+        "--keywords", "satellite clusters, beamforming, latency constraints",
+        "--json"
+    ]
+    exit_code = run_cli(args)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "triage_score" in data
+    assert "seo" in data
+    assert "accessibility" in data
+    assert "overlap" in data
+    assert "density" in data
+    assert exit_code in (0, 1)
+
+def test_cli_human_readable_report(capsys):
+    args = [
+        "--title", "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints",
+        "--abstract", "Satellite networks require coordination. However, existing schemes fail under high latency. We formulate an adaptive algorithm achieving 3.5 dB gain and 20% lower loss. This enables robust inter-satellite links.",
+        "--keywords", "constellations, synchronization, orbital networks",
+    ]
+    exit_code = run_cli(args)
+    captured = capsys.readouterr()
+    assert "SHANNON MANUSCRIPT AUDIT" in captured.out
+    assert "REVIEWER TRIAGE SCORECARD" in captured.out
+    assert "ACADEMIC SEO & DISCOVERABILITY" in captured.out
+    assert exit_code == 0
+
 
 
