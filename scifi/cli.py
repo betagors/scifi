@@ -6,7 +6,7 @@ Provides a single entry point for:
 - audit: BibTeX (.bib) file audit, retraction check & sanitization
 - search: Academic registry search by paper title
 - argus: Attribution audit, uncredited method detection & plagiarism prevention
-- setup: REA-style setup installer configuring Antigravity, Claude Desktop, and Cursor
+- setup: Automated setup installer configuring Antigravity, Claude Desktop, and Cursor
 - server: FastMCP daemon execution
 """
 

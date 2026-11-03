@@ -1,5 +1,5 @@
 """
-REA-Style Setup Installer for SciFi FastMCP Server.
+Automated Setup Installer for SciFi FastMCP Server.
 
 Detects AI environments (Google Antigravity, Claude Desktop, and Cursor)
 and installs the `scifi` FastMCP server definition into their respective

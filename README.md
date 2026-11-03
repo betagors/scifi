@@ -41,7 +41,7 @@ uv sync
 ```
 
 ### 2. Configure Your AI Agents (One Command)
-Modeled directly after REA (`morluto/rea`), SciFi includes an automated setup installer that auto-discovers and configures Antigravity, Claude Desktop, and Cursor:
+SciFi includes an automated setup installer that auto-discovers and configures Antigravity, Claude Desktop, and Cursor:
 
 ```bash
 # Auto-configure all detected AI environments
@@ -73,7 +73,7 @@ uv run sf mcp
 
 ---
 
-## 🏛️ Architecture: The REA Tripartite Model
+## 🏛️ Architecture: Tripartite Model
 
 SciFi separates **deterministic computation** (tools) from **cognitive reasoning** (skills), wrapped in **strict invariants** (rules):
 

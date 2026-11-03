@@ -1,5 +1,5 @@
 """
-Unit and integration tests for the unified SciFi CLI (scifi.cli) and REA setup installer (scifi.setup_cli).
+Unit and integration tests for the unified SciFi CLI (scifi.cli) and automated setup installer (scifi.setup_cli).
 """
 
 from __future__ import annotations
