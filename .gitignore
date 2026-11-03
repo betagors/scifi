@@ -76,3 +76,5 @@ dmypy.json
 .artifacts/
 *.samples.jsonl
 assets/android.exe
+
+.scifi/
