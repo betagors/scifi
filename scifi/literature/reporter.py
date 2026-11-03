@@ -1,7 +1,8 @@
 """
 Deterministic academic report synthesizer and standardized BibTeX exporter.
 Formats intellectual lineages into publication-ready Markdown sections,
-evidence-backed Delta-Novelty matrices, traceable limitations, and clean .bib citation files.
+evidence-backed Delta-Novelty matrices, traceable limitations, empirical benchmark
+leaderboards with performance deltas, and clean .bib citation files.
 """
 
 from __future__ import annotations
@@ -14,10 +15,20 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     PaperGapRecord,
     PaperRecord,
+)
+from scifi.literature.sota import (
+    PerformanceDelta,
+    SotaEvaluationReport,
+    SotaEvaluationResults,
+    SotaEvaluator,
 )
 from scifi.literature.resolver import clean_arxiv_id, clean_doi
 from scifi.literature.visualizer import determine_oa_status, extract_paper_links
@@ -423,6 +434,213 @@ def format_traceable_limitations(
     return lines
 
 
+def format_benchmark_leaderboard(
+    papers: list[PaperRecord],
+    depths: dict[str, int],
+    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]] | list[BenchmarkResultRecord]] = None,
+    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
+    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
+    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
+    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
+    key_map: Optional[dict[str, str]] = None,
+) -> list[str]:
+    """
+    Format Section 5: Empirical Benchmark Evaluation & SOTA Leaderboard comparing
+    verified SOTA winners against baseline frontier works across benchmarks and metrics,
+    computing performance deltas (Δ), specifying evaluation conditions, and citing evidence.
+    """
+    lines: list[str] = [
+        "## 5. Empirical Benchmark Evaluation & SOTA Leaderboard",
+        "",
+        "This section evaluates empirical benchmark performance across the analyzed literature lineage, "
+        "contrasting verified task metrics against citation popularity to distinguish actual state-of-the-art "
+        "implementations from baseline frontier works. Performance deltas ($\\Delta$) indicate empirical gains, "
+        "contextualized by evaluation conditions and primary evidence citations.",
+        "",
+        "| Benchmark | Domain | Metric | SOTA Leader [Ref] | Baseline Frontier [Ref] | Performance Delta (Δ) | Evaluation Conditions | Evidence Source |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+
+    flat_results: list[BenchmarkResultRecord] = []
+    if benchmark_results:
+        if isinstance(benchmark_results, dict):
+            for res_list in benchmark_results.values():
+                if res_list:
+                    flat_results.extend(res_list)
+        elif isinstance(benchmark_results, list):
+            flat_results.extend(benchmark_results)
+
+    if not flat_results:
+        lines.append("No empirical benchmark evaluations recorded for the current literature graph.")
+        lines.append("")
+        return lines
+
+    if key_map is None:
+        key_map = assign_cite_keys(papers)
+
+    papers_by_id = {p.id: p for p in papers}
+
+    evaluator = SotaEvaluator()
+    sota_eval_results = evaluator.evaluate_sota_frontier(
+        papers=papers,
+        benchmark_results=flat_results,
+        metrics=metrics_map or {},
+        benchmarks=benchmarks_map or {},
+        depths=depths,
+    )
+
+    def _fmt_score(val: Optional[float], u: Optional[str]) -> str:
+        if val is None:
+            return "N/A"
+        val_str = f"{val:.1f}" if isinstance(val, (int, float)) else str(val)
+        if u:
+            return f"{val_str}%" if u == "%" else f"{val_str} {u}"
+        return val_str
+
+    def _fmt_condition(cid: Optional[str]) -> str:
+        if not cid:
+            return "Standard"
+        cond_rec = (conditions_map or {}).get(cid)
+        if not cond_rec:
+            return cid
+        cname = cond_rec.name or cid
+        if cond_rec.dataset_split:
+            return f"{cname} ({cond_rec.dataset_split})"
+        return cname
+
+    # Deterministic sorting of evaluation reports
+    sorted_reports = []
+    for key, rep in sota_eval_results.items():
+        bm_id = rep.benchmark_id
+        metric_id = rep.metric_id
+        bm_rec = (benchmarks_map or {}).get(bm_id)
+        bm_name = bm_rec.name if bm_rec and bm_rec.name else bm_id
+        m_rec = (metrics_map or {}).get(metric_id)
+        m_name = m_rec.name if m_rec and m_rec.name else metric_id
+        sorted_reports.append((bm_name.lower(), m_name.lower(), key, rep, bm_rec, m_rec))
+
+    sorted_reports.sort(key=lambda t: (t[0], t[1], t[2]))
+
+    for _, _, _, rep, bm_rec, m_rec in sorted_reports:
+        bm_id = rep.benchmark_id
+        metric_id = rep.metric_id
+
+        # 1. Benchmark & Domain
+        bm_name = bm_rec.name if bm_rec and bm_rec.name else bm_id
+        bm_domain = bm_rec.domain if bm_rec and bm_rec.domain else "General"
+
+        # 2. Metric
+        metric_name = m_rec.name if m_rec and m_rec.name else metric_id
+        unit = m_rec.unit if m_rec and m_rec.unit else ""
+        goal = m_rec.goal if m_rec and m_rec.goal else "maximize"
+        if unit and f"({unit})" not in metric_name and not metric_name.endswith(unit):
+            metric_display = f"{metric_name} ({unit})"
+        else:
+            metric_display = metric_name
+
+        # 3. SOTA Leader
+        sota_id = rep.sota_leader_paper_id
+        sota_val = rep.best_metric_value
+        sota_paper = papers_by_id.get(sota_id) if sota_id else None
+        sota_cite = key_map.get(sota_id, sota_paper.generate_cite_key() if sota_paper else (sota_id or "Unknown"))
+        sota_title = sota_paper.title if sota_paper and sota_paper.title else (sota_id or "Untitled")
+        sota_score_str = _fmt_score(sota_val, unit)
+        sota_display = f"[{sota_cite}] {sota_title} (Score: {sota_score_str})"
+
+        sota_res = next(
+            (r for r in flat_results if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == sota_id and (r.is_sota or r.metric_value == sota_val)),
+            None,
+        )
+        if not sota_res and sota_id:
+            sota_res = next(
+                (r for r in flat_results if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == sota_id),
+                None,
+            )
+
+        # 4. Baseline Frontier
+        base_id = rep.high_citation_frontier_paper_id
+        base_val = rep.baseline_metric_value
+        base_res = None
+        if base_id and base_val is not None:
+            base_paper = papers_by_id.get(base_id)
+            base_cite = key_map.get(base_id, base_paper.generate_cite_key() if base_paper else base_id)
+            base_title = base_paper.title if base_paper and base_paper.title else base_id
+            base_score_str = _fmt_score(base_val, unit)
+            base_display = f"[{base_cite}] {base_title} (Score: {base_score_str})"
+            base_res = next(
+                (r for r in flat_results if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == base_id),
+                None,
+            )
+        else:
+            base_display = "N/A"
+
+        # 5. Performance Delta (Δ)
+        frontier_delta = rep.get_delta(base_id) if base_id else None
+        is_mismatch = (
+            frontier_delta.condition_mismatch
+            if frontier_delta
+            else bool(sota_res and base_res and sota_res.condition_id != base_res.condition_id)
+        )
+
+        if base_id and base_val is not None and sota_val is not None:
+            diff = sota_val - base_val
+            if goal == "minimize":
+                sign = "-" if diff < 0 else ("+" if diff > 0 else "")
+                val_diff_str = f"{sign}{abs(diff):.1f}"
+            else:
+                sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                val_diff_str = f"{sign}{abs(diff):.1f}"
+
+            if unit == "%":
+                delta_str = f"{val_diff_str}%"
+            elif unit:
+                delta_str = f"{val_diff_str} {unit}"
+            else:
+                delta_str = val_diff_str
+
+            if is_mismatch:
+                delta_display = f"{delta_str} [Condition Mismatch]"
+            else:
+                delta_display = delta_str
+        else:
+            delta_display = "N/A"
+
+        # 6. Evaluation Conditions
+        sota_cond_str = _fmt_condition(sota_res.condition_id if sota_res else None)
+        if base_id and base_res and is_mismatch:
+            base_cond_str = _fmt_condition(base_res.condition_id)
+            cond_display = f"{sota_cond_str} vs {base_cond_str}"
+        else:
+            cond_display = sota_cond_str
+
+        # 7. Evidence Source
+        if sota_res and sota_res.table_or_figure:
+            ev_source = sota_res.table_or_figure.strip()
+        elif sota_res and sota_res.evidence_id and (evidence_map or {}).get(sota_res.evidence_id):
+            ev = evidence_map[sota_res.evidence_id]
+            if ev.source_section:
+                ev_source = f"{ev.source_section} quote"
+            elif ev.extracted_text:
+                q = ev.extracted_text.strip()
+                ev_source = f'"{q[:32]}..."' if len(q) > 35 else f'"{q}"'
+            else:
+                ev_source = "Extracted evidence"
+        elif sota_res and sota_res.provenance_source:
+            ev_source = sota_res.provenance_source.replace("_", " ").title()
+        else:
+            ev_source = "Self-reported table"
+
+        # Escape cells and append row
+        lines.append(
+            f"| {escape_table_cell(bm_name)} | {escape_table_cell(bm_domain)} | {escape_table_cell(metric_display)} | "
+            f"{escape_table_cell(sota_display)} | {escape_table_cell(base_display)} | "
+            f"{escape_table_cell(delta_display)} | {escape_table_cell(cond_display)} | {escape_table_cell(ev_source)} |"
+        )
+
+    lines.append("")
+    return lines
+
+
 def generate_markdown_report(
     graph_title: str,
     papers: list[PaperRecord],
@@ -430,6 +648,10 @@ def generate_markdown_report(
     depths: dict[str, int],
     paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
     evidence_map: Optional[dict[str, EvidenceRecord]] = None,
+    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
+    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
+    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
+    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
 ) -> str:
     """
     Generate structured, publication-ready Markdown report synthesizing
@@ -468,6 +690,33 @@ def generate_markdown_report(
 
     key_map = assign_cite_keys(papers)
 
+    # Compute benchmark statistics
+    flat_results: list[BenchmarkResultRecord] = []
+    if benchmark_results:
+        if isinstance(benchmark_results, dict):
+            for rlist in benchmark_results.values():
+                if rlist:
+                    flat_results.extend(rlist)
+        elif isinstance(benchmark_results, list):
+            flat_results.extend(benchmark_results)
+
+    total_benchmark_results = len(flat_results)
+    distinct_benchmarks = len({r.benchmark_id for r in flat_results if getattr(r, "benchmark_id", None)})
+
+    if flat_results:
+        evaluator = SotaEvaluator()
+        sota_reports = evaluator.evaluate_sota_frontier(
+            papers=papers,
+            benchmark_results=flat_results,
+            metrics=metrics_map or {},
+            benchmarks=benchmarks_map or {},
+            depths=depths,
+        )
+        sota_leaders = {rep.sota_leader_paper_id for rep in sota_reports.values() if rep.sota_leader_paper_id}
+        verified_sota_leaders = max(len(sota_leaders), len({r.paper_id for r in flat_results if getattr(r, "is_sota", False)}))
+    else:
+        verified_sota_leaders = 0
+
     # 1. Header & Executive Summary
     report_lines: list[str] = [
         f"# Literature Intelligence Report: {graph_title}",
@@ -477,11 +726,18 @@ def generate_markdown_report(
         f"- **Root Papers:** {root_count}",
         f"- **Frontier Papers:** {frontier_count}",
         f"- **Total Extracted Gaps:** {total_gaps} ({corroborated_gaps} corroborated)",
-        f"- **Topological Depth Span:** 0 to {max_depth}",
-        "",
-        "## Executive Summary",
-        "",
     ]
+    if total_benchmark_results > 0:
+        bm_word = "benchmark" if distinct_benchmarks == 1 else "benchmarks"
+        sota_word = "leader" if verified_sota_leaders == 1 else "leaders"
+        report_lines.append(
+            f"- **Benchmark Evaluations:** {total_benchmark_results} ({distinct_benchmarks} distinct {bm_word}, {verified_sota_leaders} SOTA {sota_word})"
+        )
+
+    report_lines.append(f"- **Topological Depth Span:** 0 to {max_depth}")
+    report_lines.append("")
+    report_lines.append("## Executive Summary")
+    report_lines.append("")
 
     if total_papers == 0:
         report_lines.append("The research graph contains no papers.")
@@ -511,6 +767,12 @@ def generate_markdown_report(
         if max_depth > 0:
             report_lines.append(
                 f"- **Research Frontier (Level {max_depth}):** {frontier_count} recent frontier paper(s) pushing current state of the art."
+            )
+        if total_benchmark_results > 0:
+            bm_word = "benchmark" if distinct_benchmarks == 1 else "benchmarks"
+            work_word = "work" if verified_sota_leaders == 1 else "works"
+            report_lines.append(
+                f"- **Empirical Benchmark Evaluations:** {total_benchmark_results} benchmark evaluations recorded across {distinct_benchmarks} distinct {bm_word} with {verified_sota_leaders} verified SOTA leader {work_word}."
             )
     report_lines.append("")
 
@@ -604,8 +866,25 @@ def generate_markdown_report(
     limitation_lines = format_traceable_limitations(papers, paper_gaps, evidence_map, key_map)
     report_lines.extend(limitation_lines)
 
-    # Section 5: Standardized BibTeX Entries
-    report_lines.append("## 5. Standardized BibTeX Entries")
+    # Section 5: Empirical Benchmark Evaluation & SOTA Leaderboard (when benchmarks present)
+    if total_benchmark_results > 0:
+        leaderboard_lines = format_benchmark_leaderboard(
+            papers=papers,
+            depths=depths,
+            benchmark_results=flat_results,
+            benchmarks_map=benchmarks_map,
+            metrics_map=metrics_map,
+            conditions_map=conditions_map,
+            evidence_map=evidence_map,
+            key_map=key_map,
+        )
+        report_lines.extend(leaderboard_lines)
+        bibtex_header = "## 6. Standardized BibTeX Entries"
+    else:
+        bibtex_header = "## 5. Standardized BibTeX Entries"
+
+    # Standardized BibTeX Entries
+    report_lines.append(bibtex_header)
     report_lines.append("")
     bibtex_str = export_bibtex_entries(papers)
     report_lines.append("```bibtex")
@@ -625,6 +904,10 @@ def save_markdown_report(
     depths: dict[str, int],
     paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
     evidence_map: Optional[dict[str, EvidenceRecord]] = None,
+    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
+    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
+    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
+    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
 ) -> Path:
     """Save generated markdown report to disk, creating parent directories if needed."""
     out = Path(output_path)
@@ -636,6 +919,10 @@ def save_markdown_report(
         depths,
         paper_gaps=paper_gaps,
         evidence_map=evidence_map,
+        benchmark_results=benchmark_results,
+        benchmarks_map=benchmarks_map,
+        metrics_map=metrics_map,
+        conditions_map=conditions_map,
     )
     out.write_text(content, encoding="utf-8")
     return out
@@ -660,6 +947,7 @@ __all__ = [
     "escape_table_cell",
     "export_bibtex_entries",
     "extract_oa_url",
+    "format_benchmark_leaderboard",
     "format_delta_novelty_matrix",
     "format_primary_authors",
     "format_traceable_limitations",

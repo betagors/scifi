@@ -10,7 +10,11 @@ import pytest
 
 from scifi.literature.models import (
     AuthorRecord,
+    BenchmarkRecord,
+    BenchmarkResultRecord,
     CitationRecord,
+    EvaluationConditionRecord,
+    EvaluationMetricRecord,
     EvidenceRecord,
     PaperGapRecord,
     PaperIdentifierRecord,
@@ -21,6 +25,7 @@ from scifi.literature.models import (
 from scifi.literature.reporter import (
     escape_bibtex,
     export_bibtex_entries,
+    format_benchmark_leaderboard,
     generate_markdown_report,
     save_bibtex_file,
     save_markdown_report,
@@ -520,3 +525,205 @@ def test_save_markdown_report_forwards_gaps_and_evidence(tmp_path, lineage_datas
     assert "## 3. Evidence-Backed Delta-Novelty Matrix" in text
     assert "## 4. Traceable Limitations & Research Opportunities" in text
     assert "O(N^2) complexity bottleneck" in text
+
+
+def test_report_includes_sota_benchmark_leaderboard_section():
+    p_baseline = PaperRecord(id="p-base", title="Influential Baseline", year=2022, citation_count=500)
+    p_sota = PaperRecord(id="p-sota", title="Novel SOTA Method", year=2024, citation_count=20)
+    bm = BenchmarkRecord(id="bm-mmlu", name="MMLU", domain="Reasoning")
+    metric = EvaluationMetricRecord(id="m-acc", name="5-shot Accuracy", goal="maximize", unit="%")
+    cond = EvaluationConditionRecord(id="c-5s", name="5-shot", dataset_split="test")
+
+    res_base = BenchmarkResultRecord(
+        id="r-b",
+        paper_id="p-base",
+        benchmark_id="bm-mmlu",
+        metric_id="m-acc",
+        condition_id="c-5s",
+        metric_value=70.0,
+        is_sota=False,
+    )
+    res_sota = BenchmarkResultRecord(
+        id="r-s",
+        paper_id="p-sota",
+        benchmark_id="bm-mmlu",
+        metric_id="m-acc",
+        condition_id="c-5s",
+        metric_value=86.5,
+        is_sota=True,
+        table_or_figure="Table 1",
+    )
+
+    report = generate_markdown_report(
+        "SOTA Evaluation",
+        [p_baseline, p_sota],
+        [],
+        {"p-base": 0, "p-sota": 1},
+        benchmark_results={"p-base": [res_base], "p-sota": [res_sota]},
+        benchmarks_map={"bm-mmlu": bm},
+        metrics_map={"m-acc": metric},
+        conditions_map={"c-5s": cond},
+    )
+
+    # Executive Summary contains benchmark statistics
+    assert "2 benchmark evaluations" in report or "2 benchmark results" in report or "2 evaluation result" in report
+    assert "1 distinct benchmark" in report
+    assert "1 verified SOTA leader" in report
+
+    # Section 5 header & intro
+    assert "## 5. Empirical Benchmark Evaluation & SOTA Leaderboard" in report
+    assert "| Benchmark | Domain | Metric | SOTA Leader [Ref] | Baseline Frontier [Ref] | Performance Delta (Δ) | Evaluation Conditions | Evidence Source |" in report
+    assert "|---|---|---|---|---|---|---|---|" in report
+
+    # Row contents
+    assert "MMLU" in report
+    assert "Reasoning" in report
+    assert "5-shot Accuracy" in report
+    assert "Novel SOTA Method" in report
+    assert "Influential Baseline" in report
+    assert "+16.5%" in report
+    assert "5-shot (test)" in report
+    assert "Table 1" in report
+
+    # BibTeX is now Section 6 when benchmarks are present
+    assert "## 6. Standardized BibTeX Entries" in report
+
+
+def test_benchmark_leaderboard_table_escapes_pipe_characters():
+    p1 = PaperRecord(id="p-1", title="Model A | Model B", year=2023, citation_count=10)
+    p2 = PaperRecord(id="p-2", title="Baseline | Model C", year=2022, citation_count=50)
+    bm = BenchmarkRecord(id="bm-pipe", name="Eval | Suite", domain="NLP | Vision")
+    metric = EvaluationMetricRecord(id="m-pipe", name="Metric | F1", goal="maximize", unit="%")
+    cond = EvaluationConditionRecord(id="c-pipe", name="Split | Zero-Shot", dataset_split="test | val")
+    res1 = BenchmarkResultRecord(
+        id="r-1",
+        paper_id="p-1",
+        benchmark_id="bm-pipe",
+        metric_id="m-pipe",
+        condition_id="c-pipe",
+        metric_value=92.0,
+        is_sota=True,
+        table_or_figure="Table 1 | Row 2",
+    )
+    res2 = BenchmarkResultRecord(
+        id="r-2",
+        paper_id="p-2",
+        benchmark_id="bm-pipe",
+        metric_id="m-pipe",
+        condition_id="c-pipe",
+        metric_value=85.0,
+        is_sota=False,
+    )
+
+    report = generate_markdown_report(
+        "Pipe Leaderboard Test",
+        [p1, p2],
+        [],
+        {"p-1": 1, "p-2": 0},
+        benchmark_results={"p-1": [res1], "p-2": [res2]},
+        benchmarks_map={"bm-pipe": bm},
+        metrics_map={"m-pipe": metric},
+        conditions_map={"c-pipe": cond},
+    )
+
+    assert "## 5. Empirical Benchmark Evaluation & SOTA Leaderboard" in report
+    assert r"Eval \| Suite" in report
+    assert r"NLP \| Vision" in report
+    assert r"Metric \| F1" in report
+    assert r"Model A \| Model B" in report
+    assert r"Baseline \| Model C" in report
+    assert r"Split \| Zero-Shot" in report
+    assert r"Table 1 \| Row 2" in report
+
+
+def test_benchmark_leaderboard_condition_mismatch_warning():
+    p1 = PaperRecord(id="p-1", title="SOTA Method", year=2024, citation_count=5)
+    p2 = PaperRecord(id="p-2", title="Prior Baseline", year=2023, citation_count=100)
+    bm = BenchmarkRecord(id="bm-1", name="GSM8K", domain="Math")
+    metric = EvaluationMetricRecord(id="m-1", name="Solve Rate", goal="maximize", unit="%")
+    cond_few = EvaluationConditionRecord(id="c-few", name="8-shot CoT", dataset_split="test")
+    cond_zero = EvaluationConditionRecord(id="c-zero", name="0-shot Direct", dataset_split="test")
+
+    res1 = BenchmarkResultRecord(
+        id="r-1",
+        paper_id="p-1",
+        benchmark_id="bm-1",
+        metric_id="m-1",
+        condition_id="c-few",
+        metric_value=90.0,
+        is_sota=True,
+    )
+    res2 = BenchmarkResultRecord(
+        id="r-2",
+        paper_id="p-2",
+        benchmark_id="bm-1",
+        metric_id="m-1",
+        condition_id="c-zero",
+        metric_value=80.0,
+        is_sota=False,
+    )
+
+    report = generate_markdown_report(
+        "Mismatch Test",
+        [p1, p2],
+        [],
+        {"p-1": 1, "p-2": 0},
+        benchmark_results={"p-1": [res1], "p-2": [res2]},
+        benchmarks_map={"bm-1": bm},
+        metrics_map={"m-1": metric},
+        conditions_map={"c-few": cond_few, "c-zero": cond_zero},
+    )
+
+    assert "## 5. Empirical Benchmark Evaluation & SOTA Leaderboard" in report
+    assert "[Condition Mismatch]" in report
+    assert "8-shot CoT" in report
+    assert "0-shot Direct" in report
+
+
+def test_backward_compatibility_when_benchmark_results_none(lineage_dataset):
+    papers, citations, depths = lineage_dataset
+    report = generate_markdown_report("Backward Compatibility", papers, citations, depths, benchmark_results=None)
+
+    # Standard 5-section report intact
+    assert "## Executive Summary" in report
+    assert "## 1. Intellectual Evolution & Lineage" in report
+    assert "## 2. Baseline Summary Table" in report
+    assert "## 3. Evidence-Backed Delta-Novelty Matrix" in report
+    assert "## 4. Traceable Limitations & Research Opportunities" in report
+    assert "## 5. Standardized BibTeX Entries" in report
+    assert "## 6. Standardized BibTeX Entries" not in report
+    assert "Empirical Benchmark Evaluation & SOTA Leaderboard" not in report
+
+
+def test_save_markdown_report_forwards_benchmark_results(tmp_path):
+    p_base = PaperRecord(id="p-b", title="Baseline Paper", year=2021, citation_count=200)
+    p_sota = PaperRecord(id="p-s", title="Leading Paper", year=2023, citation_count=15)
+    bm = BenchmarkRecord(id="bm-code", name="HumanEval", domain="Code Generation")
+    metric = EvaluationMetricRecord(id="m-p1", name="pass@1", goal="maximize", unit="%")
+
+    res_b = BenchmarkResultRecord(
+        id="rb", paper_id="p-b", benchmark_id="bm-code", metric_id="m-p1", metric_value=65.0
+    )
+    res_s = BenchmarkResultRecord(
+        id="rs", paper_id="p-s", benchmark_id="bm-code", metric_id="m-p1", metric_value=82.0, is_sota=True
+    )
+
+    out_file = tmp_path / "sota_report.md"
+    saved = save_markdown_report(
+        out_file,
+        "Code Intelligence",
+        [p_base, p_sota],
+        [],
+        {"p-b": 0, "p-s": 1},
+        benchmark_results={"p-b": [res_b], "p-s": [res_s]},
+        benchmarks_map={"bm-code": bm},
+        metrics_map={"m-p1": metric},
+    )
+
+    assert saved == out_file
+    text = saved.read_text(encoding="utf-8")
+    assert "## 5. Empirical Benchmark Evaluation & SOTA Leaderboard" in text
+    assert "HumanEval" in text
+    assert "+17.0%" in text
+    assert "Leading Paper" in text
+    assert "Baseline Paper" in text
