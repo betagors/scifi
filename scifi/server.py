@@ -1,7 +1,7 @@
 """
 FastMCP Server Daemon for SciFi: Scientific Research & Academic Writing Toolkit.
 
-Exposes 21 typed JSON-RPC tools for citation verification, bib auditing,
+Exposes 25 typed JSON-RPC tools for citation verification, bib auditing,
 attribution & plagiarism detection, symbolic calculus, physical dimensions,
 matrix shapes, LaTeX compilation, numerical curves, statistics, adversarial review,
 and open-access literature retrieval.
@@ -32,8 +32,10 @@ from scifi.citation_verifier import (
     generate_sanitized_bib,
     verify_citation,
 )
-from scifi.latex import compile_latex
+from scifi.doctor import audit_manuscript
+from scifi.latex import check_venue_compliance, compile_latex, generate_latex_table
 from scifi.literature import extract_pdf_text, fetch_paper_pdf
+from scifi.shannon import evaluate_manuscript_metadata
 from scifi.literature.benchmarks import CANONICAL_BENCHMARKS
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import (
@@ -1065,6 +1067,108 @@ def scifi_export_bibtex(
         "total_entries": len(papers),
         "output_path": str(out_file.resolve()),
     }
+
+
+# ---------------------------------------------------------------------------
+# 9. Unified Manuscript Audit, Shannon SEO, Tables & Venue Compliance
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def scifi_audit_manuscript(
+    tex_or_dir_path: str = ".",
+    bib_path: str | None = None,
+    venue: str | None = None,
+    double_blind: bool | None = None,
+    compile_pdf: bool = False,
+    live: bool = False,
+    output_report: str | None = None,
+) -> dict[str, Any]:
+    """
+    Run the complete 6-stage SciFi Manuscript Readiness Pipeline (doctor) across a single .tex
+    file or multi-file LaTeX project directory (main.tex + sections/*.tex).
+    Combines Alex (bib cross-check), Argus (attribution), Turing (cross-section notation),
+    Popper (claims), Shannon (title/abstract triage), and Venue/Double-Blind compliance.
+    """
+    return audit_manuscript(
+        tex_or_dir_path=tex_or_dir_path,
+        bib_path=bib_path,
+        venue=venue,
+        double_blind=double_blind,
+        compile_pdf=compile_pdf,
+        live=live,
+        output_report=output_report,
+    )
+
+
+@mcp.tool()
+def scifi_evaluate_title_abstract(
+    title: str | None = None,
+    abstract: str | None = None,
+    keywords: list[str] | str | None = None,
+    tex_path: str | None = None,
+    target_venue: str | None = None,
+    live: bool = False,
+) -> dict[str, Any]:
+    """
+    Evaluate academic manuscript title, 5-beat cognitive abstract, and author keywords
+    using Shannon's 100-point Reviewer Triage Scorecard and SEO checks.
+    Accepts either explicit title/abstract/keywords OR tex_path (single .tex or multi-file directory).
+    """
+    return evaluate_manuscript_metadata(
+        title=title,
+        abstract=abstract,
+        keywords=keywords,
+        tex_path=tex_path,
+        target_venue=target_venue,
+        live=live,
+    )
+
+
+@mcp.tool()
+def scifi_generate_latex_table(
+    data_input: str | list[dict[str, Any]],
+    caption: str = "Experimental comparison against state-of-the-art baselines.",
+    label: str = "tab:results",
+    lower_is_better: list[str] | None = None,
+    precision: int = 2,
+    highlight_best: bool = True,
+    highlight_second: bool = True,
+    output_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Generate a publication-grade LaTeX booktabs table from CSV file, JSON file, or inline row objects.
+    Automatically bolds best values (textbf), underlines second-best (underline), and pairs _std/_ci columns as $mean +- std$.
+    """
+    return generate_latex_table(
+        data_input=data_input,
+        caption=caption,
+        label=label,
+        lower_is_better=lower_is_better,
+        precision=precision,
+        highlight_best=highlight_best,
+        highlight_second=highlight_second,
+        output_path=output_path,
+    )
+
+
+@mcp.tool()
+def scifi_check_venue_compliance(
+    tex_or_dir_path: str,
+    venue: str | None = None,
+    double_blind: bool = False,
+    author_names: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Audit a single-file or multi-file LaTeX project (main.tex + sections/*.tex) for venue compliance,
+    double-blind anonymization leaks, forbidden negative vspace / margin hacks, and unreferenced floats.
+    """
+    return check_venue_compliance(
+        tex_or_dir_path=tex_or_dir_path,
+        venue=venue,
+        double_blind=double_blind,
+        author_names=author_names,
+    )
 
 
 if __name__ == "__main__":

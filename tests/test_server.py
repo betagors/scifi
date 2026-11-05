@@ -58,6 +58,10 @@ EXPECTED_TOOLS = {
     "scifi_query_store",
     "scifi_export_bibtex",
     "scifi_query_sota_benchmarks",
+    "scifi_audit_manuscript",
+    "scifi_evaluate_title_abstract",
+    "scifi_generate_latex_table",
+    "scifi_check_venue_compliance",
 }
 
 

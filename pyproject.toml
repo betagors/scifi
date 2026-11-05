@@ -4,10 +4,34 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scifi"
-version = "0.1.0"
-description = "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring."
+version = "1.0.0"
+description = "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, mathematical derivations, and LaTeX manuscripts."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
+authors = [
+    { name = "SciFi Contributors" }
+]
+keywords = [
+    "scientific-writing",
+    "citation-verification",
+    "latex",
+    "sympy",
+    "mcp",
+    "model-context-protocol",
+    "academic-research",
+    "peer-review",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+]
 dependencies = [
     "antlr4-python3-runtime==4.11.0",
     "bibtexparser>=2.1.0",
@@ -18,8 +42,17 @@ dependencies = [
     "pypdf>=4.0.0",
     "scipy>=1.18.1",
     "mcp>=1.0.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
     "pytest>=8.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Betagors/scifi"
+Repository = "https://github.com/Betagors/scifi"
+Issues = "https://github.com/Betagors/scifi/issues"
 
 [project.scripts]
 scifi = "scifi.cli:main"
@@ -29,3 +62,5 @@ alex = "scifi.citation_verifier.cli:main"
 scifi-argus = "scifi.argus.cli:main"
 argus = "scifi.argus.cli:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["scifi", "skills"]

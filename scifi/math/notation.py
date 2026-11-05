@@ -1,5 +1,7 @@
 """
 Manuscript notation consistency verifier (scifi.math.notation).
+Supports single-file .tex manuscripts, multi-file LaTeX projects (via \\input / \\include),
+project directories, and raw LaTeX strings.
 """
 
 from __future__ import annotations
@@ -8,6 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 import re
 from typing import Any
+
+from scifi.latex.project import resolve_latex_project
 
 # ── Regex patterns ──────────────────────────────────────────────────────────
 
@@ -91,36 +95,54 @@ def split_into_sections(text: str) -> list[tuple[str, str]]:
 
 
 def check_notation(
-    tex_content_or_path: str,
+    tex_content_or_path: str | Path,
     sections: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Scan LaTeX manuscript for notation consistency, multi-variant symbols, and unintroduced notations.
+    Scan LaTeX manuscript or multi-file LaTeX project for notation consistency,
+    multi-variant symbols, and unintroduced notations.
 
     Args:
-        tex_content_or_path: File path to .tex file or raw LaTeX content.
+        tex_content_or_path: File path to .tex file, directory path, or raw LaTeX content.
         sections: Optional list of section names to restrict the analysis to.
     """
     tex_path: str | None = None
-    input_str = tex_content_or_path.strip()
+    files_scanned: list[str] = []
 
-    if "\n" not in input_str:
-        p = Path(input_str)
-        if p.is_file():
-            tex_path = str(p)
-            try:
-                text = p.read_text(encoding="utf-8", errors="replace")
-            except Exception as e:
-                return {"status": "ERROR", "error_message": str(e)}
-        elif input_str.endswith(".tex") or "/" in input_str or "\\" in input_str:
+    if isinstance(tex_content_or_path, Path):
+        if not tex_content_or_path.exists():
             return {
                 "status": "ERROR",
-                "error_message": f"File not found: {input_str}",
+                "error_message": f"File not found: {tex_content_or_path}",
             }
+        try:
+            proj = resolve_latex_project(tex_content_or_path)
+            tex_path = str(proj.entrypoint)
+            text = proj.merged_text
+            files_scanned = [f.relative_path for f in proj.files]
+        except Exception as e:
+            return {"status": "ERROR", "error_message": str(e)}
+    else:
+        input_str = tex_content_or_path.strip()
+        if "\n" not in input_str:
+            p = Path(input_str)
+            if p.exists():
+                try:
+                    proj = resolve_latex_project(p)
+                    tex_path = str(proj.entrypoint)
+                    text = proj.merged_text
+                    files_scanned = [f.relative_path for f in proj.files]
+                except Exception as e:
+                    return {"status": "ERROR", "error_message": str(e)}
+            elif input_str.endswith(".tex") or "/" in input_str or "\\" in input_str:
+                return {
+                    "status": "ERROR",
+                    "error_message": f"File not found: {input_str}",
+                }
+            else:
+                text = input_str
         else:
             text = input_str
-    else:
-        text = input_str
 
     all_sections = split_into_sections(text)
 
@@ -190,6 +212,8 @@ def check_notation(
     }
     if tex_path:
         result["file"] = tex_path
+    if files_scanned:
+        result["files_scanned"] = files_scanned
 
     if issues_count > 0:
         result["hint"] = (

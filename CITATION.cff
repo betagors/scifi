@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use SciFi in your research or scientific manuscripts, please cite it using the metadata below."
+type: software
+title: "SciFi: Scientific Research & Academic Writing Toolkit for AI Agents"
+version: 1.0.0
+date-released: "2026-11-05"
+license: MIT
+repository-code: "https://github.com/Betagors/scifi"
+url: "https://github.com/Betagors/scifi"
+keywords:
+  - scientific-writing
+  - citation-verification
+  - symbolic-mathematics
+  - latex
+  - model-context-protocol
+  - peer-review
+  - academic-research
+authors:
+  - name: "SciFi Contributors"

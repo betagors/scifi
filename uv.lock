@@ -1006,7 +1006,7 @@ wheels = [
 
 [[package]]
 name = "scifi"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -1015,10 +1015,14 @@ dependencies = [
     { name = "numpy" },
     { name = "pint" },
     { name = "pypdf" },
-    { name = "pytest" },
     { name = "requests" },
     { name = "scipy" },
     { name = "sympy" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -1029,11 +1033,12 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pint", specifier = ">=0.26.2" },
     { name = "pypdf", specifier = ">=4.0.0" },
-    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "sympy", specifier = ">=1.14.0" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "scipy"

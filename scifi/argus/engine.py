@@ -1,12 +1,14 @@
 """
 Core execution engine for Argus Attribution & Plagiarism Audit.
-Coordinates detector, searcher, and reporting.
+Coordinates detector, searcher, and reporting across single files or multi-file LaTeX projects.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Optional
+
+from scifi.latex.project import resolve_latex_project
 
 from .detector import (
     COMMON_KNOWLEDGE,
@@ -36,13 +38,41 @@ class ArgusEngine:
         self.enable_search = enable_search
 
     def audit_file(self, file_path: Path) -> AttributionReport:
+        if file_path.is_dir() or file_path.suffix.lower() == ".tex":
+            try:
+                proj = resolve_latex_project(file_path)
+                if proj.is_multifile:
+                    all_findings: List[AttributionFinding] = []
+                    next_idx = 1
+                    for src_file in proj.files:
+                        sub_rep = self.audit_text(
+                            src_file.content,
+                            source_file=src_file.relative_path,
+                            start_idx=next_idx,
+                        )
+                        for f in sub_rep.findings:
+                            f.source_file = src_file.relative_path
+                            all_findings.append(f)
+                        next_idx += len(sub_rep.findings)
+                    return AttributionReport(
+                        source_file=str(proj.entrypoint),
+                        findings=all_findings,
+                        files_scanned=[f.relative_path for f in proj.files],
+                    )
+            except Exception:
+                pass
         content = file_path.read_text(encoding="utf-8", errors="replace")
         return self.audit_text(content, source_file=str(file_path))
 
-    def audit_text(self, text: str, source_file: Optional[str] = None) -> AttributionReport:
+    def audit_text(
+        self,
+        text: str,
+        source_file: Optional[str] = None,
+        start_idx: int = 1,
+    ) -> AttributionReport:
         spans = split_into_sentence_spans(text)
         findings: List[AttributionFinding] = []
-        finding_idx = 1
+        finding_idx = start_idx
 
         for span in spans:
             has_local_citation = len(span.citations) > 0
@@ -118,7 +148,7 @@ class ArgusEngine:
                         confidence=0.90,
                         remediation_hint=(
                             f"Contains informal web or synthetic AI phrasing ({', '.join(tropes)}). "
-                            "Reformulate via the 'human' skill into objective, publication-grade academic prose."
+                            f"Rewrite into objective, hedged academic prose via the 'human' skill."
                         ),
                     )
                 )

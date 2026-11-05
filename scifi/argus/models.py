@@ -37,9 +37,10 @@ class AttributionFinding:
     candidate_work: Optional[CitationMetadata] = None
     bibtex_entry: Optional[str] = None
     cite_key: Optional[str] = None
+    source_file: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        res: Dict[str, Any] = {
             "id": self.id,
             "line_number": self.line_number,
             "text_snippet": self.text_snippet,
@@ -52,11 +53,19 @@ class AttributionFinding:
             "bibtex_entry": self.bibtex_entry,
             "candidate_work": self.candidate_work.to_dict() if self.candidate_work else None,
         }
+        if self.source_file:
+            res["source_file"] = self.source_file
+        return res
 
     def summary_markdown(self) -> str:
+        loc_str = (
+            f"`{self.source_file}:{self.line_number}`"
+            if self.source_file and self.line_number is not None
+            else str(self.line_number if self.line_number is not None else "N/A")
+        )
         lines = [
             f"### [{self.id}] {self.category.value} (Confidence: {self.confidence:.0%})",
-            f"- **Line:** {self.line_number if self.line_number is not None else 'N/A'}",
+            f"- **Line:** {loc_str}",
             f"- **Entity / Topic:** `{self.matched_entity or 'Uncredited text'}`",
             f"- **Action:** **{self.suggested_action.value}**",
             f"- **Snippet:** *\"{self.text_snippet[:150]}{'...' if len(self.text_snippet) > 150 else ''}\"*",
@@ -75,6 +84,7 @@ class AttributionFinding:
 class AttributionReport:
     source_file: Optional[str]
     findings: List[AttributionFinding] = field(default_factory=list)
+    files_scanned: List[str] = field(default_factory=list)
 
     @property
     def total_findings(self) -> int:
@@ -97,7 +107,7 @@ class AttributionReport:
         return sum(1 for f in self.findings if f.category == AttributionCategory.PREPRINT_ALIGNMENT)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        res: Dict[str, Any] = {
             "source_file": self.source_file,
             "total_findings": self.total_findings,
             "academic_count": self.academic_count,
@@ -106,6 +116,9 @@ class AttributionReport:
             "preprint_count": self.preprint_count,
             "findings": [f.to_dict() for f in self.findings],
         }
+        if self.files_scanned:
+            res["files_scanned"] = self.files_scanned
+        return res
 
     def summary_markdown(self) -> str:
         lines = [
