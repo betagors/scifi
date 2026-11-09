@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from scifi.submission.highlights import generate_highlights
 from scifi.submission.models import (
     AuthorInfo,
     CodePackagerResult,
@@ -23,5 +24,6 @@ __all__ = [
     "PublisherProfile",
     "SubmissionBundleResult",
     "TitlePageResult",
+    "generate_highlights",
     "get_publisher_profile",
 ]
