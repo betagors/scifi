@@ -133,5 +133,36 @@ def test_anonymous_code_packager(tmp_path):
         assert "<REPO_ROOT>" in data_content
 
 
+def test_submission_bundler(tmp_path):
+    from scifi.submission.bundler import prepare_submission_bundle
+
+    tex_file = tmp_path / "main.tex"
+    tex_file.write_text(r"""
+    \documentclass{article}
+    \title{Deep Kernel Learning for Dynamics}
+    \author{John Doe \and Jane Doe}
+    \begin{abstract}This paper proposes deep kernels for scientific dynamical systems.\end{abstract}
+    \begin{document}
+    \maketitle
+    \end{document}
+    """, encoding="utf-8")
+
+    out_dir = tmp_path / "dist" / "submission"
+    res = prepare_submission_bundle(
+        target_dir_or_tex=tex_file,
+        journal_name="Elsevier Pattern Recognition",
+        venue="elsevier",
+        no_code=True,
+        output_dir=out_dir,
+    )
+    assert res.status == "SUCCESS"
+    assert (out_dir / "cover_letter.md").exists()
+    assert (out_dir / "highlights.md").exists()
+    assert (out_dir / "title_page.tex").exists()
+    assert (out_dir / "submission_manifest.json").exists()
+    assert res.code_zip_path is None
+
+
+
 
 

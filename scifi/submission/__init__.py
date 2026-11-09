@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from scifi.submission.bundler import prepare_submission_bundle
 from scifi.submission.code_packager import package_anonymous_code
 from scifi.submission.cover_letter import generate_cover_letter
 from scifi.submission.highlights import generate_highlights
@@ -32,4 +33,5 @@ __all__ = [
     "generate_title_page",
     "get_publisher_profile",
     "package_anonymous_code",
+    "prepare_submission_bundle",
 ]
