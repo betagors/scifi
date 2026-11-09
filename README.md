@@ -3,10 +3,10 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB.svg?style=flat&logo=python&logoColor=white)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/protocol-Model_Context_Protocol-8A2BE2.svg?style=flat)](https://modelcontextprotocol.io)
 [![Antigravity](https://img.shields.io/badge/antigravity-plugin-FF6F00.svg?style=flat)](https://antigravity.google)
-[![Tests Passing](https://img.shields.io/badge/tests-390%2B%20passed-brightgreen.svg?style=flat)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-419%20passed-brightgreen.svg?style=flat)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 26 FastMCP Tools**
+> **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 32 FastMCP Tools**
 >
 > *SciFi transforms AI coding agents (Antigravity, Claude Code, Cursor, VS Code / Cline & Roo Code, Windsurf, OpenCode) and your terminal into a rigorous, peer-review-grade research partner.*
 
@@ -89,6 +89,9 @@ uv run sf shannon ./my_paper_dir --live
 
 # 🕵️ Check double-blind anonymization leaks, negative \vspace hacks, and unreferenced floats
 uv run sf venue ./my_paper_dir --venue icml --double-blind
+
+# 📦 Generate complete academic submission bundle (cover letter, highlights, title page, code zip)
+uv run sf submission bundle --target ./my_paper_dir --journal "Pattern Recognition" --venue elsevier
 ```
 
 ---
@@ -156,6 +159,11 @@ Every capability is available through `scifi` and its short alias `sf`:
 | `scifi human [path]` | `sf humanize [path]` / `sf deai` | Audit LaTeX source code & prose across 6 forensic AI-detection dimensions ($R_{\mathrm{IB}}$, $\mu_{\mathrm{macro}}$, $\rho_{\mathrm{math\_text}}$, $B_{\mathrm{length}}$) |
 | `scifi table <data>` | `sf tab <data>` / `sf booktabs` | Generate LaTeX `booktabs` tables with auto-bolded best & underlined second-best metrics |
 | `scifi venue [path]` | `sf blind [path]` | Audit manuscript for double-blind anonymization leaks, `\vspace` hacks & unreferenced floats |
+| `scifi figures [path]` | `sf fig [path]` / `sf da-vinci` | Audit figures for DPI, vector formats, subfigure parity, and colorblind safety |
+| `scifi trim [path]` | `sf budget [path]` / `sf layout` | Analyze page budget slack, paragraph widow lines, and BibTeX abbreviation savings |
+| `scifi proofs [path]` | `sf theorems [path]` / `sf euclid` | Audit theorem-proof completeness and verify appendix derivation pointers |
+| `scifi repro [path]` | `sf bacon [path]` / `sf repro` | Audit conference reproducibility checklist (seeds, error bars, compute budget, anonymization) |
+| `scifi rebuttal <cmd>` | `sf socrates` / `sf response` | Author rebuttal generator (`sf rebuttal format`) and LaTeX revision diff tracker (`sf rebuttal diff`) |
 | `scifi config <cmd>` | `sf cfg < show \| set \| init >` | Manage `~/.scifi/config.json` API keys/polite-pool email and workspace `scifi.toml` |
 | `scifi compile [tex]` | `sf c [tex]` / `sf build` | Compile LaTeX manuscript via `latexmk`/`pdflatex` with `file:line` log diagnosis |
 | `scifi setup` | `sf init` / `sf i` | Configure SciFi FastMCP server in Antigravity, Claude, Cursor, Cline, Roo, Windsurf |
@@ -164,7 +172,7 @@ Every capability is available through `scifi` and its short alias `sf`:
 
 ---
 
-## 🛠️ FastMCP Server Tool Reference (25 Tools)
+## 🛠️ FastMCP Server Tool Reference (32 Tools)
 
 When SciFi is enabled, coding agents interact directly with these 25 structured JSON-RPC primitives:
 
@@ -214,9 +222,19 @@ When SciFi is enabled, coding agents interact directly with these 25 structured 
 
 ---
 
+### 10. Visual Accessibility, Page Budget, Proofs, Reproducibility & Rebuttal (Da Vinci, Layout, Euclid, Bacon & Socrates)
+- **`scifi_audit_figures`**: Audits figures in LaTeX manuscripts for print resolution (min DPI >= 300), vector vs raster format for plots, subfigure parity ((a), (b), (c) referenced in prose), and colorblind safety (red/green curve collisions).
+- **`scifi_trim_budget`**: Analyzes LaTeX manuscripts and BibTeX bibliographies for legitimate line savings: prunes 1-3 words from widow lines, condenses verbose venue titles with standard ISO-4/IEEE abbreviations, and suggests float compaction.
+- **`scifi_audit_proofs`**: Detects orphan theorems, lemmas, and propositions lacking inline proofs or explicit pointers to appendix derivations, and verifies target appendix labels.
+- **`scifi_audit_reproducibility`**: Audits submissions against conference reproducibility checklists (NeurIPS/ICML/IEEE): random seeds, trial repetitions, error bars, compute budget disclosures, and double-blind repository sanitization.
+- **`scifi_format_rebuttal`**: Parses raw reviewer comments to scaffold disciplined, 4-beat point-by-point rebuttal markdown documents with scholarly etiquette.
+- **`scifi_diff_manuscript`**: Performs section-by-section LaTeX diff tracking, generates markdown diff ledgers, and automates marked-up `latexdiff` PDF generation.
+
+---
+
 ## 🧪 Running Tests
 
-The test suite contains **380+ unit and integration tests** covering all modules, CLI commands, and multi-file LaTeX workflows:
+The test suite contains **419+ unit and integration tests** covering all modules, CLI commands, and multi-file LaTeX workflows:
 
 ```bash
 uv run pytest tests/ -v

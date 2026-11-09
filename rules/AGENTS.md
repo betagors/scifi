@@ -39,3 +39,35 @@ These rules are active whenever the SciFi plugin is enabled to enforce academic 
 - **Rule of Three Keyphrase Anchoring:** Anchor primary search keyphrases across context (Beat 1), methodology (Beat 3), and conclusion (Beat 5).
 - **Metadata Vocabulary Expansion:** Ensure author keywords share <35% word overlap with the title, broadening the paper's searchable footprint across indexing databases.
 - **Empirical Validation:** Use the `shannon` skill (`test_keywords.py`) to verify the 100-point Reviewer Triage Score and search engine collision safety.
+
+## 7. Visual & Scientific Figure Accessibility
+- **Vector Over Raster:** Always use vector formats (`.pdf`, `.eps`, `.svg`) for loss curves, accuracy plots, schematics, and line charts.
+- **Print Resolution (DPI):** Ensure all raster figures maintain $\ge 300\text{ DPI}$ print resolution.
+- **Subfigure Parity:** Every subfigure tag `(a)`, `(b)`, `(c)` declared in captions or subfloats must be explicitly discussed in body text.
+- **Colorblind Palettes:** Avoid ambiguous red-green combinations without secondary visual cues (line styles, markers); verify palettes using the `da-vinci` skill (`sf figures` / `scifi_audit_figures`).
+
+## 8. Page Budget & Typographic Micro-Trimming
+- **Zero Forbidden Squeeze Hacks:** Never resort to forbidden negative `\vspace` or margin modifications to meet page ceilings.
+- **Widow Line Pruning:** Prune 1–3 words from paragraphs ending in short orphan/widow lines to recover full vertical lines.
+- **BibTeX Venue Condensation:** Condense verbose journal and conference names into standard ISO-4/IEEE abbreviations via the `layout` skill (`sf trim` / `scifi_trim_budget`).
+
+## 9. Theorem–Proof & Appendix Completeness
+- **Zero Orphan Claims:** Never leave a theorem, lemma, or proposition without an inline proof or an explicit verifiable pointer to an appendix derivation.
+- **Appendix Label Resolution:** Verify that all deferred proofs resolve to defined LaTeX appendix anchors via the `euclid` skill (`sf proofs` / `scifi_audit_proofs`).
+
+## 10. Conference Reproducibility & Open Science
+- **Empirical Transparency:** Document explicit random evaluation seeds, trial repetitions, standard deviations, and confidence intervals.
+- **Compute Disclosures:** Report hardware accelerators (e.g. GPU models, node counts) and total compute training hours.
+- **Double-Blind Repository Sanitization:** Never include identifiable personal GitHub URLs under double-blind review; sanitize links via the `bacon` skill (`sf repro` / `scifi_audit_reproducibility`).
+
+## 11. Author Rebuttal & Point-by-Point Revisions
+- **4-Beat Rebuttal Architecture:** Structure every peer review response across: (1) Summary & Direct Answer, (2) Concrete Action Taken, (3) New Empirical/Theoretical Evidence, (4) Revised Manuscript Excerpt.
+- **Objective Scholarly Etiquette:** Eliminate sycophantic praise and defensive argument; maintain disciplined academic register via the `rebuttal` skill (`sf rebuttal` / `scifi_format_rebuttal` / `scifi_diff_manuscript`).
+
+## 12. Academic Paper Packaging & Submission Suite
+- **Publisher Profile Fidelity:** Format cover letters, highlights, and title pages according to target venue profiles (`elsevier`, `ieee`, `springer`, `acm`, `openreview`).
+- **Research Highlight Character Ceiling:** Strictly enforce venue-specific highlight lengths ($\le 85$ characters including spaces for Elsevier, $\le 100$ characters for IEEE/Springer) via `sf submission highlights` (`scifi_generate_highlights`).
+- **Review Fairness via Standalone Title Pages:** When manuscripts are submitted under double-blind review, always generate a standalone unblinded title page (`title_page.tex`) via `sf submission title-page` (`scifi_generate_title_page`) containing complete author affiliations, correspondence, funding, and CRediT statements, preserving zero author leaks in `main.tex`.
+- **Reproducible Anonymous Code Packaging:** Scrub all git histories, commit records, local user path traces (`C:\Users\...` or `/home/...`), credentials, and author names from supplementary code archives via `sf submission pack-code` (`scifi_package_anonymous_code`).
+- **One-Shot Submission Bundling:** Aggregate all four submission artifacts into a unified verified package with `submission_manifest.json` via `sf submission bundle` (`scifi_prepare_submission_bundle`).
+
