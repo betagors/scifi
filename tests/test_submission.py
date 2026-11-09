@@ -45,3 +45,39 @@ def test_highlights_validation_elsevier():
     assert res_invalid.highlights[0].is_valid is False
     assert res_invalid.highlights[0].char_count > 85
 
+
+def test_title_page_generation():
+    from scifi.submission.title_page import generate_title_page
+    from scifi.submission.models import AuthorInfo
+
+    authors = [
+        AuthorInfo(
+            name="Alice Smith",
+            affiliation="Department of Computer Science, Stanford University",
+            email="alice@stanford.edu",
+            orcid="0000-0002-1825-0097",
+            is_corresponding=True,
+            credit_role="Conceptualization, Methodology, Software",
+        ),
+        AuthorInfo(
+            name="Bob Jones",
+            affiliation="Google DeepMind",
+            email="bob@deepmind.com",
+            orcid=None,
+            is_corresponding=False,
+            credit_role="Validation, Supervision",
+        ),
+    ]
+    res = generate_title_page(
+        title="Scalable Attention Architectures",
+        authors=authors,
+        venue="elsevier",
+        funding="Supported by NSF Award #2041234.",
+        conflicts="The authors declare no competing interests.",
+    )
+    assert res.status == "SUCCESS"
+    assert "Alice Smith" in res.latex_text
+    assert "Corresponding author: alice@stanford.edu" in res.markdown_text
+    assert "CRediT Authorship Contribution Statement" in res.latex_text
+
+

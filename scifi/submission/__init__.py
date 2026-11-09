@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from scifi.submission.highlights import generate_highlights
+from scifi.submission.title_page import generate_title_page
 from scifi.submission.models import (
     AuthorInfo,
     CodePackagerResult,
@@ -25,5 +26,6 @@ __all__ = [
     "SubmissionBundleResult",
     "TitlePageResult",
     "generate_highlights",
+    "generate_title_page",
     "get_publisher_profile",
 ]
