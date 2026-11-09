@@ -100,4 +100,38 @@ def test_cover_letter_generation():
     assert "Suggested Reviewers" in res.markdown_text
 
 
+def test_anonymous_code_packager(tmp_path):
+    import zipfile
+    from scifi.submission.code_packager import package_anonymous_code
+
+    src = tmp_path / "code_src"
+    src.mkdir()
+    (src / ".git").mkdir()
+    (src / ".git" / "config").write_text("user = Alice Smith", encoding="utf-8")
+    (src / ".env").write_text("SECRET_KEY=12345", encoding="utf-8")
+    (src / "main.py").write_text("# Author: Alice Smith\nprint('hello')", encoding="utf-8")
+    (src / "data.txt").write_text("path = C:\\Users\\Alice\\data.csv", encoding="utf-8")
+
+    out_zip = tmp_path / "anonymous_code.zip"
+    res = package_anonymous_code(code_dir=src, output_zip_path=out_zip, author_names=["Alice Smith"])
+
+    assert res.status == "SUCCESS"
+    assert res.audit_passed is True
+    assert out_zip.exists()
+
+    with zipfile.ZipFile(out_zip, "r") as zf:
+        namelist = zf.namelist()
+        assert not any(".git" in n for n in namelist)
+        assert not any(".env" in n for n in namelist)
+        assert "main.py" in namelist
+        assert "README.md" in namelist
+        # Verify content sanitization
+        main_content = zf.read("main.py").decode("utf-8")
+        assert "Alice Smith" not in main_content
+        data_content = zf.read("data.txt").decode("utf-8")
+        assert "C:\\Users\\Alice" not in data_content
+        assert "<REPO_ROOT>" in data_content
+
+
+
 
