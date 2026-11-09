@@ -586,7 +586,7 @@ def test_cli_submission_subcommands(tmp_path: Path) -> None:
     
     # sf submission highlights
     hl_out = tmp_path / "highlights.md"
-    code = scifi.cli.main(["submission", "highlights", "--target", str(tex), "--output", str(hl_out)])
+    code = scifi.cli.main(["submission", "highlights", "--bullets", "First major contribution.; Second empirical result.; Third analytical proof.", "--output", str(hl_out)])
     assert code == 0
     assert hl_out.exists()
 

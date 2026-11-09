@@ -11,7 +11,7 @@ from scifi.latex.project import resolve_latex_project
 from scifi.submission.code_packager import package_anonymous_code
 from scifi.submission.cover_letter import generate_cover_letter
 from scifi.submission.highlights import generate_highlights
-from scifi.submission.models import AuthorInfo, SubmissionBundleResult
+from scifi.submission.models import AuthorInfo, SubmissionBundleResult, normalize_authors
 from scifi.submission.profiles import get_publisher_profile
 from scifi.submission.title_page import extract_metadata_from_latex, generate_title_page
 
@@ -100,20 +100,9 @@ def prepare_submission_bundle(
     final_conflicts = conflicts or sub_cfg.get("conflicts")
 
     # Author resolution
-    final_authors: list[AuthorInfo] = list(authors) if authors else []
+    final_authors = normalize_authors(authors)
     if not final_authors and "authors" in sub_cfg:
-        for a_dict in sub_cfg["authors"]:
-            if isinstance(a_dict, dict):
-                final_authors.append(
-                    AuthorInfo(
-                        name=a_dict.get("name", "Author"),
-                        affiliation=a_dict.get("affiliation", "Institution"),
-                        email=a_dict.get("email", "author@institution.edu"),
-                        orcid=a_dict.get("orcid"),
-                        is_corresponding=a_dict.get("is_corresponding", False),
-                        credit_role=a_dict.get("credit_role"),
-                    )
-                )
+        final_authors = normalize_authors(sub_cfg["authors"])
 
     extracted_title, extracted_authors, extracted_abs = "", [], ""
     if tex_path and tex_path.exists():

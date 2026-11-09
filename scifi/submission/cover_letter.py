@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
 
-from scifi.submission.models import AuthorInfo, CoverLetterResult
+from scifi.submission.models import AuthorInfo, CoverLetterResult, normalize_authors
 from scifi.submission.profiles import get_publisher_profile
 from scifi.submission.title_page import extract_metadata_from_latex
 
@@ -38,7 +38,9 @@ def generate_cover_letter(
         ext_title, ext_authors, ext_abs = extract_metadata_from_latex(manuscript_path)
 
     title = manuscript_title or ext_title or "Manuscript Title"
-    author_list = list(authors) if authors else ext_authors
+    author_list = normalize_authors(authors)
+    if not author_list:
+        author_list = ext_authors
     if not author_list:
         author_list = [
             AuthorInfo(
@@ -70,7 +72,8 @@ def generate_cover_letter(
         short_abs = (abstract or ext_abs).split("\n\n")[0].strip()
         md.append(f"{short_abs}\n")
     else:
-        md.append(f"The enclosed paper addresses key theoretical and empirical challenges in this domain, directly aligning with the aims and scope of *{journal_name}*.\n")
+        short_abs = f"The enclosed paper addresses key theoretical and empirical challenges in this domain, directly aligning with the aims and scope of *{journal_name}*."
+        md.append(f"{short_abs}\n")
 
     # Contributions
     if contributions:
@@ -95,6 +98,16 @@ def generate_cover_letter(
         md.extend([
             "### Graphical Abstract / Visual Summary",
             f"A teaser figure and graphical summary representing our primary architecture is enclosed (`{figure_path}`).\n",
+        ])
+
+    # Springer Ethics
+    if profile.require_ethics_declaration:
+        md.extend([
+            "### Ethics & Integrity Declarations",
+            "- **Research Involving Human and/or Animal Participants:** This research did not involve human participants or animal experiments.",
+            "- **Informed Consent:** Not applicable.",
+            "- **Ethics Approval:** The study protocol complies with institutional and publisher research integrity standards.",
+            "",
         ])
 
     # Declarations
@@ -132,16 +145,22 @@ def generate_cover_letter(
     md_text = "\n".join(md)
 
     # Build LaTeX Letter Class
+    journal_target = f"{editor}\\\\Editor-in-Chief, {journal_name}"
+    if issn_str:
+        journal_target += f"\\\\{issn_str}"
+
     tex: list[str] = [
         r"\documentclass[11pt]{letter}",
         r"\usepackage[margin=1in]{geometry}",
         r"\usepackage{hyperref}",
-        f"\\address{{{corr.name}\\\\{corr.affiliation}\\\\Email: \\texttt{{{corr.email}}}}}",
+        f"\\address{{{corr.name}\\\\{corr.affiliation}\\\\Email: \\url{{{corr.email}}}}}",
         r"\begin{document}",
-        f"\\begin{{letter}}{{{editor}\\\\Editor-in-Chief, {journal_name}\\\\{issn_str}}}",
+        f"\\begin{{letter}}{{{journal_target}}}",
         r"\opening{Dear " + editor + r",}",
         f"We are pleased to submit our original research manuscript entitled ``{title}'' for consideration of publication in \\textit{{{journal_name}}}.",
         r"\par\vspace{1em}",
+        f"\\noindent \\textbf{{Significance:}} {short_abs}",
+        r"\par\vspace{0.5em}",
     ]
 
     if contributions:
@@ -158,6 +177,34 @@ def generate_cover_letter(
         tex.extend([
             r"\par\vspace{0.5em}",
             f"\\noindent \\textbf{{Prior Conference Extension:}} This submission extends {prior_ref} with substantial new technical contributions ($>30\\%$ new material), including complete proofs and comprehensive baseline evaluations.",
+        ])
+
+    if figure_path:
+        tex.extend([
+            r"\par\vspace{0.5em}",
+            f"\\noindent \\textbf{{Graphical Abstract:}} A representative teaser figure is enclosed (\\texttt{{{figure_path}}}).",
+        ])
+
+    if profile.require_ethics_declaration:
+        tex.extend([
+            r"\par\vspace{0.5em}",
+            r"\noindent \textbf{Ethics Declarations:} The study protocol satisfies all institutional research integrity requirements and involved no human or animal experiments.",
+        ])
+
+    if suggested_reviewers:
+        tex.extend([
+            r"\par\vspace{0.5em}",
+            r"\noindent \textbf{Suggested Reviewers:}",
+            r"\begin{itemize}",
+        ])
+        for r in suggested_reviewers:
+            tex.append(f"  \\item \\textbf{{{r.get('name', 'Reviewer')}}} ({r.get('institution', '')}) --- \\url{{{r.get('email', '')}}}")
+        tex.append(r"\end{itemize}")
+
+    if code_link:
+        tex.extend([
+            r"\par\vspace{0.5em}",
+            f"\\noindent \\textbf{{Data & Code Availability:}} Artifacts are openly available at \\url{{{code_link}}}.",
         ])
 
     tex.extend([

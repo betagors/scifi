@@ -28,6 +28,43 @@ class AuthorInfo:
         }
 
 
+def normalize_authors(authors: Sequence[AuthorInfo | dict[str, Any]] | str | None) -> list[AuthorInfo]:
+    """Normalize authors from strings, dicts, or AuthorInfo objects."""
+    if not authors:
+        return []
+    if isinstance(authors, str):
+        parsed = []
+        for name in authors.split(","):
+            n = name.strip()
+            if n:
+                email_handle = n.lower().replace(" ", ".")
+                parsed.append(
+                    AuthorInfo(
+                        name=n,
+                        affiliation="University/Institution",
+                        email=f"{email_handle}@institution.edu",
+                        is_corresponding=(len(parsed) == 0),
+                    )
+                )
+        return parsed
+    res = []
+    for a in authors:
+        if isinstance(a, AuthorInfo):
+            res.append(a)
+        elif isinstance(a, dict):
+            res.append(
+                AuthorInfo(
+                    name=a.get("name", "Author"),
+                    affiliation=a.get("affiliation", "University/Institution"),
+                    email=a.get("email", "author@institution.edu"),
+                    orcid=a.get("orcid"),
+                    is_corresponding=a.get("is_corresponding", False),
+                    credit_role=a.get("credit_role"),
+                )
+            )
+    return res
+
+
 @dataclass
 class PublisherProfile:
     """Venue-specific rules and requirements."""

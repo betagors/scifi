@@ -1,7 +1,8 @@
 """
 4-Stage Research Gap Extraction and Corroboration Engine.
 
-Mines technical limitation claims from reconstructed abstracts and inbound citation contexts,
+Mines technical limitation claims from reconstructed abstracts, full-text sections
+(System Model/Methodology, Limitations/Discussion), and inbound citation contexts,
 attributes claims to reporting papers, classifies canonical gap categories, and corroborates
 findings across independent sources.
 """
@@ -122,7 +123,7 @@ _CATEGORY_PATTERNS: dict[str, list[tuple[str, int]]] = {
     ],
 }
 
-# Contrastive markers for Stage 1 abstract sentence mining
+# Contrastive markers for abstract sentence mining
 _CONTRASTIVE_MARKERS = [
     r"\bhowever\b",
     r"\balthough\b",
@@ -195,7 +196,6 @@ def _split_into_sentences(text: str) -> list[str]:
         return []
 
     cleaned = text.strip()
-    # Protect common abbreviations from premature splitting
     abbreviations = [
         (r"\be\.g\.", "e_DOT_g_DOT_"),
         (r"\bi\.e\.", "i_DOT_e_DOT_"),
@@ -208,10 +208,8 @@ def _split_into_sentences(text: str) -> list[str]:
     for pattern, replacement in abbreviations:
         cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
 
-    # Split on sentence boundaries
     parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", cleaned)
 
-    # Restore abbreviations
     sentences = []
     for part in parts:
         restored = part
@@ -247,10 +245,8 @@ def _classify_gap_sentence(sentence: str) -> tuple[Optional[str], int]:
 
 def _generate_claim_summary(sentence: str, gap_type: str) -> str:
     """Produce a concise, human-readable claim summary from the sentence."""
-    # Strip citation brackets like [1], [1, 2], [1-3]
     text = re.sub(r"\[[\d,\s-]+\]", "", sentence).strip()
 
-    # Strip leading discourse / contrastive conjunctions
     text = re.sub(
         r"^(?:however|although|while|nevertheless|nonetheless|yet|in addition|furthermore|moreover)[,\s]+",
         "",
@@ -258,14 +254,11 @@ def _generate_claim_summary(sentence: str, gap_type: str) -> str:
         flags=re.IGNORECASE,
     ).strip()
 
-    # Strip subordinate clauses like "While Scalable Coordination performs well, "
     text = re.sub(r"^(?:while|although)\s+[^,]+,\s*", "", text, flags=re.IGNORECASE).strip()
 
-    # Capitalize first character
     if text:
         text = text[0].upper() + text[1:]
 
-    # Remove trailing period for clean summary format
     return text.rstrip(".")
 
 
@@ -280,7 +273,6 @@ def _extract_key_tokens(text: str) -> set[str]:
     words = re.findall(r"[a-zA-Z]{3,}", text.lower())
     tokens = set()
     for w in words:
-        # Strip trailing 's' unless double 'ss'
         norm = w[:-1] if (w.endswith("s") and not w.endswith("ss")) else w
         if norm not in _STOPWORDS:
             tokens.add(norm)
@@ -289,9 +281,9 @@ def _extract_key_tokens(text: str) -> set[str]:
 
 class GapExtractor:
     """
-    4-Stage evidence-based research gap extractor.
-    Mines limitations from abstracts and citation contexts, classifies claims,
-    and corroborates findings across independent sources.
+    Multi-stage evidence-based research gap extractor.
+    Mines limitations and system assumptions from abstracts, full-text sections,
+    and citation contexts, classifies claims, and corroborates findings across sources.
     """
 
     def extract_abstract_gaps(
@@ -309,7 +301,6 @@ class GapExtractor:
 
         for idx, sentence in enumerate(sentences):
             sentence_lower = sentence.lower()
-            # Check for contrastive / limitation markers
             has_contrastive = any(re.search(pat, sentence_lower) for pat in _CONTRASTIVE_MARKERS)
             gap_type, score = _classify_gap_sentence(sentence)
 
@@ -344,6 +335,140 @@ class GapExtractor:
 
         return results
 
+    def extract_fulltext_gaps(
+        self,
+        paper: PaperRecord,
+        sections: dict[str, str],
+    ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
+        """
+        Extract deep technical limitations and system assumptions from full-text paper sections.
+        Mines:
+        1. 'system_model_or_method': Mathematical assumptions, idealized states, and complexity bottlenecks.
+        2. 'limitations_and_conclusion': Explicit author concessions, boundary conditions, and unresolved problems.
+        """
+        if not sections:
+            return []
+
+        results: list[tuple[EvidenceRecord, PaperGapRecord]] = []
+
+        # 1. System Model & Methodology Mining
+        system_text = sections.get("system_model_or_method") or ""
+        if system_text and system_text.strip():
+            sentences = _split_into_sentences(system_text)
+            for idx, sentence in enumerate(sentences):
+                sentence_lower = sentence.lower()
+                gap_type, score = _classify_gap_sentence(sentence)
+
+                has_assumption = bool(
+                    re.search(
+                        r"\b(?:we\s+)?assume\b|\bassuming\b|\bunder\s+(?:the\s+)?assumption\b|"
+                        r"\bidealized\b|\bperfect\s+(?:knowledge|state|csi|channel|information|synchronization)\b|"
+                        r"\bstatic\s+(?:topology|network|graph|environment)\b|\bconvexity\b|\bi\.?i\.?d\.?\b|"
+                        r"\bworst-case\s+complexity\b|\bcomputational\s+(?:cost|complexity|overhead|bottleneck)\b|"
+                        r"\bo\([n\d\^\*\|\+\-\s]+\)",
+                        sentence_lower,
+                    )
+                )
+
+                if has_assumption or (gap_type in ("unstated_assumption", "computational_complexity") and score >= 2):
+                    if not gap_type:
+                        if re.search(r"\bo\([n\d\^\*\|\+\-\s]+\)|\bcomplexity\b|\bcomputational\b", sentence_lower):
+                            gap_type = "computational_complexity"
+                        else:
+                            gap_type = "unstated_assumption"
+
+                    ev_id = f"ev-{uuid.uuid4().hex[:12]}"
+                    gap_id = f"gap-{uuid.uuid4().hex[:12]}"
+
+                    ev_type = (
+                        "methodology_complexity"
+                        if gap_type == "computational_complexity"
+                        else "system_model_assumption"
+                    )
+
+                    evidence = EvidenceRecord(
+                        id=ev_id,
+                        paper_id=paper.id,
+                        evidence_type=ev_type,
+                        extracted_text=sentence,
+                        extraction_method="system_model_fulltext_mining",
+                        reporting_paper_id=None,
+                        source_section="System Model / Methodology",
+                        source_location=f"sentence_{idx + 1}",
+                        confidence=0.92,
+                    )
+
+                    gap = PaperGapRecord(
+                        id=gap_id,
+                        paper_id=paper.id,
+                        gap_type=gap_type,
+                        claim_summary=_generate_claim_summary(sentence, gap_type),
+                        primary_evidence_id=ev_id,
+                        verification_status="candidate",
+                        corroborating_count=0,
+                        contradicting_count=0,
+                    )
+
+                    results.append((evidence, gap))
+
+        # 2. Limitations, Discussion & Conclusion Mining
+        limitations_text = sections.get("limitations_and_conclusion") or ""
+        if limitations_text and limitations_text.strip():
+            sentences = _split_into_sentences(limitations_text)
+            for idx, sentence in enumerate(sentences):
+                sentence_lower = sentence.lower()
+                gap_type, score = _classify_gap_sentence(sentence)
+
+                has_limitation_signal = (
+                    any(re.search(pat, sentence_lower) for pat in _CONTRASTIVE_MARKERS)
+                    or bool(
+                        re.search(
+                            r"\b(?:a\s+)?limitation\s+of\b|\bdoes\s+not\s+(?:account|consider|scale|generalize)\b|"
+                            r"\bremains?\s+(?:an?\s+)?(?:open|unresolved|future)\b|\bfuture\s+work\b|"
+                            r"\bfails?\s+to\b|\bdegrades?\b|\btoy\s+benchmark\b|\bonly\s+tested\b|"
+                            r"\bdrawback\b|\bshortcoming\b",
+                            sentence_lower,
+                        )
+                    )
+                )
+
+                if has_limitation_signal or (gap_type is not None and score >= 2):
+                    if gap_type is None:
+                        if re.search(r"\b(?:fail|degrade|limit|toy|small|poor|drawback|shortcoming)\b", sentence_lower):
+                            gap_type = "empirical_limitation"
+                        else:
+                            gap_type = "unresolved_problem"
+
+                    ev_id = f"ev-{uuid.uuid4().hex[:12]}"
+                    gap_id = f"gap-{uuid.uuid4().hex[:12]}"
+
+                    evidence = EvidenceRecord(
+                        id=ev_id,
+                        paper_id=paper.id,
+                        evidence_type="fulltext_limitation",
+                        extracted_text=sentence,
+                        extraction_method="limitations_section_mining",
+                        reporting_paper_id=None,
+                        source_section="Limitations & Conclusion",
+                        source_location=f"sentence_{idx + 1}",
+                        confidence=0.95,
+                    )
+
+                    gap = PaperGapRecord(
+                        id=gap_id,
+                        paper_id=paper.id,
+                        gap_type=gap_type,
+                        claim_summary=_generate_claim_summary(sentence, gap_type),
+                        primary_evidence_id=ev_id,
+                        verification_status="candidate",
+                        corroborating_count=0,
+                        contradicting_count=0,
+                    )
+
+                    results.append((evidence, gap))
+
+        return results
+
     def extract_citation_context_gaps(
         self,
         target_paper: PaperRecord,
@@ -359,14 +484,12 @@ class GapExtractor:
         results: list[tuple[EvidenceRecord, PaperGapRecord]] = []
 
         for context in contexts:
-            # Only evaluate contexts citing the target paper
             if context.target_paper_id and context.target_paper_id != target_paper.id:
                 continue
 
             sentences = _split_into_sentences(context.context_text)
             for idx, sentence in enumerate(sentences):
                 sentence_lower = sentence.lower()
-                # Check for gap markers or contrastive signals
                 has_signal = any(re.search(pat, sentence_lower) for pat in _CONTRASTIVE_MARKERS)
                 gap_type, score = _classify_gap_sentence(sentence)
 
@@ -408,26 +531,22 @@ class GapExtractor:
         Stage 4: Corroboration & Candidate Triage.
         Clusters findings for the same target paper sharing gap_type and key token overlap.
         Promotes verification_status to 'corroborated' when 2+ independent citing sources
-        report the limitation (or when corroborated between abstract and citation).
+        report the limitation (or when corroborated between self-reported findings and citation).
         Tracks contradicting statements and flags disputed findings.
         """
         if not gaps_with_evidence:
             return []
 
-        # Group by target paper_id
         by_paper: dict[str, list[int]] = {}
         for idx, (ev, gap) in enumerate(gaps_with_evidence):
             by_paper.setdefault(gap.paper_id, []).append(idx)
 
-        # Process each paper
         for paper_id, indices in by_paper.items():
-            # Group by gap_type within the same paper
             by_gap_type: dict[str, list[int]] = {}
             for idx in indices:
                 _, gap = gaps_with_evidence[idx]
                 by_gap_type.setdefault(gap.gap_type, []).append(idx)
 
-            # Cluster items within (paper_id, gap_type) by token overlap
             for gap_type, group_indices in by_gap_type.items():
                 clusters = self._cluster_by_tokens(
                     [gaps_with_evidence[i] for i in group_indices]
@@ -442,14 +561,16 @@ class GapExtractor:
         self,
         target_paper: PaperRecord,
         contexts: list[CitationContextRecord],
+        sections: Optional[dict[str, str]] = None,
     ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
         """
-        End-to-end 4-stage pipeline: extracts abstract gaps, citation context gaps,
-        and corroborates findings across sources.
+        End-to-end multi-stage pipeline: extracts abstract gaps, full-text section gaps,
+        citation context gaps, and corroborates findings across sources.
         """
         abstract_gaps = self.extract_abstract_gaps(target_paper)
+        fulltext_gaps = self.extract_fulltext_gaps(target_paper, sections) if sections else []
         citation_gaps = self.extract_citation_context_gaps(target_paper, contexts)
-        return self.corroborate_gaps(abstract_gaps + citation_gaps)
+        return self.corroborate_gaps(abstract_gaps + fulltext_gaps + citation_gaps)
 
     def _cluster_by_tokens(
         self, items: list[tuple[EvidenceRecord, PaperGapRecord]]
@@ -459,13 +580,11 @@ class GapExtractor:
         if n <= 1:
             return [items]
 
-        # Extract tokens for each item
         token_sets = [
             _extract_key_tokens(f"{gap.claim_summary} {ev.extracted_text}")
             for ev, gap in items
         ]
 
-        # Disjoint set union (DSU)
         parent = list(range(n))
 
         def find(i: int) -> int:
@@ -497,11 +616,17 @@ class GapExtractor:
         """Evaluate corroboration and contradiction evidence for a cluster of matching gaps."""
         citing_sources: set[str] = set()
         contradicting_sources: set[str] = set()
-        has_abstract = False
+        has_self_reported = False
 
         for ev, _ in cluster:
-            if ev.reporting_paper_id is None or ev.evidence_type == "abstract_limitation":
-                has_abstract = True
+            if ev.reporting_paper_id is None or ev.evidence_type in (
+                "abstract_limitation",
+                "fulltext_limitation",
+                "system_model_assumption",
+                "methodology_complexity",
+                "methodology_limitation",
+            ):
+                has_self_reported = True
             else:
                 source_id = ev.reporting_paper_id
                 if _is_contradiction(ev.extracted_text):
@@ -517,7 +642,7 @@ class GapExtractor:
         if contradicting_count > 0 and contradicting_count >= num_corroborating:
             status = "disputed"
             corroborating_count = num_corroborating
-        elif num_corroborating >= 2 or (has_abstract and num_corroborating >= 1):
+        elif num_corroborating >= 2 or (has_self_reported and num_corroborating >= 1):
             status = "corroborated"
             corroborating_count = num_corroborating
         else:

@@ -35,11 +35,11 @@ EXCLUDED_FILE_PATTERNS = [
     re.compile(r"^credentials\.json$", re.IGNORECASE),
     re.compile(r"^\.DS_Store$", re.IGNORECASE),
     re.compile(r"^Thumbs\.db$", re.IGNORECASE),
-    re.compile(r"^.*\.(?:pyc|pyo|synctex\.gz|aux|bbl|blg|log|out|toc)$", re.IGNORECASE),
+    re.compile(r"^.*\.(?:pdf|pyc|pyo|synctex\.gz|aux|bbl|blg|log|out|toc)$", re.IGNORECASE),
 ]
 
-RE_WIN_USER_PATH = re.compile(r"[a-zA-Z]:\\(?:Users|home)\\[a-zA-Z0-9_.-]+(?:\\[a-zA-Z0-9_.-]+)*", re.IGNORECASE)
-RE_UNIX_USER_PATH = re.compile(r"/(?:home|Users)/[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*", re.IGNORECASE)
+RE_WIN_USER_PATH = re.compile(r"[a-zA-Z]:(?:\\{1,2}|/)(?:Users|home)(?:\\{1,2}|/)[^\\/\"'\r\n]+(?:(?:\\{1,2}|/)[^\\/\"'\r\n]+)*", re.IGNORECASE)
+RE_UNIX_USER_PATH = re.compile(r"/(?:home|Users)/[^/\"'\r\n]+(?:/[^/\"'\r\n]+)*", re.IGNORECASE)
 RE_AUTHOR_HEADER = re.compile(r"^[ \t]*[#%/*;]+\s*(?:Author|Created by|Maintainer|Copyright)\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE)
 RE_NON_ANON_REPO = re.compile(r"https?://(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)/(?!anonymous)[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", re.IGNORECASE)
 
@@ -86,14 +86,31 @@ def _sanitize_text_content(content: str, author_names: Sequence[str] | None = No
         leaks.append("Anonymized remote git repository URL")
         content = RE_NON_ANON_REPO.sub("https://anonymous.4open.science/r/anonymized-project", content)
 
-    # Check for direct occurrences of author names
+    # Check for direct occurrences of author names using word boundaries
     if author_names:
         for name in author_names:
             name_clean = name.strip()
-            if name_clean and len(name_clean) >= 4 and name_clean.lower() in content.lower():
+            if not name_clean:
+                continue
+
+            # Word-bounded pattern
+            p_author = re.compile(r"\b" + re.escape(name_clean) + r"\b", re.IGNORECASE)
+            if p_author.search(content):
                 leaks.append(f"Author name '{name_clean}' detected in source text")
-                # Redact occurrences in text comments or docstrings
-                content = re.sub(re.escape(name_clean), "[ANONYMOUS_AUTHOR]", content, flags=re.IGNORECASE)
+                # Redact occurrences inside comment lines or markdown/text documentation safely
+                content = re.sub(
+                    r"(^[ \t]*[#%/*;]+[^\n]*?)\b" + re.escape(name_clean) + r"\b",
+                    r"\1[ANONYMOUS_AUTHOR]",
+                    content,
+                    flags=re.IGNORECASE | re.MULTILINE,
+                )
+                # Also redact if it's a docstring or plain documentation
+                content = re.sub(
+                    r"((?:'''|\"\"\")[^\n]*?)\b" + re.escape(name_clean) + r"\b",
+                    r"\1[ANONYMOUS_AUTHOR]",
+                    content,
+                    flags=re.IGNORECASE,
+                )
 
     return content, leaks
 

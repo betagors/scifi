@@ -452,6 +452,7 @@ def cmd_submission(args: argparse.Namespace) -> int:
             venue=getattr(args, "venue", "general") or "general",
             issn=getattr(args, "issn", None),
             editor_name=getattr(args, "editor", None),
+            authors=getattr(args, "authors", None),
             figure_path=getattr(args, "figure", None),
             prior_doi=getattr(args, "prior_doi", None),
             manuscript_path=getattr(args, "target", None),
@@ -492,6 +493,7 @@ def cmd_submission(args: argparse.Namespace) -> int:
 
         res = generate_title_page(
             venue=getattr(args, "venue", "general") or "general",
+            authors=getattr(args, "authors", None),
             manuscript_path=getattr(args, "target", None),
             funding=getattr(args, "funding", None),
             conflicts=getattr(args, "conflicts", None),
@@ -530,6 +532,7 @@ def cmd_submission(args: argparse.Namespace) -> int:
             journal_name=getattr(args, "journal", None),
             venue=getattr(args, "venue", "general") or "general",
             issn=getattr(args, "issn", None),
+            authors=getattr(args, "authors", None),
             code_dir=getattr(args, "code_dir", None),
             no_code=getattr(args, "no_code", False),
             figure_path=getattr(args, "figure", None),
@@ -777,6 +780,7 @@ def create_parser() -> argparse.ArgumentParser:
     ps_let.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
     ps_let.add_argument("--issn", help="Journal ISSN")
     ps_let.add_argument("--editor", help="Editor-in-Chief name")
+    ps_let.add_argument("--authors", help="Comma-separated author names")
     ps_let.add_argument("--figure", help="Path to teaser/graphical abstract figure")
     ps_let.add_argument("--prior-doi", help="DOI of prior publication extended by this submission")
     ps_let.add_argument("--output", help="Output file path (Markdown or LaTeX)")
@@ -791,6 +795,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     ps_tp = sub_sub.add_parser("title-page", help="Generate unblinded standalone Title Page document for double-blind review fairness")
     ps_tp.add_argument("--target", help="Path to manuscript LaTeX file to extract metadata from")
+    ps_tp.add_argument("--authors", help="Comma-separated author names or author definitions")
     ps_tp.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
     ps_tp.add_argument("--funding", help="Funding and grant acknowledgments")
     ps_tp.add_argument("--conflicts", help="Declaration of competing interests")
@@ -806,6 +811,7 @@ def create_parser() -> argparse.ArgumentParser:
     ps_bun = sub_sub.add_parser("bundle", help="Generate all four submission artifacts and packaging manifest in one shot")
     ps_bun.add_argument("--target", default=".", help="Path to manuscript LaTeX file or directory (default: .)")
     ps_bun.add_argument("--journal", help="Target journal name")
+    ps_bun.add_argument("--authors", help="Comma-separated author names or author definitions")
     ps_bun.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
     ps_bun.add_argument("--issn", help="Journal ISSN")
     ps_bun.add_argument("--code-dir", help="Explicit path to code directory")

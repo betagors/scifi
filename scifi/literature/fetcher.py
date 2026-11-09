@@ -266,6 +266,171 @@ def fetch_paper_pdf(
         return _fetch_doi(clean_doi, email, target_path)
 
 
+def find_local_pdf(
+    paper: Any,
+    search_dirs: Optional[list[Union[str, Path]]] = None,
+) -> Optional[Path]:
+    """
+    Search local directories for a PDF file corresponding to a PaperRecord.
+
+    Parameters
+    ----------
+    paper : PaperRecord
+        Academic paper metadata object.
+    search_dirs : list of str or Path, optional
+        Directories to search for matching PDFs. Default searches 'workspace', 'workspace/papers', and '.'.
+
+    Returns
+    -------
+    Path or None
+        Path to existing matching PDF if found, else None.
+    """
+    # 1. Check existing local_pdf_path on paper locations
+    if hasattr(paper, "locations") and paper.locations:
+        for loc in paper.locations:
+            lp = getattr(loc, "local_pdf_path", None)
+            if lp:
+                p = Path(lp)
+                if p.is_file():
+                    return p
+
+    dirs = search_dirs or ["workspace", "workspace/papers", "."]
+
+    arx_ids: list[str] = []
+    dois: list[str] = []
+
+    if hasattr(paper, "identifiers") and paper.identifiers:
+        for ident in paper.identifiers:
+            prov = (getattr(ident, "provider", "") or "").lower()
+            val = getattr(ident, "external_id", "") or ""
+            if prov == "arxiv" and val:
+                arx_ids.append(val)
+            elif prov == "doi" and val:
+                dois.append(val)
+
+    if hasattr(paper, "versions") and paper.versions:
+        for v in paper.versions:
+            v_doi = getattr(v, "doi", None)
+            if v_doi:
+                dois.append(v_doi)
+
+    p_id = getattr(paper, "id", "") or ""
+    arx_from_id = _is_arxiv_identifier(p_id)
+    if arx_from_id:
+        arx_ids.append(arx_from_id)
+    elif "10." in p_id or "doi.org" in p_id.lower():
+        dois.append(re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", p_id, flags=re.IGNORECASE))
+
+    title = getattr(paper, "title", "") or ""
+    title_clean = re.sub(r"[^a-zA-Z0-9]", "", title.lower())
+
+    for d in dirs:
+        p_dir = Path(d)
+        if not p_dir.is_dir():
+            continue
+
+        try:
+            candidates = list(p_dir.glob("*.pdf")) + list(p_dir.glob("*/*.pdf"))
+        except Exception:
+            candidates = []
+
+        for candidate in candidates:
+            if not candidate.is_file():
+                continue
+            cand_stem_clean = re.sub(r"[^a-zA-Z0-9]", "", candidate.stem.lower())
+
+            # Check arXiv ID match
+            for arx in arx_ids:
+                clean_arx = re.sub(r"[^a-zA-Z0-9]", "", arx.lower())
+                if clean_arx and clean_arx in cand_stem_clean:
+                    return candidate
+
+            # Check DOI match
+            for d_val in dois:
+                clean_d = re.sub(r"[^a-zA-Z0-9]", "", d_val.lower())
+                if clean_d and clean_d in cand_stem_clean:
+                    return candidate
+
+            # Check title match (if title length >= 12)
+            if len(title_clean) >= 12:
+                if title_clean in cand_stem_clean or cand_stem_clean in title_clean:
+                    return candidate
+
+    return None
+
+
+def resolve_paper_pdf(
+    paper: Any,
+    local_dirs: Optional[list[Union[str, Path]]] = None,
+    auto_fetch: bool = False,
+    output_dir: Union[str, Path] = "workspace/papers",
+    email: str = "researcher@scifi.org",
+) -> Optional[Path]:
+    """
+    Resolve local PDF path for a paper record, with optional open-access auto-fetching.
+
+    Parameters
+    ----------
+    paper : PaperRecord
+        Academic paper metadata object.
+    local_dirs : list of str or Path, optional
+        Directories to search for matching PDFs first.
+    auto_fetch : bool
+        If True, attempts to automatically fetch open-access PDF via arXiv/Unpaywall if not found locally.
+    output_dir : str or Path
+        Destination directory when auto_fetch downloads a PDF. Default 'workspace/papers'.
+    email : str
+        Polite email contact for Unpaywall / OpenAlex requests.
+
+    Returns
+    -------
+    Path or None
+        Path to resolved local PDF file, or None if unavailable.
+    """
+    # 1. Search local directories
+    local = find_local_pdf(paper, search_dirs=local_dirs)
+    if local:
+        return local
+
+    # 2. If auto_fetch enabled, attempt to download OA PDF via arXiv or DOI
+    if auto_fetch:
+        identifier = None
+        # Check arXiv first (arXiv PDFs are guaranteed direct OA)
+        if hasattr(paper, "identifiers") and paper.identifiers:
+            for ident in paper.identifiers:
+                if (getattr(ident, "provider", "") or "").lower() == "arxiv":
+                    identifier = getattr(ident, "external_id", "")
+                    break
+        if not identifier and hasattr(paper, "id") and _is_arxiv_identifier(paper.id):
+            identifier = paper.id
+
+        # Then check DOI
+        if not identifier and hasattr(paper, "identifiers") and paper.identifiers:
+            for ident in paper.identifiers:
+                if (getattr(ident, "provider", "") or "").lower() == "doi":
+                    identifier = getattr(ident, "external_id", "")
+                    break
+        if not identifier and hasattr(paper, "versions") and paper.versions:
+            for v in paper.versions:
+                if getattr(v, "doi", None):
+                    identifier = v.doi
+                    break
+        if not identifier and hasattr(paper, "id") and ("10." in paper.id or "doi.org" in paper.id):
+            identifier = paper.id
+
+        if identifier:
+            try:
+                res = fetch_paper_pdf(identifier, output_dir=output_dir, email=email)
+                if res.get("status") == "SUCCESS" and res.get("file_path"):
+                    p = Path(res["file_path"])
+                    if p.exists():
+                        return p
+            except Exception:
+                pass
+
+    return None
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Fetch open access paper PDF via DOI or arXiv ID"

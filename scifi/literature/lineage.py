@@ -11,16 +11,20 @@ import datetime
 import math
 import re
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from scifi.literature.benchmarks import BenchmarkExtractor
 from scifi.literature.gaps import GapExtractor
 from scifi.literature.sota import SotaEvaluator
+from scifi.literature.extractor import extract_pdf_text
+from scifi.literature.fetcher import resolve_paper_pdf
 from scifi.literature.models import (
     CitationContextRecord,
     CitationRecord,
     EvidenceRecord,
     PaperGapRecord,
+    PaperLocationRecord,
     PaperRecord,
 )
 from scifi.literature.resolver import PaperResolver, clean_arxiv_id, clean_doi
@@ -459,6 +463,9 @@ class LineageCrawler:
         max_year: Optional[int] = None,
         venue_tier: Optional[str] = None,
         require_evidence: bool = False,
+        extract_fulltext_gaps: bool = True,
+        pdf_dir: Optional[str | Path] = None,
+        auto_fetch_pdf: bool = False,
     ) -> Tuple[str, List[PaperRecord], List[CitationRecord]]:
         """
         Execute multi-signal lineage crawl starting from query or seed paper:
@@ -613,7 +620,36 @@ class LineageCrawler:
                     except Exception:
                         pass
 
-                    # 2. Extract citation context limitations via S2
+                    # 2. Extract full-text gaps (system model assumptions & explicit limitations) if available
+                    if extract_fulltext_gaps:
+                        try:
+                            pdf_path = resolve_paper_pdf(
+                                p,
+                                local_dirs=[pdf_dir] if pdf_dir else None,
+                                auto_fetch=auto_fetch_pdf,
+                            )
+                            if pdf_path and Path(pdf_path).is_file():
+                                extracted = extract_pdf_text(pdf_path)
+                                if extracted.get("status") == "SUCCESS" and extracted.get("sections"):
+                                    ft_gaps = extractor.extract_fulltext_gaps(p, extracted["sections"])
+                                    raw_gaps.extend(ft_gaps)
+
+                                    # Update paper locations
+                                    loc_rec = PaperLocationRecord(
+                                        id=f"loc-{uuid.uuid4().hex[:12]}",
+                                        paper_id=p.id,
+                                        location_type="repository" if "arxiv" in str(pdf_path).lower() else "publisher",
+                                        is_oa=True,
+                                        oa_status="gold" if "openalex" in str(pdf_path).lower() else "green",
+                                        local_pdf_path=str(pdf_path),
+                                    )
+                                    p.locations.append(loc_rec)
+                                    if self.store is not None:
+                                        self.store.save_paper_location(loc_rec)
+                        except Exception:
+                            pass
+
+                    # 3. Extract citation context limitations via S2
                     ext_id = _extract_external_id_for_s2(p)
                     if ext_id:
                         contexts: List[CitationContextRecord] = []

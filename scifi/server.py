@@ -1335,6 +1335,7 @@ def scifi_generate_highlights(
 @mcp.tool()
 def scifi_generate_title_page(
     title: str | None = None,
+    authors: list[dict[str, Any]] | list[str] | str | None = None,
     venue: str = "general",
     manuscript_path: str | None = None,
     funding: str | None = None,
@@ -1347,6 +1348,7 @@ def scifi_generate_title_page(
     """
     res = generate_title_page(
         title=title,
+        authors=authors,
         venue=venue,
         manuscript_path=manuscript_path,
         funding=funding,
@@ -1364,6 +1366,7 @@ def scifi_generate_cover_letter(
     venue: str = "general",
     issn: str | None = None,
     editor_name: str | None = None,
+    authors: list[dict[str, Any]] | list[str] | str | None = None,
     figure_path: str | None = None,
     prior_doi: str | None = None,
     code_link: str | None = None,
@@ -1379,6 +1382,7 @@ def scifi_generate_cover_letter(
         venue=venue,
         issn=issn,
         editor_name=editor_name,
+        authors=authors,
         figure_path=figure_path,
         prior_doi=prior_doi,
         code_link=code_link,
@@ -1411,6 +1415,7 @@ def scifi_prepare_submission_bundle(
     journal_name: str | None = None,
     venue: str = "general",
     issn: str | None = None,
+    authors: list[dict[str, Any]] | list[str] | str | None = None,
     code_dir: str | None = None,
     no_code: bool = False,
     figure_path: str | None = None,
@@ -1428,6 +1433,7 @@ def scifi_prepare_submission_bundle(
         journal_name=journal_name,
         venue=venue,
         issn=issn,
+        authors=authors,
         code_dir=code_dir,
         no_code=no_code,
         figure_path=figure_path,

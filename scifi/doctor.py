@@ -36,6 +36,10 @@ from scifi.latex.venue import check_venue_compliance
 from scifi.math.notation import check_notation
 from scifi.review.claims import audit_claims
 from scifi.shannon import evaluate_manuscript_metadata
+from scifi.figures import audit_figure_accessibility
+from scifi.layout import audit_trim_budget
+from scifi.proofs import audit_latex_proofs
+from scifi.reproducibility import audit_reproducibility
 
 
 def _extract_bib_keys_offline(bib_paths: list[Path]) -> set[str]:
@@ -160,6 +164,22 @@ def audit_manuscript(
     # ── Stage 7: Humanizer & LaTeX Forensic Stylometry (Human) ───────────────
     stage_human = audit_human_prose(proj.entrypoint)
 
+    # ── Stage 8: Figure & Visual Accessibility (Da Vinci) ───────────────────
+    stage_figures = audit_figure_accessibility(proj.entrypoint)
+
+    # ── Stage 9: Theorem–Proof Completeness (Euclid) ────────────────────────
+    stage_proofs = audit_latex_proofs(proj.entrypoint)
+
+    # ── Stage 10: Conference Reproducibility Checklist (Bacon) ──────────────
+    stage_repro = audit_reproducibility(
+        proj.entrypoint,
+        venue=effective_venue or "neurips",
+        double_blind=effective_double_blind,
+    )
+
+    # ── Stage 11: Page Budget Micro-Trimming (Layout) ────────────────────────
+    stage_trim = audit_trim_budget(proj.entrypoint)
+
     stage_compiler: dict[str, Any] | None = None
     if compile_pdf:
         stage_compiler = compile_latex(entrypoint=str(proj.entrypoint))
@@ -223,6 +243,19 @@ def audit_manuscript(
         score -= pen
         deductions.append(f"-{pen} pts: Human Authenticity Score is {human_score}/100 ({stage_human.get('classification')})")
 
+    # Figure & visual accessibility deductions
+    fig_crit = [i for i in stage_figures.get("issues", []) if i.get("severity") == "CRITICAL"]
+    if fig_crit:
+        pen = min(15, len(fig_crit) * 5)
+        score -= pen
+        deductions.append(f"-{pen} pts: {len(fig_crit)} critical figure resolution/format issue(s)")
+
+    # Proof orphan theorem deductions
+    if stage_proofs.orphan_theorems > 0:
+        pen = min(15, stage_proofs.orphan_theorems * 5)
+        score -= pen
+        deductions.append(f"-{pen} pts: {stage_proofs.orphan_theorems} orphan theorem(s) lacking inline proof or appendix reference")
+
     score = max(0, score)
     readiness_tier = "READY_FOR_SUBMISSION" if score >= 85 else ("NEEDS_MINOR_REVISION" if score >= 65 else "MAJOR_ISSUES_DETECTED")
 
@@ -252,6 +285,10 @@ def audit_manuscript(
                 "dimensions": stage_human.get("dimensions"),
                 "flags": stage_human.get("flags", []),
             },
+            "figures_visual": stage_figures,
+            "proofs_completeness": stage_proofs.to_dict(),
+            "reproducibility": stage_repro.to_dict(),
+            "trim_budget": stage_trim.to_dict(),
             "compiler": stage_compiler,
         },
     }
@@ -364,6 +401,49 @@ def format_doctor_report_markdown(data: dict[str, Any]) -> str:
         for hf in human.get("flags", [])[:5]:
             loc = f"{hf.get('file', '')}:{hf.get('line', '')}".strip(":")
             lines.append(f"  - **[{hf['severity']}]** `{loc}` ({hf['dimension']}): `{hf['matched_text']}` — {hf['explanation']}")
+
+    # 8. Figure & Visual Accessibility
+    fig_stage = stages.get("figures_visual", {})
+    if fig_stage:
+        lines.extend([
+            "",
+            "## 8. Figure & Visual Accessibility (Da Vinci)",
+            f"- **Figures Inspected:** {fig_stage.get('total_figures_inspected', 0)} | **Issues:** {fig_stage.get('total_issues', 0)} | **Visual Clean Score:** **{fig_stage.get('clean_score', 100)} / 100**",
+        ])
+        for fi in fig_stage.get("issues", [])[:5]:
+            lines.append(f"  - **[{fi['severity']}]** `{fi['figure_ref']}` ({fi['category']}): {fi['message']}")
+
+    # 9. Theorem-Proof Completeness
+    proof_stage = stages.get("proofs_completeness", {})
+    if proof_stage and proof_stage.get("total_theorems", 0) > 0:
+        lines.extend([
+            "",
+            "## 9. Theorem–Proof Completeness (Euclid)",
+            f"- **Theorems/Lemmas Stated:** {proof_stage.get('total_theorems', 0)} | **Orphan Claims:** {proof_stage.get('orphan_theorems', 0)}",
+        ])
+        for pi in proof_stage.get("issues", [])[:5]:
+            lines.append(f"  - **[{pi.get('severity', 'WARNING')}]** `{pi.get('theorem')}`: {pi.get('message')}")
+
+    # 10. Conference Reproducibility Checklist
+    repro_stage = stages.get("reproducibility", {})
+    if repro_stage:
+        lines.extend([
+            "",
+            f"## 10. Conference Reproducibility Checklist ({repro_stage.get('venue', 'neurips').upper()})",
+            f"- **Reproducibility Score:** **{repro_stage.get('score', 100)} / 100**",
+        ])
+        for k, v in repro_stage.get("checklist_items", {}).items():
+            lines.append(f"  - [{'x' if v else ' '}] `{k}`")
+
+    # 11. Page Budget & Micro-Trimming
+    trim_stage = stages.get("trim_budget", {})
+    if trim_stage and trim_stage.get("total_potential_lines_saved", 0) > 0:
+        lines.extend([
+            "",
+            "## 11. Page Budget & Micro-Trimming Opportunities (Layout)",
+            f"- **Estimated Recoverable Lines:** **{trim_stage.get('total_potential_lines_saved', 0)} lines**",
+            f"- **Abbreviated BibTeX Entries Available:** {trim_stage.get('bibtex_condensed_entries', 0)}",
+        ])
 
     lines.append("")
     return "\n".join(lines)

@@ -4,8 +4,8 @@ Consolidates Hypatia open-access paper retrieval and structured text extraction.
 """
 
 from scifi.literature.benchmarks import BenchmarkExtractor
-from scifi.literature.extractor import extract_pdf_text
-from scifi.literature.fetcher import fetch_paper_pdf
+from scifi.literature.extractor import extract_pdf_text, extract_sections_from_text
+from scifi.literature.fetcher import fetch_paper_pdf, find_local_pdf, resolve_paper_pdf
 from scifi.literature.resolver import PaperResolver
 from scifi.literature.sota import (
     PerformanceDelta,
@@ -16,7 +16,10 @@ from scifi.literature.sota import (
 
 __all__ = [
     "fetch_paper_pdf",
+    "find_local_pdf",
+    "resolve_paper_pdf",
     "extract_pdf_text",
+    "extract_sections_from_text",
     "PaperResolver",
     "BenchmarkExtractor",
     "SotaEvaluator",

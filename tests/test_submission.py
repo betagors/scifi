@@ -163,6 +163,89 @@ def test_submission_bundler(tmp_path):
     assert res.code_zip_path is None
 
 
+def test_code_packager_path_variants_and_syntax_preservation(tmp_path):
+    import zipfile
+    from scifi.submission.code_packager import package_anonymous_code
+
+    src = tmp_path / "code_src"
+    src.mkdir()
+    # Code with keyword collisions and short author name "Ming Li" and "John Read"
+    py_code = """
+# Author: Ming Li and John Read
+import pandas as pd
+def process():
+    df = pd.read_csv("data.csv")
+    return df
+"""
+    (src / "script.py").write_text(py_code, encoding="utf-8")
+    (src / "paths.txt").write_text(
+        "win_single = C:\\Users\\John Doe\\file.txt\n"
+        "win_double = C:\\\\Users\\\\John Doe\\\\file.txt\n"
+        "win_fslash = C:/Users/John Doe/file.txt\n",
+        encoding="utf-8",
+    )
+    (src / "paper.pdf").write_bytes(b"%PDF-1.4 mock")
+
+    out_zip = tmp_path / "anon_test.zip"
+    res = package_anonymous_code(code_dir=src, output_zip_path=out_zip, author_names=["Ming Li", "John Read"])
+
+    assert res.status == "SUCCESS"
+    with zipfile.ZipFile(out_zip, "r") as zf:
+        namelist = zf.namelist()
+        assert "paper.pdf" not in namelist  # PDF excluded
+
+        script_content = zf.read("script.py").decode("utf-8")
+        # Ensure pd.read_csv was NOT destroyed by author surname "Read"
+        assert "pd.read_csv" in script_content
+        # Ensure header comment was stripped
+        assert "Author: Ming Li" not in script_content
+
+        paths_content = zf.read("paths.txt").decode("utf-8")
+        assert "C:\\Users\\John Doe" not in paths_content
+        assert "C:\\\\Users\\\\John Doe" not in paths_content
+        assert "C:/Users/John Doe" not in paths_content
+
+
+def test_cover_letter_springer_ethics_and_latex_parity():
+    from scifi.submission.cover_letter import generate_cover_letter
+    from scifi.submission.models import AuthorInfo
+
+    authors = [
+        AuthorInfo(
+            name="Jane Doe",
+            affiliation="Institute of Science",
+            email="jane_doe@science.org",
+            is_corresponding=True,
+        )
+    ]
+    res = generate_cover_letter(
+        manuscript_title="Ethics in Neural Architecture",
+        journal_name="Nature Machine Intelligence",
+        venue="springer",
+        authors=authors,
+        figure_path="figures/teaser.png",
+        suggested_reviewers=[{"name": "Prof. Smith", "institution": "Oxford", "email": "smith@ox.ac.uk"}],
+    )
+    # Springer ethics declarations
+    assert "Ethics & Integrity Declarations" in res.markdown_text
+    assert "Research Involving Human and/or Animal Participants" in res.markdown_text
+    # LaTeX parity
+    assert "\\url{jane_doe@science.org}" in res.latex_text
+    assert "figures/teaser.png" in res.latex_text
+    assert "Prof. Smith" in res.latex_text
+
+
+def test_highlights_count_validation():
+    from scifi.submission.highlights import generate_highlights
+
+    # Only 2 bullets should fail Elsevier minimum 3 requirement
+    few_bullets = ["Novel method for dynamics.", "Achieves 3x lower latency."]
+    res = generate_highlights(few_bullets, venue="elsevier")
+    assert res.all_valid is False
+    assert any("fewer than 3" in (h.issue or "") for h in res.highlights)
+
+
+
 
 
 

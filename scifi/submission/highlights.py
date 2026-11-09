@@ -118,6 +118,21 @@ def generate_highlights(
             )
         )
 
+    # Check highlight count constraints (e.g. Elsevier requires 3-5 highlights)
+    if len(items) < profile.min_highlights:
+        all_valid = False
+        count_msg = f"{profile.name} requires at least {profile.min_highlights} highlights (found {len(items)}, fewer than {profile.min_highlights})."
+        if items:
+            items[0].issue = f"{items[0].issue}; {count_msg}" if items[0].issue else count_msg
+        else:
+            items.append(HighlightItem(text="", char_count=0, max_allowed=max_chars, is_valid=False, issue=count_msg))
+    elif len(items) > profile.max_highlights:
+        all_valid = False
+        count_msg = f"{profile.name} permits at most {profile.max_highlights} highlights (found {len(items)})."
+        for it in items[profile.max_highlights:]:
+            it.is_valid = False
+            it.issue = f"{it.issue}; {count_msg}" if it.issue else count_msg
+
     # Format Markdown
     md_lines = ["# Research Highlights\n"]
     for it in items:

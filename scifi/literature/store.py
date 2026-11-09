@@ -534,6 +534,38 @@ class LiteratureStore:
                     ),
                 )
 
+    def save_paper_location(self, location: PaperLocationRecord) -> None:
+        """
+        Persist or update a document location (e.g. local PDF path or OA URL).
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO paper_locations (
+                    id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    location_type = excluded.location_type,
+                    is_oa = excluded.is_oa,
+                    oa_status = excluded.oa_status,
+                    landing_page_url = excluded.landing_page_url,
+                    pdf_url = excluded.pdf_url,
+                    local_pdf_path = excluded.local_pdf_path
+                """,
+                (
+                    location.id,
+                    location.paper_id,
+                    location.location_type,
+                    int(location.is_oa),
+                    location.oa_status,
+                    location.landing_page_url,
+                    location.pdf_url,
+                    location.local_pdf_path,
+                ),
+            )
+
     def save_citation(self, citation: CitationRecord) -> None:
         """
         Persist a directed citation edge between two papers.

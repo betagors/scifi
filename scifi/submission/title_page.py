@@ -7,8 +7,28 @@ import re
 from typing import Sequence
 
 from scifi.latex.project import resolve_latex_project
-from scifi.submission.models import AuthorInfo, TitlePageResult
+from scifi.submission.models import AuthorInfo, TitlePageResult, normalize_authors
 from scifi.submission.profiles import get_publisher_profile
+
+
+def _extract_braced_command(text: str, command: str) -> str:
+    """Extract content inside \\command{...} respecting nested braces."""
+    idx = text.find(command)
+    if idx == -1:
+        return ""
+    start = text.find("{", idx)
+    if start == -1:
+        return ""
+    depth = 0
+    for i in range(start, len(text)):
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1 : i].strip()
+    return ""
 
 
 def extract_metadata_from_latex(tex_path: str | Path) -> tuple[str, list[AuthorInfo], str]:
@@ -23,9 +43,11 @@ def extract_metadata_from_latex(tex_path: str | Path) -> tuple[str, list[AuthorI
     except Exception:
         full_text = p.read_text(encoding="utf-8", errors="replace")
 
-    # Title
-    m_title = re.search(r"\\title\s*\{([^}]+)\}", full_text)
-    title = m_title.group(1).strip() if m_title else ""
+    # Title with balanced braces support
+    title = _extract_braced_command(full_text, r"\title")
+    if not title:
+        m_title = re.search(r"\\title\s*\{([^}]+)\}", full_text)
+        title = m_title.group(1).strip() if m_title else ""
 
     # Abstract
     m_abs = re.search(r"\\begin\{abstract\}(.*?)\\end\{abstract\}", full_text, re.DOTALL)
@@ -33,10 +55,12 @@ def extract_metadata_from_latex(tex_path: str | Path) -> tuple[str, list[AuthorI
 
     # Authors
     authors: list[AuthorInfo] = []
-    m_auth = re.search(r"\\author\s*\{([^}]+)\}", full_text)
-    if m_auth:
-        raw_authors = m_auth.group(1)
-        # Check for unblinded author blocks
+    raw_authors = _extract_braced_command(full_text, r"\author")
+    if not raw_authors:
+        m_auth = re.search(r"\\author\s*\{([^}]+)\}", full_text)
+        raw_authors = m_auth.group(1) if m_auth else ""
+
+    if raw_authors:
         for chunk in re.split(r"\\and|\band\b|\\\\", raw_authors):
             name = re.sub(r"\\thanks\{[^}]*\}|\\IEEEauthorblockN\{|\}", "", chunk).strip()
             if name and not any(w in name.lower() for w in ("anonymous", "blind", "under review", "author")):
@@ -68,7 +92,9 @@ def generate_title_page(
     final_title = title or extracted_title or "Manuscript Title"
     final_abs = abstract or extracted_abs
 
-    author_list = list(authors) if authors else extracted_authors
+    author_list = normalize_authors(authors)
+    if not author_list:
+        author_list = extracted_authors
     if not author_list:
         author_list = [
             AuthorInfo(
@@ -148,7 +174,7 @@ def generate_title_page(
         r"\maketitle",
         r"\thispagestyle{empty}",
         r"\vspace{1em}",
-        f"\\noindent $^*$Corresponding author: \\texttt{{{corr.email}}}\\\\ ",
+        f"\\noindent $^*$Corresponding author: \\url{{{corr.email}}}\\\\ ",
     ])
     if corr.orcid:
         tex_lines.append(f"\\noindent ORCID: \\url{{https://orcid.org/{corr.orcid}}}\\\\ ")

@@ -56,6 +56,21 @@ def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
         help="Only retain papers with verifiable benchmarks or self-reported limitations",
     )
     p_report.add_argument(
+        "--pdf-dir",
+        default=None,
+        help="Directory containing local PDF papers to ingest and match (e.g. workspace/papers)",
+    )
+    p_report.add_argument(
+        "--auto-fetch-pdf",
+        action="store_true",
+        help="Automatically download open-access paper PDFs via arXiv and Unpaywall",
+    )
+    p_report.add_argument(
+        "--no-fulltext",
+        action="store_true",
+        help="Disable full-text section extraction from PDFs",
+    )
+    p_report.add_argument(
         "--db",
         default=str(DEFAULT_DB_PATH),
         help=f"Path to SQLite knowledge store (default: {DEFAULT_DB_PATH})",
@@ -87,6 +102,21 @@ def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
         "--require-evidence",
         action="store_true",
         help="Only retain papers with verifiable benchmarks or self-reported limitations",
+    )
+    p_map.add_argument(
+        "--pdf-dir",
+        default=None,
+        help="Directory containing local PDF papers to ingest and match (e.g. workspace/papers)",
+    )
+    p_map.add_argument(
+        "--auto-fetch-pdf",
+        action="store_true",
+        help="Automatically download open-access paper PDFs via arXiv and Unpaywall",
+    )
+    p_map.add_argument(
+        "--no-fulltext",
+        action="store_true",
+        help="Disable full-text section extraction from PDFs",
     )
     p_map.add_argument(
         "--db",
@@ -140,6 +170,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         max_year=getattr(args, "max_year", None),
         venue_tier=getattr(args, "venue_tier", None),
         require_evidence=bool(getattr(args, "require_evidence", False)),
+        extract_fulltext_gaps=not getattr(args, "no_fulltext", False),
+        pdf_dir=getattr(args, "pdf_dir", None),
+        auto_fetch_pdf=bool(getattr(args, "auto_fetch_pdf", False)),
     )
 
     if not papers:
@@ -225,6 +258,9 @@ def cmd_map(args: argparse.Namespace) -> int:
         max_year=getattr(args, "max_year", None),
         venue_tier=getattr(args, "venue_tier", None),
         require_evidence=bool(getattr(args, "require_evidence", False)),
+        extract_fulltext_gaps=not getattr(args, "no_fulltext", False),
+        pdf_dir=getattr(args, "pdf_dir", None),
+        auto_fetch_pdf=bool(getattr(args, "auto_fetch_pdf", False)),
     )
 
     if not papers:
