@@ -81,3 +81,23 @@ def test_title_page_generation():
     assert "CRediT Authorship Contribution Statement" in res.latex_text
 
 
+def test_cover_letter_generation():
+    from scifi.submission.cover_letter import generate_cover_letter
+
+    res = generate_cover_letter(
+        manuscript_title="Robust Symbolic Derivations in Physics",
+        journal_name="IEEE Transactions on Pattern Analysis and Machine Intelligence",
+        venue="ieee",
+        editor_name="Prof. David Forsyth",
+        prior_doi="10.1109/CVPR.2024.12345",
+        contributions=["Closed-form derivation guarantees", "Evaluated on 500 benchmarks"],
+        suggested_reviewers=[{"name": "Dr. Clara Bell", "institution": "MIT", "email": "clara@mit.edu"}],
+    )
+    assert res.status == "SUCCESS"
+    assert "Prof. David Forsyth" in res.markdown_text
+    assert "Prior Publication & Significant Extension" in res.markdown_text
+    assert "10.1109/CVPR.2024.12345" in res.markdown_text
+    assert "Suggested Reviewers" in res.markdown_text
+
+
+
