@@ -62,6 +62,7 @@ EXPECTED_TOOLS = {
     "scifi_evaluate_title_abstract",
     "scifi_generate_latex_table",
     "scifi_check_venue_compliance",
+    "scifi_audit_human",
 }
 
 

@@ -29,6 +29,7 @@ import bibtexparser
 from scifi.argus.engine import ArgusEngine
 from scifi.citation_verifier import audit_bib_file
 from scifi.config import resolve_config
+from scifi.human import audit_human_prose
 from scifi.latex.compiler import compile_latex
 from scifi.latex.project import resolve_latex_project
 from scifi.latex.venue import check_venue_compliance
@@ -156,6 +157,9 @@ def audit_manuscript(
         author_names=cfg.author_whitelist,
     )
 
+    # ── Stage 7: Humanizer & LaTeX Forensic Stylometry (Human) ───────────────
+    stage_human = audit_human_prose(proj.entrypoint)
+
     stage_compiler: dict[str, Any] | None = None
     if compile_pdf:
         stage_compiler = compile_latex(entrypoint=str(proj.entrypoint))
@@ -212,6 +216,13 @@ def audit_manuscript(
         score -= pen
         deductions.append(f"-{pen} pts: {venue_warnings} venue formatting/float warning(s)")
 
+    # Humanizer forensic stylometry deductions (up to 15 pts if human_score < 70)
+    human_score = stage_human.get("human_score", 100)
+    if human_score < 70:
+        pen = min(15, max(5, (70 - human_score) // 2))
+        score -= pen
+        deductions.append(f"-{pen} pts: Human Authenticity Score is {human_score}/100 ({stage_human.get('classification')})")
+
     score = max(0, score)
     readiness_tier = "READY_FOR_SUBMISSION" if score >= 85 else ("NEEDS_MINOR_REVISION" if score >= 65 else "MAJOR_ISSUES_DETECTED")
 
@@ -234,6 +245,13 @@ def audit_manuscript(
                 "overlap_ratio": stage_shannon.get("overlap", {}).get("overlap_ratio"),
             },
             "venue_compliance": stage_venue,
+            "human_stylometry": {
+                "human_score": stage_human.get("human_score"),
+                "classification": stage_human.get("classification"),
+                "total_flags": stage_human.get("total_flags"),
+                "dimensions": stage_human.get("dimensions"),
+                "flags": stage_human.get("flags", []),
+            },
             "compiler": stage_compiler,
         },
     }
@@ -334,6 +352,18 @@ def format_doctor_report_markdown(data: dict[str, Any]) -> str:
     ])
     for iss in venue.get("issues", [])[:8]:
         lines.append(f"  - **[{iss['severity']}]** `{iss['file']}:{iss['line']}` ({iss['category']}): {iss['message']}")
+
+    human = stages.get("human_stylometry", {})
+    if human:
+        lines.extend([
+            "",
+            "## 7. Humanizer & LaTeX Forensic Stylometry (Human)",
+            f"- **Human Authenticity Score:** **{human.get('human_score', 'N/A')} / 100** (`{human.get('classification', 'N/A')}`)",
+            f"- **Forensic & Stylometric Flags:** {human.get('total_flags', 0)}",
+        ])
+        for hf in human.get("flags", [])[:5]:
+            loc = f"{hf.get('file', '')}:{hf.get('line', '')}".strip(":")
+            lines.append(f"  - **[{hf['severity']}]** `{loc}` ({hf['dimension']}): `{hf['matched_text']}` — {hf['explanation']}")
 
     lines.append("")
     return "\n".join(lines)

@@ -33,6 +33,7 @@ from scifi.citation_verifier import (
     verify_citation,
 )
 from scifi.doctor import audit_manuscript
+from scifi.human import audit_human_prose
 from scifi.latex import check_venue_compliance, compile_latex, generate_latex_table
 from scifi.literature import extract_pdf_text, fetch_paper_pdf
 from scifi.shannon import evaluate_manuscript_metadata
@@ -1168,6 +1169,27 @@ def scifi_check_venue_compliance(
         venue=venue,
         double_blind=double_blind,
         author_names=author_names,
+    )
+
+
+@mcp.tool()
+def scifi_audit_human(
+    tex_or_dir_path: str,
+    output_report: str | None = None,
+) -> dict[str, Any]:
+    """
+    Audit a LaTeX manuscript (single .tex file or multi-file directory) or academic prose
+    across 6 forensic stylometric and structural AI-detection dimensions:
+    (1) List environments (R_IB bold ratio and item length CV),
+    (2) Document preamble package stack and hyperref stereotyping,
+    (3) Tabular column rigidity,
+    (4) Macro abstraction ratio (mu_macro),
+    (5) Mathematical syntax quirks (in-equation commentary rho_math_text, un-scoped subscripts, trapped punctuation),
+    (6) Prose stylometry (Kobak et al. excess AI vocabulary, em-dashes, and sentence-length burstiness B_length).
+    """
+    return audit_human_prose(
+        tex_or_dir_path=tex_or_dir_path,
+        output_report=output_report,
     )
 
 

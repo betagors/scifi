@@ -12,10 +12,11 @@ These rules are active whenever the SciFi plugin is enabled to enforce academic 
 - **Retraction & Errata Vigilance:** Actively flag retracted papers, publisher expressions of concern, or errata when auditing bibliographies.
 - **Standard Formatting:** Output verified entries with consistent BibTeX keys (`[Author][Year][Word]`) or APA 7th edition formatting.
 
-## 2. Academic Prose & Humanization
-- **Master Academic Humanizer Protocol:** Use the `human` skill to eradicate synthetic AI writing hallmarks, buzzwords, and marketing fluff.
-- **Eliminate AI Tropes:** Strip characteristic synthetic vocabulary (*delve*, *pivotal*, *testament*, *tapestry*, *beacon*, *groundbreaking*, *it is crucial to note*).
-- **Punctuation Standards:** Avoid conversational em dashes (—); replace with parentheses, standard commas, or discrete independent clauses.
+## 2. Academic Prose & LaTeX Source Humanization
+- **Master Academic Humanizer Protocol:** Use the `human` skill (`sf human` / `scifi_audit_human`) to eradicate synthetic AI writing hallmarks, buzzwords, marketing fluff, and autoregressive LaTeX markup fingerprints.
+- **Eliminate AI Tropes (Kobak et al. Markers):** Strip characteristic synthetic vocabulary (*delve*, *pivotal*, *intricate*, *crucial*, *notably*, *underscores*, *showcasing*, *testament*, *tapestry*, *beacon*, *groundbreaking*, *it is crucial to note*) and formulaic pre-equation transitions.
+- **Punctuation & Burstiness Standards:** Avoid conversational em dashes (`—` or `---`); replace with parentheses, commas, or discrete clauses. Enforce high sentence-length burstiness ($B_{\mathrm{length}} > 0.55$) by alternating concise empirical assertions with multi-clause analytical sentences.
+- **LaTeX Source-Code Ergonomics:** Avoid `\item \textbf{...}:` list clones ($R_{\mathrm{IB}} < 0.80$, item length $\mathrm{CV} > 0.40$); define reusable semantic macros ($\mu_{\mathrm{macro}} > 0$) instead of repeating raw canonical expansions; place `where ...` explanations in body prose rather than inside display equations ($\rho_{\mathrm{math\_text}} = 0$); scope multi-letter subscripts in upright font (`$W_{\mathrm{loss}}$`); and insert thin spaces (`\,`) before differentials.
 - **Scholarly Register:** Enforce disciplined academic voice: passive constructions where standard in scientific disciplines, epistemic hedging (*results indicate*, *under assumption $\mathcal{A}$*), and precise quantitative descriptions.
 
 ## 3. Mathematical & Theoretical Rigor
@@ -42,5 +43,6 @@ These rules are active whenever the SciFi plugin is enabled to enforce academic 
 - **Metadata Vocabulary Expansion:** Ensure author keywords share <35% word overlap with the title, broadening the paper's searchable footprint across indexing databases.
 - **Empirical Validation:** Use the `shannon` skill (`test_keywords.py`) to verify the 100-point Reviewer Triage Score and search engine collision safety.
 <!-- SCIFI-RULES:END -->
+
 
 

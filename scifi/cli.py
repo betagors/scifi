@@ -256,6 +256,27 @@ def cmd_shannon(args: argparse.Namespace) -> int:
     return 0 if res.get("triage_score", {}).get("total_score", 0) >= 70 else 1
 
 
+def cmd_human(args: argparse.Namespace) -> int:
+    """Execute Humanizer & LaTeX Forensic Stylometry Auditor (`sf human`)."""
+    from scifi.human import audit_human_prose
+
+    res = audit_human_prose(
+        tex_or_dir_path=args.target,
+        output_report=getattr(args, "output", None),
+    )
+    if res.get("status") != "SUCCESS":
+        print(f"[ERROR] {res.get('error_message', 'Humanizer audit failed.')}", file=sys.stderr)
+        return 1
+
+    if getattr(args, "format", "markdown") == "json" or getattr(args, "json", False):
+        out = dict(res)
+        out.pop("report_markdown", None)
+        print(json.dumps(out, indent=2))
+    else:
+        print(res.get("report_markdown", ""))
+    return 0 if res.get("human_score", 0) >= 55 else 1
+
+
 def cmd_table(args: argparse.Namespace) -> int:
     """Generate a publication-grade LaTeX `booktabs` table (`sf table`)."""
     from scifi.latex.tables import generate_latex_table
@@ -443,6 +464,17 @@ def create_parser() -> argparse.ArgumentParser:
     p_shannon.add_argument("--live", action="store_true", help="Perform live title collision check on OpenAlex/Crossref")
     p_shannon.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
+    # human
+    p_human = subparsers.add_parser(
+        "human",
+        aliases=["humanize", "deai", "stylometry"],
+        help="Audit LaTeX source code and academic prose across 6 forensic stylometric and structural AI-detection dimensions",
+    )
+    p_human.add_argument("target", nargs="?", default=".", help="Path to .tex file, multi-file LaTeX directory, Markdown/text file, or inline text (default: .)")
+    p_human.add_argument("--output", help="Optional path to save the Markdown forensic report")
+    p_human.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_human.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
     # table
     p_table = subparsers.add_parser("table", aliases=["tab", "booktabs"], help="Generate publication-grade LaTeX booktabs tables with bolded SOTA metrics")
     p_table.add_argument("data_file", help="Path to CSV/JSON file or inline JSON array")
@@ -581,6 +613,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_review(args)
     elif args.command in ("shannon", "seo", "abstract"):
         return cmd_shannon(args)
+    elif args.command in ("human", "humanize", "deai", "stylometry"):
+        return cmd_human(args)
     elif args.command in ("table", "tab", "booktabs"):
         return cmd_table(args)
     elif args.command in ("venue", "blind"):

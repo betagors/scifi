@@ -3,10 +3,10 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB.svg?style=flat&logo=python&logoColor=white)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/protocol-Model_Context_Protocol-8A2BE2.svg?style=flat)](https://modelcontextprotocol.io)
 [![Antigravity](https://img.shields.io/badge/antigravity-plugin-FF6F00.svg?style=flat)](https://antigravity.google)
-[![Tests Passing](https://img.shields.io/badge/tests-380%2B%20passed-brightgreen.svg?style=flat)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-390%2B%20passed-brightgreen.svg?style=flat)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 25 FastMCP Tools**
+> **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 26 FastMCP Tools**
 >
 > *SciFi transforms AI coding agents (Antigravity, Claude Code, Cursor, VS Code / Cline & Roo Code, Windsurf, OpenCode) and your terminal into a rigorous, peer-review-grade research partner.*
 
@@ -21,7 +21,7 @@ Large Language Models are exceptional coders, but notoriously fragile in scienti
 | **Hallucinated DOIs & References** | Retracted papers cited, ghost citations created | **Alex:** Real-time cross-referencing against Crossref, OpenAlex, arXiv, and DataCite with local SQLite caching. |
 | **Multi-File LaTeX Blindness** | Tools only check `main.tex` and miss `\input{sections/...}` clashes | **Project Resolver & Doctor:** Recursively expands `\input`, `\include`, `\subfile`, and `.bib` files with exact `sections/*.tex:line` provenance. |
 | **Silent Algebraic Slips** | Erroneous signs, mismatched matrix shapes, broken limit steps | **Turing:** In-memory SymPy calculus, Pint physical dimensional homogeneity, Sylvester convexity, and cross-section notation audits. |
-| **Synthetic AI Tropes ("Slop")** | Papers rejected upfront for *"delve"*, *"tapestry"*, em dashes, and marketing buzz | **Human:** Master Academic Humanizer protocol enforcing epistemic hedging, passive voice, and objective tone. |
+| **Synthetic AI Tropes & LaTeX Markup Fingerprints** | Papers rejected upfront for *"delve"*, `\item \textbf{...}:` clones, `\text{where }` inside display math, and low sentence burstiness | **Human (`sf human`):** 6-dimension LaTeX source-code & stylometric forensic auditor plus Master Academic Humanizer protocol. |
 | **Uncredited Methods** | Reviewers challenge lack of attribution or prior art novelty | **Argus:** Automated scanning for uncredited algorithms, canonical auto-citing, and delta-novelty matrix generation. |
 | **Unhedged Overclaims & Leaks** | Sweeping claims (*"outperforms all existing"*), double-blind leaks, `\vspace` hacks | **Popper & Venue:** Adversarial Reviewer 2 stress-testing, double-blind anonymization checks, and layout compliance. |
 | **Weak Title & Vague Abstract** | Desk-rejected in 30 seconds or buried in search | **Shannon:** Publication-grade title engineering, 5-beat dual-audience abstract, and 100-point Reviewer Triage Scorecard. |
@@ -153,6 +153,7 @@ Every capability is available through `scifi` and its short alias `sf`:
 | `scifi stats <cmd>` | `sf gauss < curve \| audit >` | Verify theoretical curves against simulation data & audit 95% CIs |
 | `scifi review <path>` | `sf popper <path>` / `sf claims` | Scan single or multi-file manuscript for overclaims & fragile assumptions |
 | `scifi shannon [path]` | `sf seo [path]` / `sf abstract` | Score Title, 5-Beat Abstract, and Keywords on 100-point Reviewer Triage rubric |
+| `scifi human [path]` | `sf humanize [path]` / `sf deai` | Audit LaTeX source code & prose across 6 forensic AI-detection dimensions ($R_{\mathrm{IB}}$, $\mu_{\mathrm{macro}}$, $\rho_{\mathrm{math\_text}}$, $B_{\mathrm{length}}$) |
 | `scifi table <data>` | `sf tab <data>` / `sf booktabs` | Generate LaTeX `booktabs` tables with auto-bolded best & underlined second-best metrics |
 | `scifi venue [path]` | `sf blind [path]` | Audit manuscript for double-blind anonymization leaks, `\vspace` hacks & unreferenced floats |
 | `scifi config <cmd>` | `sf cfg < show \| set \| init >` | Manage `~/.scifi/config.json` API keys/polite-pool email and workspace `scifi.toml` |
@@ -197,8 +198,9 @@ When SciFi is enabled, coding agents interact directly with these 25 structured 
 - **`scifi_verify_curve`**: Compares closed-form theoretical formulas against empirical simulation datasets (CSV, JSON, or inline arrays).
 - **`scifi_audit_statistics`**: Computes sample mean, standard error, 95% confidence intervals, and flags violations of the Central Limit Theorem ($N < 30$).
 
-### 7. Adversarial Review, Venue Compliance & Title/Abstract SEO (Popper, Venue & Shannon)
+### 7. Adversarial Review, Humanizer Stylometry, Venue Compliance & Title/Abstract SEO (Popper, Human, Venue & Shannon)
 - **`scifi_audit_claims`**: Scans single or multi-file manuscripts for unhedged impact statements, sweeping superiority claims, unproven optimality, or fragile assumptions.
+- **`scifi_audit_human`**: Audits LaTeX source code and academic prose across 6 forensic dimensions: list bold-colon templates ($R_{\mathrm{IB}}$ & item length $\mathrm{CV}$), preamble package hygiene, tabular column rigidity, macro abstraction ratio ($\mu_{\mathrm{macro}}$), mathematical syntax artifacts ($\rho_{\mathrm{math\_text}}$, un-scoped word subscripts, trapped punctuation), and prose stylometry (Kobak et al. excess AI vocabulary, em-dashes, and sentence-length burstiness $B_{\mathrm{length}}$).
 - **`scifi_evaluate_title_abstract`**: Evaluates title, 5-beat abstract, and keywords (or auto-extracts them from `main.tex` + `sections/abstract.tex`) on the 100-point Reviewer Triage Scorecard.
 - **`scifi_check_venue_compliance`**: Audits multi-file LaTeX manuscripts for double-blind anonymization leaks, forbidden negative `\vspace` / margin hacks, and unreferenced floats.
 
