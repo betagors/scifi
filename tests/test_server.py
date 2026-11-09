@@ -63,13 +63,24 @@ EXPECTED_TOOLS = {
     "scifi_generate_latex_table",
     "scifi_check_venue_compliance",
     "scifi_audit_human",
+    "scifi_audit_figures",
+    "scifi_trim_budget",
+    "scifi_audit_proofs",
+    "scifi_audit_reproducibility",
+    "scifi_format_rebuttal",
+    "scifi_diff_manuscript",
+    "scifi_generate_highlights",
+    "scifi_generate_title_page",
+    "scifi_generate_cover_letter",
+    "scifi_package_anonymous_code",
+    "scifi_prepare_submission_bundle",
 }
 
 
 class TestFastMCPServerRegistry(unittest.TestCase):
     """Verify tool registration, schemas, and docstrings on FastMCP server."""
 
-    def test_all_17_tools_registered(self):
+    def test_all_tools_registered(self):
         registered_tools = set(mcp._tool_manager._tools.keys())
         self.assertEqual(
             registered_tools,

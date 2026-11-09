@@ -33,10 +33,22 @@ from scifi.citation_verifier import (
     verify_citation,
 )
 from scifi.doctor import audit_manuscript
+from scifi.figures import audit_figure_accessibility
 from scifi.human import audit_human_prose
 from scifi.latex import check_venue_compliance, compile_latex, generate_latex_table
+from scifi.layout import audit_trim_budget
 from scifi.literature import extract_pdf_text, fetch_paper_pdf
+from scifi.proofs import audit_latex_proofs
+from scifi.rebuttal import diff_manuscript, format_rebuttal_scaffold
+from scifi.reproducibility import audit_reproducibility
 from scifi.shannon import evaluate_manuscript_metadata
+from scifi.submission import (
+    generate_cover_letter,
+    generate_highlights,
+    generate_title_page,
+    package_anonymous_code,
+    prepare_submission_bundle,
+)
 from scifi.literature.benchmarks import CANONICAL_BENCHMARKS
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import (
@@ -659,6 +671,7 @@ def scifi_fetch_paper_pdf(
 def scifi_extract_pdf_text(
     pdf_path: str,
     max_pages: int = 20,
+    max_section_length: int | None = None,
 ) -> dict[str, Any]:
     """
     Extract structured text from a scientific paper PDF for synthesis, methodology audit, and delta-novelty matrix generation.
@@ -666,11 +679,15 @@ def scifi_extract_pdf_text(
     Args:
         pdf_path: Path to the PDF file.
         max_pages: Maximum number of pages to extract text from (default: 20).
+        max_section_length: Optional maximum characters per extracted section (default: 15000).
 
     Returns:
         Dictionary with status, page_count, extracted text, and detected paper sections.
     """
-    return extract_pdf_text(pdf_path=pdf_path, max_pages=max_pages)
+    kwargs: dict[str, Any] = {"pdf_path": pdf_path, "max_pages": max_pages}
+    if max_section_length is not None:
+        kwargs["max_section_length"] = max_section_length
+    return extract_pdf_text(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +714,9 @@ def scifi_map_literature(
     max_year: int | None = None,
     venue_tier: str | None = None,
     require_evidence: bool = False,
+    extract_fulltext: bool = True,
+    pdf_dir: str | None = None,
+    auto_fetch_pdf: bool = False,
 ) -> dict[str, Any]:
     """
     Discover intellectual lineage and construct an interactive literature graph from a seed paper or query.
@@ -725,6 +745,9 @@ def scifi_map_literature(
         max_year=max_year,
         venue_tier=venue_tier,
         require_evidence=require_evidence,
+        extract_fulltext_gaps=extract_fulltext,
+        pdf_dir=pdf_dir,
+        auto_fetch_pdf=auto_fetch_pdf,
     )
 
     if not papers:
@@ -1191,6 +1214,230 @@ def scifi_audit_human(
         tex_or_dir_path=tex_or_dir_path,
         output_report=output_report,
     )
+
+
+
+
+@mcp.tool()
+def scifi_audit_figures(
+    tex_path: str,
+    base_dir: str | None = None,
+    min_dpi: int = 300,
+) -> dict[str, Any]:
+    """
+    Audit figures in a LaTeX manuscript for print resolution (min DPI >= 300),
+    vector vs raster format for charts/plots, subfigure parity ((a), (b), (c) in body text),
+    and colorblind accessibility (red/green curve collisions).
+    """
+    return audit_figure_accessibility(tex_path=tex_path, base_dir=base_dir, min_dpi=min_dpi)
+
+
+@mcp.tool()
+def scifi_trim_budget(
+    tex_path: str,
+    bib_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Analyze LaTeX manuscript and BibTeX bibliography for legitimate typographic line savings:
+    identifies widow/orphan lines in paragraphs (1-3 trailing words), condenses BibTeX conference/journal
+    titles using standard ISO-4/IEEE abbreviations, and suggests float compaction.
+    """
+    res = audit_trim_budget(tex_path=tex_path, bib_path=bib_path)
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_audit_proofs(
+    tex_path: str,
+) -> dict[str, Any]:
+    """
+    Audit mathematical theorems, lemmas, propositions, and corollaries for completeness:
+    detects orphan theorems lacking inline proofs or explicit pointers to appendix derivations,
+    and verifies that referenced appendix labels exist.
+    """
+    res = audit_latex_proofs(tex_path=tex_path)
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_audit_reproducibility(
+    tex_path: str,
+    venue: str = "neurips",
+    double_blind: bool = False,
+) -> dict[str, Any]:
+    """
+    Audit manuscript against conference reproducibility checklists (NeurIPS/ICML/IEEE):
+    checks for explicit random seeds, trial counts, error bars (+- std), compute hardware disclosures,
+    hyperparameter specifications, and double-blind repository anonymization.
+    """
+    res = audit_reproducibility(tex_path=tex_path, venue=venue, double_blind=double_blind)
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_format_rebuttal(
+    reviews_text: str,
+    venue: str = "openreview",
+) -> dict[str, Any]:
+    """
+    Parse raw peer reviews into a disciplined, 4-beat author response template:
+    (1) Summary & Direct Answer, (2) Action Taken & Manuscript Revision,
+    (3) Empirical/Theoretical Evidence, (4) Revised Manuscript Excerpt.
+    """
+    res = format_rebuttal_scaffold(reviews_text=reviews_text, venue=venue)
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_diff_manuscript(
+    old_tex_path: str,
+    new_tex_path: str,
+    generate_pdf: bool = False,
+    output_tex: str | None = None,
+) -> dict[str, Any]:
+    """
+    Perform a section-by-section diff between two LaTeX manuscripts, generating a markdown diff ledger
+    and invoking latexdiff (if installed) to generate marked-up LaTeX diff and revision PDF.
+    """
+    res = diff_manuscript(
+        old_tex_path=old_tex_path,
+        new_tex_path=new_tex_path,
+        generate_pdf=generate_pdf,
+        output_tex=output_tex,
+    )
+    return res.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# 12. Academic Paper Submission Suite
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def scifi_generate_highlights(
+    bullets: list[str] | str | None = None,
+    venue: str = "general",
+    manuscript_path: str | None = None,
+    output_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Generate and validate 3-5 research highlights against venue character limits (e.g. Elsevier 85-char ceiling).
+    """
+    res = generate_highlights(
+        bullets=bullets,
+        venue=venue,
+        manuscript_path=manuscript_path,
+        output_path=output_path,
+    )
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_generate_title_page(
+    title: str | None = None,
+    venue: str = "general",
+    manuscript_path: str | None = None,
+    funding: str | None = None,
+    conflicts: str | None = None,
+    data_availability: str | None = None,
+    output_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Generate an unblinded standalone Title Page document (LaTeX and Markdown) for double-blind review fairness.
+    """
+    res = generate_title_page(
+        title=title,
+        venue=venue,
+        manuscript_path=manuscript_path,
+        funding=funding,
+        conflicts=conflicts,
+        data_availability=data_availability,
+        output_path=output_path,
+    )
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_generate_cover_letter(
+    manuscript_title: str | None = None,
+    journal_name: str = "Target Journal",
+    venue: str = "general",
+    issn: str | None = None,
+    editor_name: str | None = None,
+    figure_path: str | None = None,
+    prior_doi: str | None = None,
+    code_link: str | None = None,
+    manuscript_path: str | None = None,
+    output_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Generate an academic editorial cover letter in Markdown and LaTeX format tailored to publisher guidelines.
+    """
+    res = generate_cover_letter(
+        manuscript_title=manuscript_title,
+        journal_name=journal_name,
+        venue=venue,
+        issn=issn,
+        editor_name=editor_name,
+        figure_path=figure_path,
+        prior_doi=prior_doi,
+        code_link=code_link,
+        manuscript_path=manuscript_path,
+        output_path=output_path,
+    )
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_package_anonymous_code(
+    code_dir: str,
+    output_zip_path: str | None = None,
+    author_names: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Package a code directory into a reproducible anonymous ZIP archive with git history, secrets, and author paths scrubbed.
+    """
+    res = package_anonymous_code(
+        code_dir=code_dir,
+        output_zip_path=output_zip_path,
+        author_names=author_names,
+    )
+    return res.to_dict()
+
+
+@mcp.tool()
+def scifi_prepare_submission_bundle(
+    target_dir_or_tex: str = ".",
+    journal_name: str | None = None,
+    venue: str = "general",
+    issn: str | None = None,
+    code_dir: str | None = None,
+    no_code: bool = False,
+    figure_path: str | None = None,
+    prior_doi: str | None = None,
+    funding: str | None = None,
+    conflicts: str | None = None,
+    editor_name: str | None = None,
+    output_dir: str | None = None,
+) -> dict[str, Any]:
+    """
+    Generate all four submission artifacts (cover letter, highlights, title page, anonymous code zip) and packaging manifest in one shot.
+    """
+    res = prepare_submission_bundle(
+        target_dir_or_tex=target_dir_or_tex,
+        journal_name=journal_name,
+        venue=venue,
+        issn=issn,
+        code_dir=code_dir,
+        no_code=no_code,
+        figure_path=figure_path,
+        prior_doi=prior_doi,
+        funding=funding,
+        conflicts=conflicts,
+        editor_name=editor_name,
+        output_dir=output_dir,
+    )
+    return res.to_dict()
 
 
 if __name__ == "__main__":

@@ -543,3 +543,68 @@ def test_cli_routes_to_sync(tmp_path: Path) -> None:
         assert code == 0
         mock_sync.assert_called_once()
 
+
+
+def test_cli_figures_subcommand(tmp_path: Path) -> None:
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\begin{document}\end{document}", encoding="utf-8")
+    code = scifi.cli.main(["figures", str(tex), "--json"])
+    assert code == 0
+
+
+def test_cli_trim_subcommand(tmp_path: Path) -> None:
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\begin{document}\end{document}", encoding="utf-8")
+    code = scifi.cli.main(["trim", str(tex), "--json"])
+    assert code == 0
+
+
+def test_cli_proofs_subcommand(tmp_path: Path) -> None:
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\begin{document}\end{document}", encoding="utf-8")
+    code = scifi.cli.main(["proofs", str(tex), "--json"])
+    assert code == 0
+
+
+def test_cli_repro_subcommand(tmp_path: Path) -> None:
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\begin{document}\end{document}", encoding="utf-8")
+    code = scifi.cli.main(["repro", str(tex), "--json"])
+    assert code in (0, 1)
+
+
+def test_cli_rebuttal_subcommand(tmp_path: Path) -> None:
+    out = tmp_path / "rebuttal.md"
+    code = scifi.cli.main(["rebuttal", "format", "--text", "Reviewer 1:\nGood work.", "--output", str(out)])
+    assert code == 0
+    assert out.exists()
+
+
+def test_cli_submission_subcommands(tmp_path: Path) -> None:
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\documentclass{article}\title{Test Paper}\begin{document}\end{document}", encoding="utf-8")
+    
+    # sf submission highlights
+    hl_out = tmp_path / "highlights.md"
+    code = scifi.cli.main(["submission", "highlights", "--target", str(tex), "--output", str(hl_out)])
+    assert code == 0
+    assert hl_out.exists()
+
+    # sf submission title-page
+    tp_out = tmp_path / "title_page.tex"
+    code = scifi.cli.main(["submission", "title-page", "--target", str(tex), "--output", str(tp_out)])
+    assert code == 0
+    assert tp_out.exists()
+
+    # sf submission letter
+    let_out = tmp_path / "cover_letter.md"
+    code = scifi.cli.main(["submission", "letter", "--target", str(tex), "--journal", "IEEE TPAMI", "--output", str(let_out)])
+    assert code == 0
+    assert let_out.exists()
+
+    # sf submission bundle
+    bundle_out = tmp_path / "dist" / "submission"
+    code = scifi.cli.main(["submission", "bundle", "--target", str(tex), "--no-code", "--output", str(bundle_out)])
+    assert code == 0
+    assert (bundle_out / "submission_manifest.json").exists()
+

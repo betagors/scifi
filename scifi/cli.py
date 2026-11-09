@@ -328,6 +328,235 @@ def cmd_venue(args: argparse.Namespace) -> int:
     return 0 if res.get("is_compliant", True) else 1
 
 
+
+def cmd_figures(args: argparse.Namespace) -> int:
+    """Audit scientific figures & visual accessibility (`sf figures`)."""
+    from scifi.figures import audit_latex_figures
+
+    res = audit_latex_figures(
+        tex_path=args.target,
+        base_dir=getattr(args, "base_dir", None),
+        min_dpi=getattr(args, "dpi", 300),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), indent=2))
+    else:
+        print(f"# Figure & Visual Accessibility Audit ({len(res.issues)} issues, Score: {res.clean_score}/100)")
+        for iss in res.issues:
+            print(f"- [{iss.severity.value}] `{iss.figure_ref}`: {iss.message}")
+            if iss.recommendation:
+                print(f"  * Recommendation: {iss.recommendation}")
+    return 0 if res.clean_score >= 70 else 1
+
+
+def cmd_trim(args: argparse.Namespace) -> int:
+    """Analyze page budget & micro-trimming opportunities (`sf trim`)."""
+    from scifi.layout import audit_trim_budget
+
+    res = audit_trim_budget(
+        tex_path=args.target,
+        bib_path=getattr(args, "bib", None),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), indent=2))
+    else:
+        print(f"# Page Budget Trimming Audit (Potential savings: {res.total_potential_lines_saved} lines)")
+        if res.bibtex_condensed_entries:
+            print(f"- BibTeX Abbreviation: {res.bibtex_condensed_entries} verbose venues can be condensed.")
+        for s in res.suggestions:
+            print(f"- [{s.suggestion_type.value}] {s.target}: {s.description}")
+    return 0
+
+
+def cmd_proofs(args: argparse.Namespace) -> int:
+    """Audit theorem-proof completeness and appendix pointers (`sf proofs`)."""
+    from scifi.proofs import audit_latex_proofs
+
+    res = audit_latex_proofs(tex_path=args.target)
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), indent=2))
+    else:
+        print(f"# Theorem-Proof Completeness Audit ({res.total_theorems} theorems, {res.orphan_theorems} orphan(s))")
+        for iss in res.issues:
+            print(f"- [{iss.get('severity', 'WARNING')}] {iss.get('theorem')}: {iss.get('message')}")
+    return 0 if res.orphan_theorems == 0 else 1
+
+
+def cmd_repro(args: argparse.Namespace) -> int:
+    """Audit conference reproducibility checklist (`sf repro`)."""
+    from scifi.reproducibility import audit_reproducibility
+
+    res = audit_reproducibility(
+        tex_path=args.target,
+        venue=getattr(args, "venue", "neurips"),
+        double_blind=getattr(args, "double_blind", False),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), indent=2))
+    else:
+        print(f"# Conference Reproducibility Audit [{res.venue.upper()}] (Score: {res.score}/100)")
+        for k, v in res.checklist_items.items():
+            status_icon = "PASS" if v else "FAIL"
+            print(f"- [{status_icon}] {k}")
+        for iss in res.issues:
+            print(f"  * Warning: {iss.message}")
+    return 0 if res.score >= 70 else 1
+
+
+def cmd_rebuttal(args: argparse.Namespace) -> int:
+    """Author rebuttal and manuscript diff suite (`sf rebuttal`)."""
+    action = getattr(args, "rebuttal_action", None)
+    if action == "format":
+        from scifi.rebuttal import format_rebuttal_scaffold
+
+        inp_path = getattr(args, "input", None)
+        raw_text = Path(inp_path).read_text(encoding="utf-8") if inp_path and Path(inp_path).exists() else (getattr(args, "text", "") or "")
+        scaffold = format_rebuttal_scaffold(reviews_text=raw_text, venue=getattr(args, "venue", "openreview"))
+        out_p = getattr(args, "output", None)
+        if out_p:
+            Path(out_p).write_text(scaffold.markdown_template, encoding="utf-8")
+            print(f"[OK] Rebuttal scaffold saved to {out_p}")
+        else:
+            print(scaffold.markdown_template)
+        return 0
+    elif action == "diff":
+        from scifi.rebuttal import diff_manuscript
+
+        res = diff_manuscript(
+            old_tex_path=args.old_tex,
+            new_tex_path=args.new_tex,
+            generate_pdf=getattr(args, "pdf", False),
+            output_tex=getattr(args, "output", None),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2))
+        else:
+            print(f"# Manuscript Revision Diff (+{res.added_lines} / -{res.deleted_lines} lines)")
+            print(res.diff_ledger_markdown)
+            if res.diff_pdf_path:
+                print(f"[OK] Marked-up PDF generated: {res.diff_pdf_path}")
+        return 0
+    else:
+        print("[ERROR] Specify a rebuttal action: format, diff", file=sys.stderr)
+        return 1
+
+
+def cmd_submission(args: argparse.Namespace) -> int:
+    """Academic paper submission suite (`sf submission`)."""
+    action = getattr(args, "submission_action", None)
+    if action == "letter":
+        from scifi.submission import generate_cover_letter
+
+        res = generate_cover_letter(
+            journal_name=getattr(args, "journal", "Target Journal") or "Target Journal",
+            venue=getattr(args, "venue", "general") or "general",
+            issn=getattr(args, "issn", None),
+            editor_name=getattr(args, "editor", None),
+            figure_path=getattr(args, "figure", None),
+            prior_doi=getattr(args, "prior_doi", None),
+            manuscript_path=getattr(args, "target", None),
+            output_path=getattr(args, "output", None),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2))
+        else:
+            print(res.markdown_text)
+            if res.output_path:
+                print(f"[OK] Cover letter saved to {res.output_path}")
+        return 0
+
+    elif action == "highlights":
+        from scifi.submission import generate_highlights
+
+        bullets_arg = getattr(args, "bullets", None)
+        res = generate_highlights(
+            bullets=bullets_arg,
+            venue=getattr(args, "venue", "general") or "general",
+            manuscript_path=getattr(args, "target", None),
+            output_path=getattr(args, "output", None),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2))
+        else:
+            print(res.markdown_text)
+            if not res.all_valid:
+                for h in res.highlights:
+                    if not h.is_valid:
+                        print(f"  [WARNING] {h.issue}", file=sys.stderr)
+            if getattr(args, "output", None):
+                print(f"[OK] Highlights saved to {args.output}")
+        return 0 if res.all_valid else 1
+
+    elif action == "title-page":
+        from scifi.submission import generate_title_page
+
+        res = generate_title_page(
+            venue=getattr(args, "venue", "general") or "general",
+            manuscript_path=getattr(args, "target", None),
+            funding=getattr(args, "funding", None),
+            conflicts=getattr(args, "conflicts", None),
+            output_path=getattr(args, "output", None),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2))
+        else:
+            print(res.markdown_text)
+            if res.output_path:
+                print(f"[OK] Title page saved to {res.output_path}")
+        return 0
+
+    elif action == "pack-code":
+        from scifi.submission import package_anonymous_code
+
+        authors = [a.strip() for a in (getattr(args, "authors", "") or "").split(",") if a.strip()]
+        res = package_anonymous_code(
+            code_dir=getattr(args, "code_dir", "."),
+            output_zip_path=getattr(args, "output", None),
+            author_names=authors,
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2))
+        else:
+            print(res.audit_report)
+            if res.zip_path:
+                print(f"[OK] Anonymous code archive created at: {res.zip_path}")
+        return 0 if res.audit_passed else 1
+
+    elif action == "bundle":
+        from scifi.submission import prepare_submission_bundle
+
+        res = prepare_submission_bundle(
+            target_dir_or_tex=getattr(args, "target", "."),
+            journal_name=getattr(args, "journal", None),
+            venue=getattr(args, "venue", "general") or "general",
+            issn=getattr(args, "issn", None),
+            code_dir=getattr(args, "code_dir", None),
+            no_code=getattr(args, "no_code", False),
+            figure_path=getattr(args, "figure", None),
+            prior_doi=getattr(args, "prior_doi", None),
+            funding=getattr(args, "funding", None),
+            conflicts=getattr(args, "conflicts", None),
+            editor_name=getattr(args, "editor", None),
+            output_dir=getattr(args, "output", None),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2))
+        else:
+            print(f"# Submission Bundle Generated [{res.venue.upper()}]")
+            print(f"- Output directory: `{res.output_dir}`")
+            print(f"- Cover letter: `{res.cover_letter_path}`")
+            print(f"- Highlights: `{res.highlights_path}`")
+            print(f"- Title page: `{res.title_page_path}`")
+            if res.code_zip_path:
+                print(f"- Anonymous code zip: `{res.code_zip_path}`")
+            print(f"- Manifest: `{res.manifest_path}`")
+        return 0
+
+    else:
+        print("[ERROR] Specify a submission action: letter, highlights, title-page, pack-code, bundle", file=sys.stderr)
+        return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Build the unified top-level ArgumentParser."""
     parser = argparse.ArgumentParser(
@@ -493,6 +722,102 @@ def create_parser() -> argparse.ArgumentParser:
     p_venue.add_argument("--authors", help="Comma-separated author names to scan for accidental leaks")
     p_venue.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
 
+    # figures (da-vinci)
+    p_figures = subparsers.add_parser("figures", aliases=["fig", "da-vinci"], help="Audit figures for DPI, vector formats, subfigure parity, and colorblind safety")
+    p_figures.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_figures.add_argument("--base-dir", help="Base directory containing figure assets")
+    p_figures.add_argument("--dpi", type=int, default=300, help="Minimum acceptable DPI (default: 300)")
+    p_figures.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    # trim (layout)
+    p_trim = subparsers.add_parser("trim", aliases=["budget", "layout"], help="Analyze page budget slack, paragraph widow lines, and BibTeX abbreviation savings")
+    p_trim.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_trim.add_argument("--bib", help="Path to BibTeX file (auto-discovered if omitted)")
+    p_trim.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    # proofs (euclid)
+    p_proofs = subparsers.add_parser("proofs", aliases=["theorems", "euclid"], help="Audit theorem-proof completeness and verify appendix derivation pointers")
+    p_proofs.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_proofs.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    # repro (bacon)
+    p_repro = subparsers.add_parser("repro", aliases=["bacon", "reproducibility"], help="Audit conference reproducibility checklist (seeds, error bars, compute budget, anonymization)")
+    p_repro.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_repro.add_argument("--venue", default="neurips", help="Target venue checklist (default: neurips)")
+    p_repro.add_argument("--double-blind", action="store_true", help="Enforce double-blind anonymization")
+    p_repro.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    # rebuttal (socrates)
+    p_rebuttal = subparsers.add_parser("rebuttal", aliases=["socrates", "response"], help="Author rebuttal generator and LaTeX revision diff tracker")
+    reb_sub = p_rebuttal.add_subparsers(dest="rebuttal_action", help="Rebuttal action")
+    pr_format = reb_sub.add_parser("format", help="Generate 4-beat rebuttal scaffold from review text")
+    pr_format.add_argument("--input", help="Path to raw reviews text file")
+    pr_format.add_argument("--text", help="Raw reviews text inline")
+    pr_format.add_argument("--venue", default="openreview", help="Target venue template (default: openreview)")
+    pr_format.add_argument("--output", help="Output path for rebuttal markdown file")
+
+    pr_diff = reb_sub.add_parser("diff", help="Generate diff ledger and marked-up PDF between old and new manuscripts")
+    pr_diff.add_argument("old_tex", help="Path to original submission .tex file")
+    pr_diff.add_argument("new_tex", help="Path to revised manuscript .tex file")
+    pr_diff.add_argument("--pdf", action="store_true", help="Compile marked-up latexdiff PDF")
+    pr_diff.add_argument("--output", help="Path to save marked-up diff .tex file")
+    pr_diff.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    # submission
+    p_submission = subparsers.add_parser(
+        "submission",
+        aliases=["sub", "pack"],
+        help="Academic paper submission suite: cover letter, highlights, title page, and anonymous code zip",
+    )
+    sub_sub = p_submission.add_subparsers(dest="submission_action", help="Submission action")
+
+    ps_let = sub_sub.add_parser("letter", help="Generate publication-ready editorial cover letter")
+    ps_let.add_argument("--target", help="Path to manuscript LaTeX file or directory")
+    ps_let.add_argument("--journal", help="Target journal name")
+    ps_let.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_let.add_argument("--issn", help="Journal ISSN")
+    ps_let.add_argument("--editor", help="Editor-in-Chief name")
+    ps_let.add_argument("--figure", help="Path to teaser/graphical abstract figure")
+    ps_let.add_argument("--prior-doi", help="DOI of prior publication extended by this submission")
+    ps_let.add_argument("--output", help="Output file path (Markdown or LaTeX)")
+    ps_let.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    ps_hl = sub_sub.add_parser("highlights", help="Generate and validate 3-5 research highlights against venue character limits")
+    ps_hl.add_argument("--target", help="Path to manuscript LaTeX file to extract candidate highlights from")
+    ps_hl.add_argument("--bullets", help="Explicit bullet points (semicolon or newline-separated)")
+    ps_hl.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_hl.add_argument("--output", help="Output file path (Markdown or LaTeX)")
+    ps_hl.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    ps_tp = sub_sub.add_parser("title-page", help="Generate unblinded standalone Title Page document for double-blind review fairness")
+    ps_tp.add_argument("--target", help="Path to manuscript LaTeX file to extract metadata from")
+    ps_tp.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_tp.add_argument("--funding", help="Funding and grant acknowledgments")
+    ps_tp.add_argument("--conflicts", help="Declaration of competing interests")
+    ps_tp.add_argument("--output", help="Output file path (LaTeX or Markdown)")
+    ps_tp.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    ps_pc = sub_sub.add_parser("pack-code", help="Package code repository into reproducible anonymous ZIP archive")
+    ps_pc.add_argument("code_dir", nargs="?", default=".", help="Path to code directory to package (default: .)")
+    ps_pc.add_argument("--authors", help="Comma-separated author names to audit against")
+    ps_pc.add_argument("--output", help="Output zip file path (default: anonymous_code.zip)")
+    ps_pc.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    ps_bun = sub_sub.add_parser("bundle", help="Generate all four submission artifacts and packaging manifest in one shot")
+    ps_bun.add_argument("--target", default=".", help="Path to manuscript LaTeX file or directory (default: .)")
+    ps_bun.add_argument("--journal", help="Target journal name")
+    ps_bun.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_bun.add_argument("--issn", help="Journal ISSN")
+    ps_bun.add_argument("--code-dir", help="Explicit path to code directory")
+    ps_bun.add_argument("--no-code", action="store_true", help="Skip code packaging (e.g. theoretical paper)")
+    ps_bun.add_argument("--figure", help="Path to teaser/graphical abstract figure")
+    ps_bun.add_argument("--prior-doi", help="DOI of prior publication extended by this submission")
+    ps_bun.add_argument("--funding", help="Funding and grant acknowledgments")
+    ps_bun.add_argument("--conflicts", help="Declaration of competing interests")
+    ps_bun.add_argument("--editor", help="Editor-in-Chief name")
+    ps_bun.add_argument("--output", help="Output directory path (default: dist/submission/)")
+    ps_bun.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
     # config
     p_config = subparsers.add_parser("config", aliases=["cfg"], help="Manage global (~/.scifi/config.json) and project (scifi.toml) configuration")
     cfg_sub = p_config.add_subparsers(dest="config_action", help="Config action")
@@ -621,6 +946,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_venue(args)
     elif args.command in ("config", "cfg"):
         return cmd_config(args)
+    elif args.command in ("figures", "fig", "da-vinci"):
+        return cmd_figures(args)
+    elif args.command in ("trim", "budget", "layout"):
+        return cmd_trim(args)
+    elif args.command in ("proofs", "theorems", "euclid"):
+        return cmd_proofs(args)
+    elif args.command in ("repro", "bacon", "reproducibility"):
+        return cmd_repro(args)
+    elif args.command in ("rebuttal", "socrates", "response"):
+        return cmd_rebuttal(args)
+    elif args.command in ("submission", "sub", "pack"):
+        return cmd_submission(args)
     elif args.command in ("compile", "c", "build"):
         return cmd_compile(args)
     elif args.command in ("setup", "init", "i"):
