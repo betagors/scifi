@@ -305,6 +305,53 @@ def find_local_pdf(
                 if p.is_file():
                     return p
 
+    # 2. Check Zotero local storage if available
+    try:
+        from scifi.literature.zotero.reader import ZoteroLocalReader
+        z_reader = ZoteroLocalReader()
+
+        # Check explicit zotero identifier
+        if hasattr(paper, "identifiers") and paper.identifiers:
+            for ident in paper.identifiers:
+                prov = (getattr(ident, "provider", "") or "").lower()
+                val = getattr(ident, "external_id", "") or ""
+                if prov == "zotero" and val:
+                    z_path = z_reader.get_pdf_path(val)
+                    if z_path and z_path.is_file():
+                        return z_path
+
+        # Check by DOI
+        dois_to_check = []
+        if hasattr(paper, "identifiers") and paper.identifiers:
+            for ident in paper.identifiers:
+                prov = (getattr(ident, "provider", "") or "").lower()
+                val = getattr(ident, "external_id", "") or ""
+                if prov == "doi" and val:
+                    dois_to_check.append(val)
+        p_id = getattr(paper, "id", "") or ""
+        if "10." in p_id or "doi.org" in p_id.lower():
+            dois_to_check.append(p_id)
+
+        for d in dois_to_check:
+            z_item = z_reader.get_item_by_doi(d)
+            if z_item and z_item.pdf_path and z_item.pdf_path.is_file():
+                return z_item.pdf_path
+
+        # Check by arXiv
+        arx_to_check = []
+        if hasattr(paper, "identifiers") and paper.identifiers:
+            for ident in paper.identifiers:
+                prov = (getattr(ident, "provider", "") or "").lower()
+                val = getattr(ident, "external_id", "") or ""
+                if prov == "arxiv" and val:
+                    arx_to_check.append(val)
+        for a in arx_to_check:
+            z_item = z_reader.get_item_by_arxiv(a)
+            if z_item and z_item.pdf_path and z_item.pdf_path.is_file():
+                return z_item.pdf_path
+    except Exception:
+        pass
+
     dirs = search_dirs or ["workspace", "workspace/papers", "."]
 
     arx_ids: list[str] = []
