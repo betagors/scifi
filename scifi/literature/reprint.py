@@ -322,7 +322,7 @@ def ingest_paper_copy(
         raise FileNotFoundError(f"Source PDF not found at {source_path}")
 
     data = source_path.read_bytes()
-    if not (source_path.suffix.lower() == ".pdf" or data.startswith(b"%PDF")):
+    if not data.startswith(b"%PDF"):
         raise ValueError("Provided file is not a valid PDF document.")
 
     file_hash = hashlib.sha256(data).hexdigest()
