@@ -12,6 +12,8 @@ from typing import Dict, Optional, Tuple
 
 import requests
 
+from scifi.network import get_session
+
 DOI_REGEX = re.compile(r"10\.\d{4,9}/[^\s\"'<>]+", re.IGNORECASE)
 ARXIV_NEW_REGEX = re.compile(r"(?:arxiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
 ARXIV_OLD_REGEX = re.compile(r"(?:arxiv:)?([a-z\-]+(?:\.[a-z]{2})?/\d{7}(?:v\d+)?)", re.IGNORECASE)
@@ -161,7 +163,7 @@ def extract_identifier(query: str, follow_links: bool = True) -> Tuple[str, str,
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SciFi-CitationVerifier/1.0",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 }
-                resp = requests.get(clean_q, headers=headers, timeout=10, allow_redirects=True)
+                resp = get_session().get(clean_q, headers=headers, timeout=10, allow_redirects=True)
                 final_url = resp.url
 
                 # Check final redirected URL for DOI

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import bibtexparser
 import requests
 
+from scifi.network import get_session
 from .discrepancy import audit_discrepancies
 from .fetchers import OpenAlexFetcher, resolve_citation
 from .identifiers import clean_doi, extract_identifier
@@ -32,7 +33,7 @@ def search_identifier_by_title(title: str, author_hint: Optional[str] = None, ti
     params = {"search": title.strip(), "per-page": 3}
     headers = {"User-Agent": "SciFi-CitationVerifier/1.0 (mailto:scifi-toolkit@gmail.com)"}
     try:
-        resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+        resp = get_session().get(url, params=params, headers=headers, timeout=timeout)
         if resp.status_code == 200:
             results = resp.json().get("results", [])
             for res in results:

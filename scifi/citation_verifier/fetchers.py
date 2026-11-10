@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from scifi.network import get_session
 from .models import Author, CitationMetadata, VerificationStatus
 
 DEFAULT_USER_AGENT = "SciFi-CitationVerifier/1.0 (https://github.com/scifi-toolkit; mailto:scifi-toolkit@gmail.com)"
@@ -23,7 +24,7 @@ class CrossRefFetcher:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
         url = f"{cls.BASE_URL}{requests.utils.quote(doi)}"
         try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp = get_session().get(url, headers=headers, timeout=timeout)
             if resp.status_code == 200:
                 data = resp.json()
                 return data.get("message")
@@ -139,7 +140,7 @@ class OpenAlexFetcher:
             url = f"{cls.BASE_URL}{identifier}"
 
         try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp = get_session().get(url, headers=headers, timeout=timeout)
             if resp.status_code == 200:
                 return resp.json()
         except Exception:
@@ -225,7 +226,7 @@ class ArXivFetcher:
         clean_id = re.sub(r"^arxiv:", "", arxiv_id, flags=re.IGNORECASE).strip()
         url = f"{cls.BASE_URL}{clean_id}"
         try:
-            resp = requests.get(url, timeout=timeout)
+            resp = get_session().get(url, timeout=timeout)
             if resp.status_code != 200:
                 return None
 
@@ -296,7 +297,7 @@ class DataCiteFetcher:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/vnd.api+json"}
         url = f"{cls.BASE_URL}{requests.utils.quote(doi)}"
         try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp = get_session().get(url, headers=headers, timeout=timeout)
             if resp.status_code != 200:
                 return None
             data = resp.json().get("data", {})

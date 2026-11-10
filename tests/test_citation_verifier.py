@@ -3,6 +3,14 @@ Unit and integration tests for SciFi Citation Verifier.
 """
 
 import unittest
+from unittest.mock import patch
+import requests
+from scifi.citation_verifier.fetchers import (
+    ArXivFetcher,
+    CrossRefFetcher,
+    DataCiteFetcher,
+    OpenAlexFetcher,
+)
 from scifi.citation_verifier.identifiers import clean_doi, extract_identifier
 from scifi.citation_verifier.models import (
     Author,
@@ -19,6 +27,7 @@ from scifi.citation_verifier.discrepancy import (
 from scifi.citation_verifier.bib_auditor import (
     audit_bib_content,
     generate_sanitized_bib,
+    search_identifier_by_title,
 )
 from scifi.citation_verifier import verify_citation
 
@@ -194,6 +203,98 @@ class TestLiveVerification(unittest.TestCase):
         res = verify_citation("https://arxiv.org/abs/1706.03762")
         self.assertEqual(res.status, VerificationStatus.VERIFIED)
         self.assertIn("Attention Is All You Need", res.title)
+
+
+def test_crossref_fetcher_uses_resilient_session():
+    with patch("scifi.citation_verifier.fetchers.get_session") as mock_get_session:
+        mock_session = mock_get_session.return_value
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b'{"message": {"title": ["Test Paper"]}}'
+        mock_session.get.return_value = resp
+
+        meta = CrossRefFetcher.fetch("10.1000/182")
+        assert meta is not None
+        assert mock_session.get.called
+
+
+def test_openalex_fetcher_uses_resilient_session():
+    with patch("scifi.citation_verifier.fetchers.get_session") as mock_get_session:
+        mock_session = mock_get_session.return_value
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b'{"id": "W123", "title": "Test Paper"}'
+        mock_session.get.return_value = resp
+
+        res = OpenAlexFetcher.fetch("10.1000/182")
+        assert res is not None
+        assert mock_session.get.called
+
+
+def test_arxiv_fetcher_uses_resilient_session():
+    with patch("scifi.citation_verifier.fetchers.get_session") as mock_get_session:
+        mock_session = mock_get_session.return_value
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b"""<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+          <entry>
+            <title>Test Arxiv</title>
+            <author><name>Author A</name></author>
+            <published>2023-01-01T00:00:00Z</published>
+          </entry>
+        </feed>"""
+        mock_session.get.return_value = resp
+
+        meta = ArXivFetcher.fetch("2301.12345")
+        assert meta is not None
+        assert meta.title == "Test Arxiv"
+        assert mock_session.get.called
+
+
+def test_datacite_fetcher_uses_resilient_session():
+    with patch("scifi.citation_verifier.fetchers.get_session") as mock_get_session:
+        mock_session = mock_get_session.return_value
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b'{"data": {"attributes": {"titles": [{"title": "Data Paper"}], "creators": [{"name": "Smith, J."}]}}}'
+        mock_session.get.return_value = resp
+
+        meta = DataCiteFetcher.fetch("10.5061/dryad.test")
+        assert meta is not None
+        assert meta.title == "Data Paper"
+        assert mock_session.get.called
+
+
+def test_bib_auditor_search_by_title_uses_resilient_session():
+    with patch("scifi.citation_verifier.bib_auditor.get_session") as mock_get_session:
+        mock_session = mock_get_session.return_value
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = b'{"results": [{"doi": "https://doi.org/10.1234/test"}]}'
+        mock_session.get.return_value = resp
+
+        res = search_identifier_by_title("A great paper on transformers")
+        assert res == ("doi", "10.1234/test")
+        assert mock_session.get.called
+
+
+def test_extract_identifier_url_uses_resilient_session():
+    with patch("scifi.citation_verifier.identifiers.get_session") as mock_get_session:
+        mock_session = mock_get_session.return_value
+        resp = requests.Response()
+        resp.status_code = 200
+        resp.url = "https://publisher.com/paper"
+        resp._content = b'<html><head><meta name="citation_doi" content="10.1234/test"></head><body></body></html>'
+        mock_session.get.return_value = resp
+
+        id_type, id_val, extra = extract_identifier("https://publisher.com/paper", follow_links=True)
+        assert id_type == "doi"
+        assert id_val == "10.1234/test"
+        assert mock_session.get.called
+        # Verify custom Mozilla header is preserved
+        _, kwargs = mock_session.get.call_args
+        assert "Mozilla/5.0" in kwargs["headers"]["User-Agent"]
+
 
 
 if __name__ == "__main__":
