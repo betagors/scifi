@@ -121,7 +121,22 @@ def cmd_compile(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Run the 6-stage Manuscript Readiness Pipeline (`sf doctor`)."""
+    """Run the 6-stage Manuscript Readiness Pipeline or Environment Diagnostics (`sf doctor`)."""
+    if getattr(args, "env", False):
+        from scifi.env import diagnose_environment
+        diag = diagnose_environment(auto_fix=getattr(args, "fix", False))
+        print("=== SciFi Environment Health Diagnostic ===")
+        print(f"Python: {diag['python']['version']} ({diag['python']['executable']})")
+        uv_status = "Available (" + diag['uv'].get('version', '') + ")" if diag['uv']['available'] else "Missing (fallback active)"
+        print(f"uv: {uv_status}")
+        z = diag['zotero']
+        port_str = "OPEN" if z['port_23119_open'] else "CLOSED"
+        print(f"Zotero: {z['status']} (data_dir: {z['data_dir']}, port 23119: {port_str})")
+        lat = diag['latex']
+        lat_status = "Available" if lat['available'] else "Missing"
+        print(f"LaTeX Toolchain: {lat_status}")
+        return 0
+
     from scifi.doctor import audit_manuscript
 
     res = audit_manuscript(
@@ -598,6 +613,123 @@ def cmd_submission(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_zotero(args: argparse.Namespace) -> int:
+    """Manage local Zotero library, synchronization, and audit notes."""
+    from scifi.env import auto_detect_zotero_dir, is_zotero_port_open
+    from scifi.literature.zotero.reader import ZoteroLocalReader
+    from scifi.literature.zotero.writer import ZoteroLocalWriter
+
+    action = getattr(args, "zotero_action", None) or "status"
+
+    if action == "status":
+        z_dir = auto_detect_zotero_dir()
+        port_open = is_zotero_port_open()
+        print("=== SciFi Zotero Status ===")
+        if not z_dir:
+            print("Zotero Local Database: Not detected (checked standard paths)")
+            print("Run 'sf doctor --env' for diagnostics.")
+            return 0
+
+        print(f"Zotero Data Directory: {z_dir}")
+        print(f"Local Server (Port 23119): {'ONLINE' if port_open else 'OFFLINE (Desktop app closed)'}")
+        try:
+            reader = ZoteroLocalReader(data_dir=z_dir)
+            cols = reader.get_collections()
+            print(f"Collections Found: {len(cols)}")
+            for c in cols[:5]:
+                print(f"  - {c.name} (ID: {c.collection_id})")
+            if len(cols) > 5:
+                print(f"  ... and {len(cols) - 5} more")
+        except Exception as e:
+            print(f"Failed to read collections: {e}")
+        return 0
+
+    elif action == "sync":
+        z_dir = auto_detect_zotero_dir()
+        if not z_dir:
+            print("[ERROR] Zotero data directory not found.", file=sys.stderr)
+            return 1
+        reader = ZoteroLocalReader(data_dir=z_dir)
+        writer = ZoteroLocalWriter()
+        col_name = getattr(args, "collection", None)
+        if not col_name:
+            cfg_path = Path(".scifi/config.toml")
+            if cfg_path.is_file():
+                for line in cfg_path.read_text(encoding="utf-8").splitlines():
+                    if line.strip().startswith("collection ="):
+                        col_name = line.split("=")[1].strip().strip('"').strip("'")
+                        break
+        if not col_name:
+            print("[ERROR] No collection specified. Pass --collection <name>.", file=sys.stderr)
+            return 1
+
+        items = reader.get_collection_items(col_name)
+        print(f"[SUCCESS] Scanned collection '{col_name}': {len(items)} papers found.")
+
+        flushed = writer.flush_staged_writes()
+        if flushed:
+            print(f"[SUCCESS] Flushed {len(flushed)} staged writes to Zotero.")
+        return 0
+
+    elif action == "flush":
+        writer = ZoteroLocalWriter()
+        flushed = writer.flush_staged_writes()
+        print(f"Flushed {len(flushed)} staged mutations to Zotero.")
+        return 0
+
+    elif action == "annotations":
+        key = getattr(args, "key", None)
+        if not key:
+            print("[ERROR] Item key required. Use --key <KEY>.", file=sys.stderr)
+            return 1
+        reader = ZoteroLocalReader()
+        annos = reader.get_user_annotations(key)
+        print(f"Annotations for item {key} ({len(annos)} found):")
+        for a in annos:
+            print(f"  - Page {a.page_label or '?'}: \"{a.text or ''}\" (Comment: {a.comment or 'None'})")
+        return 0
+
+    return 0
+
+
+def cmd_scaffold(args: argparse.Namespace) -> int:
+    """Scaffold a standard 2-pillar SciFi research project."""
+    from scifi.scaffold import scaffold_project
+
+    target = getattr(args, "target", ".")
+    title = getattr(args, "title", "Research Manuscript")
+    venue = getattr(args, "venue", "ieee")
+    collection = getattr(args, "collection", None)
+
+    res = scaffold_project(target_dir=target, title=title, venue=venue, collection=collection)
+    print(f"[SUCCESS] Scaffolded 2-pillar project in '{res['root']}' for venue '{venue}'.")
+    if res.get("collection"):
+        print(f"Linked Zotero collection: {res['collection']}")
+    return 0
+
+
+def cmd_adapt(args: argparse.Namespace) -> int:
+    """Migrate a legacy or flat codebase to standard SciFi structure."""
+    from scifi.adapt import adapt_project
+
+    target = getattr(args, "target", ".")
+    venue = getattr(args, "venue", "ieee")
+    collection = getattr(args, "collection", None)
+    dry_run = getattr(args, "dry_run", False)
+
+    res = adapt_project(repo_dir=target, venue=venue, collection=collection, dry_run=dry_run)
+    if res["status"] == "DRY_RUN":
+        print(f"[DRY-RUN] Proposed moves for '{res['root']}':")
+        print(f"  Publication moves: {len(res['publication_moves'])}")
+        print(f"  Code moves: {len(res['code_moves'])}")
+        print(f"  Data moves: {len(res['data_moves'])}")
+        print(f"  Citations parsed: {res['citations_found']} ({res['zotero_matches']} matched in Zotero)")
+    else:
+        print(f"[SUCCESS] Migrated project in '{res['root']}' to 2-pillar structure.")
+        print(f"  Citations parsed: {res['citations_found']} ({res['zotero_matches']} matched in Zotero)")
+    return 0
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Build the unified top-level ArgumentParser."""
     parser = argparse.ArgumentParser(
@@ -620,6 +752,8 @@ def create_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--live", action="store_true", help="Perform live Crossref/OpenAlex registry lookups")
     p_doctor.add_argument("--output", help="Write Markdown readiness report to file")
     p_doctor.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_doctor.add_argument("--env", action="store_true", help="Diagnose environment health (Python, uv, LaTeX, Zotero)")
+    p_doctor.add_argument("--fix", action="store_true", help="Attempt automatic remediation of environment issues")
 
     # verify
     p_verify = subparsers.add_parser("verify", aliases=["v", "check"], help="Verify a citation (DOI, arXiv link, PubMed URL, or publisher URL)")
@@ -877,8 +1011,32 @@ def create_parser() -> argparse.ArgumentParser:
     pc_init.add_argument("--double-blind", action="store_true", default=False, help="Enable double-blind mode by default")
     pc_init.add_argument("--force", action="store_true", help="Overwrite existing scifi.toml")
 
+    # zotero
+    p_zotero = subparsers.add_parser("zotero", aliases=["zot"], help="Manage local Zotero library, synchronization, and audit notes")
+    zot_sub = p_zotero.add_subparsers(dest="zotero_action", help="Zotero action")
+    zot_sub.add_parser("status", help="Check local Zotero status, collections, and port 23119")
+    pz_sync = zot_sub.add_parser("sync", help="Sync collection papers, references.bib, and flush staged writes")
+    pz_sync.add_argument("--collection", help="Zotero collection name")
+    zot_sub.add_parser("flush", help="Flush offline staged notes to Zotero")
+    pz_ann = zot_sub.add_parser("annotations", help="View user PDF highlights and comments")
+    pz_ann.add_argument("--key", required=True, help="Zotero item key")
+
+    # scaffold
+    p_scaffold = subparsers.add_parser("scaffold", aliases=["init", "new"], help="Scaffold a standard 2-pillar academic project (paper/ + code/ + .scifi/)")
+    p_scaffold.add_argument("target", nargs="?", default=".", help="Target directory for project")
+    p_scaffold.add_argument("--title", default="Research Manuscript", help="Manuscript title")
+    p_scaffold.add_argument("--venue", default="ieee", help="Target venue profile (ieee, neurips, acm)")
+    p_scaffold.add_argument("--collection", help="Link to Zotero collection")
+
+    # adapt
+    p_adapt = subparsers.add_parser("adapt", aliases=["migrate"], help="Migrate legacy codebase into standard 2-pillar SciFi structure")
+    p_adapt.add_argument("target", nargs="?", default=".", help="Target legacy codebase directory")
+    p_adapt.add_argument("--venue", default="ieee", help="Target venue profile")
+    p_adapt.add_argument("--collection", help="Link to Zotero collection")
+    p_adapt.add_argument("--dry-run", action="store_true", help="Preview planned directory restructuring without moving files")
+
     # setup
-    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
+    p_setup = subparsers.add_parser("setup", aliases=["setup-mcp", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
     p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
     p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
@@ -1015,7 +1173,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_submission(args)
     elif args.command in ("compile", "c", "build"):
         return cmd_compile(args)
-    elif args.command in ("setup", "init", "i"):
+    elif args.command in ("zotero", "zot"):
+        return cmd_zotero(args)
+    elif args.command in ("scaffold", "init", "new"):
+        return cmd_scaffold(args)
+    elif args.command in ("adapt", "migrate"):
+        return cmd_adapt(args)
+    elif args.command in ("setup", "setup-mcp", "i"):
         return setup_cli.cmd_setup(args)
     elif args.command == "sync":
         return setup_cli.cmd_sync(args)
