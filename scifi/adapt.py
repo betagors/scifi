@@ -52,6 +52,72 @@ def parse_bib_keys_and_titles(bib_path: Path) -> List[Dict[str, str]]:
     return entries
 
 
+_BIB_TO_ZOTERO_TYPE = {
+    "article": ("journalArticle", "publicationTitle"),
+    "inproceedings": ("conferencePaper", "proceedingsTitle"),
+    "conference": ("conferencePaper", "proceedingsTitle"),
+    "book": ("book", None),
+    "incollection": ("bookSection", "bookTitle"),
+    "phdthesis": ("thesis", None),
+    "mastersthesis": ("thesis", None),
+    "techreport": ("report", None),
+    "misc": ("document", None),
+}
+
+
+def _clean_tex(s: str) -> str:
+    s = re.sub(r"\\([&%_#$])", r"\1", s)
+    s = re.sub(r"\{\\['`\"^~]\{?(\w)\}?\}", r"\1", s)
+    s = re.sub(r"\\['`\"^~](\w)", r"\1", s)
+    return re.sub(r"[{}]", "", s).strip()
+
+
+def _bib_entries_to_zotero_items(bib_paths: List[Path], keys: Set[str]) -> List[Dict[str, Any]]:
+    """Convert selected BibTeX entries to Zotero item JSON."""
+    import bibtexparser
+
+    items: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for p in bib_paths:
+        if not p.is_file():
+            continue
+        lib = bibtexparser.parse_string(p.read_text(encoding="utf-8", errors="ignore"))
+        for e in lib.entries:
+            if e.key not in keys or e.key in seen:
+                continue
+            seen.add(e.key)
+            f = {k: _clean_tex(v.value) for k, v in e.fields_dict.items()}
+            item_type, venue_field = _BIB_TO_ZOTERO_TYPE.get(e.entry_type.lower(), ("document", None))
+            item: Dict[str, Any] = {"itemType": item_type, "title": f.get("title", e.key)}
+            creators = []
+            for a in re.split(r"\s+and\s+", f.get("author", "")):
+                if "," in a:
+                    last, first = [x.strip() for x in a.split(",", 1)]
+                    creators.append({"creatorType": "author", "firstName": first, "lastName": last})
+                elif a.strip():
+                    creators.append({"creatorType": "author", "name": a.strip()})
+            item["creators"] = creators
+            if f.get("year"):
+                item["date"] = f["year"]
+            if f.get("doi"):
+                item["DOI"] = f["doi"]
+            if f.get("url"):
+                item["url"] = f["url"]
+            if f.get("volume"):
+                item["volume"] = f["volume"]
+            if f.get("number") and item_type == "journalArticle":
+                item["issue"] = f["number"]
+            if f.get("pages"):
+                item["pages"] = f["pages"].replace("--", "–")
+            if f.get("publisher") and item_type in ("book", "bookSection"):
+                item["publisher"] = f["publisher"]
+            venue = f.get("journal") or f.get("booktitle")
+            if venue_field and venue:
+                item[venue_field] = venue
+            items.append(item)
+    return items
+
+
 def adapt_project(
     repo_dir: Union[str, Path],
     venue: str = "ieee",
@@ -139,6 +205,8 @@ def adapt_project(
     resolved_collection = collection
     collection_staged = False
     collection_error: Optional[str] = None
+    populated_linked = 0
+    populated_created = 0
 
     zotero_dir = auto_detect_zotero_dir()
     if zotero_dir:
@@ -149,18 +217,19 @@ def adapt_project(
             reader = ZoteroLocalReader(data_dir=zotero_dir)
             writer = ZoteroLocalWriter()
 
+            matched_keys: List[str] = []
+            unmatched: List[Dict[str, str]] = []
             for c in citations:
-                matched = False
+                item = None
                 if c.get("doi"):
                     item = reader.get_item_by_doi(c["doi"])
-                    if item:
-                        matched = True
-                if not matched and c.get("arxiv_id"):
+                if not item and c.get("arxiv_id"):
                     item = reader.get_item_by_arxiv(c["arxiv_id"])
-                    if item:
-                        matched = True
-                if matched:
+                if item:
                     zotero_matches += 1
+                    matched_keys.append(item.key)
+                else:
+                    unmatched.append(c)
 
             if not resolved_collection:
                 if auto_match:
@@ -178,6 +247,21 @@ def adapt_project(
                     collection_staged = True
                     if c_res.get("code") == 403 or "not enabled" in str(c_res.get("body", "")).lower():
                         collection_error = "Local API is not enabled in Zotero (Settings > Advanced > 'Allow other applications on this computer to communicate with Zotero')."
+
+            # Populate the collection: link matched library items, import the rest from the .bib
+            if not dry_run and not collection_staged:
+                col_key = writer.get_collection_key(resolved_collection)
+                if col_key:
+                    populated_linked = writer.add_items_to_collection(col_key, matched_keys)
+                    skip_titles = set()
+                    if existing_col:
+                        skip_titles = {re.sub(r"[^a-z0-9]", "", (i.title or "").lower()) for i in reader.get_collection_items(resolved_collection)}
+                    pending = {
+                        c["key"] for c in unmatched
+                        if re.sub(r"[^a-z0-9]", "", c.get("title", "").lower()) not in skip_titles
+                    }
+                    bib_items = _bib_entries_to_zotero_items(bib_to_parse, pending)
+                    populated_created = writer.create_items(bib_items, col_key)
         except Exception:
             pass
 
@@ -310,4 +394,6 @@ auto_tag = true
         "collection": col_str,
         "collection_staged": collection_staged,
         "collection_error": collection_error,
+        "populated_linked": populated_linked,
+        "populated_created": populated_created,
     }

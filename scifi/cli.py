@@ -736,6 +736,7 @@ def cmd_adapt(args: argparse.Namespace) -> int:
                     print(f"    ℹ️  {res['collection_error']}")
             else:
                 print(f"  Linked Zotero collection: {res['collection']}")
+                print(f"  Populated: {res.get('populated_linked', 0)} existing items linked, {res.get('populated_created', 0)} imported from .bib")
     return 0
 
 

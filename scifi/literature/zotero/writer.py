@@ -299,6 +299,57 @@ class ZoteroLocalWriter:
             })
             return {"status": "STAGED", "error": str(e)}
 
+    def get_collection_key(self, name: str) -> Optional[str]:
+        """Resolve a collection key by exact name via the local API."""
+        try:
+            resp = requests.get(f"{self.base_url}/collections?limit=100", headers=self._headers(), timeout=5)
+            if resp.status_code == 200:
+                for c in resp.json():
+                    if c.get("data", {}).get("name") == name:
+                        return c["data"]["key"]
+        except Exception:
+            pass
+        return None
+
+    def add_items_to_collection(self, collection_key: str, item_keys: List[str]) -> int:
+        """Add existing library items to a collection (PATCH preserving other memberships)."""
+        added = 0
+        for key in item_keys:
+            try:
+                g = requests.get(f"{self.base_url}/items/{key}", headers=self._headers(), timeout=5)
+                if g.status_code != 200:
+                    continue
+                data = g.json().get("data", {})
+                cols = list(data.get("collections", []))
+                if collection_key in cols:
+                    added += 1
+                    continue
+                cols.append(collection_key)
+                p = requests.patch(
+                    f"{self.base_url}/items/{key}",
+                    headers=self._headers(version=data.get("version")),
+                    json={"collections": cols},
+                    timeout=5,
+                )
+                if p.status_code in (200, 204):
+                    added += 1
+            except Exception:
+                continue
+        return added
+
+    def create_items(self, items: List[Dict[str, Any]], collection_key: str) -> int:
+        """Create new library items (Zotero item JSON) directly inside a collection."""
+        created = 0
+        for i in range(0, len(items), 25):
+            batch = [dict(it, collections=[collection_key]) for it in items[i:i + 25]]
+            try:
+                resp = requests.post(f"{self.base_url}/items", headers=self._headers(), json=batch, timeout=15)
+                if resp.status_code in (200, 201):
+                    created += len(resp.json().get("successful", {}))
+            except Exception:
+                continue
+        return created
+
     def flush_staged_writes(self) -> List[Dict[str, Any]]:
         """
         Replay all staged mutations when the Zotero server is available.
