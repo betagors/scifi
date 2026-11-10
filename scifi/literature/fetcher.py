@@ -280,6 +280,7 @@ def fetch_paper_pdf(
 def find_local_pdf(
     paper: Any,
     search_dirs: Optional[list[Union[str, Path]]] = None,
+    zotero_reader: Optional[Any] = None,
 ) -> Optional[Path]:
     """
     Search local directories for a PDF file corresponding to a PaperRecord.
@@ -290,6 +291,8 @@ def find_local_pdf(
         Academic paper metadata object.
     search_dirs : list of str or Path, optional
         Directories to search for matching PDFs. Default searches 'workspace', 'workspace/papers', and '.'.
+    zotero_reader : ZoteroLocalReader, optional
+        Optional pre-configured or mock ZoteroLocalReader instance.
 
     Returns
     -------
@@ -307,8 +310,11 @@ def find_local_pdf(
 
     # 2. Check Zotero local storage if available
     try:
-        from scifi.literature.zotero.reader import ZoteroLocalReader
-        z_reader = ZoteroLocalReader()
+        if zotero_reader is not None:
+            z_reader = zotero_reader
+        else:
+            from scifi.literature.zotero.reader import ZoteroLocalReader
+            z_reader = ZoteroLocalReader()
 
         # Check explicit zotero identifier
         if hasattr(paper, "identifiers") and paper.identifiers:
@@ -423,6 +429,7 @@ def resolve_paper_pdf(
     auto_fetch: bool = False,
     output_dir: Union[str, Path] = "workspace/papers",
     email: str = "researcher@scifi.org",
+    zotero_reader: Optional[Any] = None,
 ) -> Optional[Path]:
     """
     Resolve local PDF path for a paper record, with optional open-access auto-fetching.
@@ -439,6 +446,8 @@ def resolve_paper_pdf(
         Destination directory when auto_fetch downloads a PDF. Default 'workspace/papers'.
     email : str
         Polite email contact for Unpaywall / OpenAlex requests.
+    zotero_reader : ZoteroLocalReader, optional
+        Optional pre-configured or mock ZoteroLocalReader instance.
 
     Returns
     -------
@@ -446,7 +455,7 @@ def resolve_paper_pdf(
         Path to resolved local PDF file, or None if unavailable.
     """
     # 1. Search local directories
-    local = find_local_pdf(paper, search_dirs=local_dirs)
+    local = find_local_pdf(paper, search_dirs=local_dirs, zotero_reader=zotero_reader)
     if local:
         return local
 

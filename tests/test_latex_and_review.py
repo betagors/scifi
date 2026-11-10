@@ -187,7 +187,8 @@ class TestCompileLatex(unittest.TestCase):
                 res = compile_latex(tex_file, engine="latexmk", clean=True)
                 self.assertEqual(res["status"], "SUCCESS")
                 self.assertTrue(res["pdf_generated"])
-                self.assertEqual(res["pdf_path"], str(pdf_file))
+                self.assertIsNotNone(res["pdf_path"])
+                self.assertEqual(Path(res["pdf_path"]).resolve(), pdf_file.resolve())
                 self.assertIn("log", res)
 
     def test_compile_latex_mock_compilation_error(self):
