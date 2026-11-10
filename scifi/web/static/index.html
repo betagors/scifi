@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciFi Research Cockpit</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vis.js Network CDN -->
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <!-- Custom Cockpit Styles -->
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            oa: {
+              gold: '#eab308',
+              green: '#22c55e',
+              hybrid: '#3b82f6',
+              bronze: '#f97316',
+              diamond: '#06b6d4',
+              closed: '#64748b',
+              retracted: '#ef4444'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="h-full flex flex-col overflow-hidden bg-slate-950 font-sans antialiased text-slate-100">
+
+  <!-- Top Navigation Bar -->
+  <header class="h-16 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-6 flex items-center justify-between z-30 shrink-0">
+    <div class="flex items-center space-x-6">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
+          SF
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+            SciFi Research Cockpit
+            <span class="text-[10px] font-mono uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">v1.0</span>
+          </h1>
+          <p class="text-xs text-slate-400">Autonomous Scientific Literature &amp; Citation Engine</p>
+        </div>
+      </div>
+
+      <!-- Project & Session Selectors -->
+      <div class="flex items-center space-x-3 bg-slate-800/80 p-1.5 rounded-lg border border-slate-700/60">
+        <div class="flex items-center space-x-2">
+          <label for="projects-dropdown" class="text-xs font-semibold text-slate-400 px-1">Project:</label>
+          <select id="projects-dropdown" class="bg-slate-900 text-slate-200 text-xs font-medium rounded-md px-2.5 py-1.5 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
+            <option value="" disabled selected>Loading projects...</option>
+          </select>
+        </div>
+
+        <div class="h-4 w-px bg-slate-700"></div>
+
+        <div class="flex items-center space-x-2">
+          <label for="session-selector" class="text-xs font-semibold text-slate-400 px-1">Graph Scope:</label>
+          <select id="session-selector" class="bg-slate-900 text-slate-200 text-xs font-medium rounded-md px-2.5 py-1.5 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
+            <option value="">Full Project DAG</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Sync Status & Actions -->
+    <div class="flex items-center space-x-4">
+      <div id="sync-status" class="flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full text-xs text-emerald-400">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 sync-dot"></span>
+        <span class="font-medium" id="sync-status-text">Connected (WAL Store)</span>
+      </div>
+
+      <button id="btn-refresh" title="Reload from Local Store" class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Tab Navigation Bar -->
+  <div class="bg-slate-900/50 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+    <nav class="flex space-x-8 -mb-px" aria-label="Tabs">
+      <button id="tab-btn-network" class="tab-button border-indigo-500 text-indigo-400 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-xs flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+        </svg>
+        Citation Lineage (DAG)
+        <span id="badge-nodes-count" class="bg-indigo-500/20 text-indigo-300 py-0.5 px-1.5 rounded-full text-[10px]">0</span>
+      </button>
+
+      <button id="tab-btn-papers" class="tab-button border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-xs flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+        </svg>
+        Papers Catalog
+        <span id="badge-papers-count" class="bg-slate-800 text-slate-400 py-0.5 px-1.5 rounded-full text-[10px]">0</span>
+      </button>
+
+      <button id="tab-btn-reprints" class="tab-button border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-xs flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+        </svg>
+        Author Reprint Hub
+        <span id="badge-reprints-count" class="bg-amber-500/20 text-amber-300 py-0.5 px-1.5 rounded-full text-[10px]">0</span>
+      </button>
+    </nav>
+
+    <!-- Contextual Tab Right Meta / Filter status -->
+    <div id="tab-meta" class="text-xs text-slate-400 flex items-center gap-3">
+      <span id="tab-meta-text">Ready</span>
+    </div>
+  </div>
+
+  <!-- Main View Container -->
+  <main class="flex-1 relative overflow-hidden">
+
+    <!-- VIEW 1: Citation Lineage (DAG) -->
+    <section id="view-network" class="h-full flex flex-col relative">
+      <!-- Floating Graph Overlay: Controls & Legend -->
+      <div class="absolute top-4 left-4 z-20 flex flex-col gap-3 max-w-sm pointer-events-none">
+        <!-- Floating Controls -->
+        <div class="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2 shadow-xl flex items-center gap-1.5 pointer-events-auto">
+          <button id="btn-zoom-in" title="Zoom In" class="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+          </button>
+          <button id="btn-zoom-out" title="Zoom Out" class="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 12H6"></path></svg>
+          </button>
+          <button id="btn-zoom-fit" title="Fit to Viewport" class="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+          </button>
+          <div class="h-4 w-px bg-slate-700 mx-1"></div>
+          <button id="btn-toggle-physics" title="Toggle Force Physics Stabilization" class="px-2 py-1 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded transition flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" id="physics-indicator"></span>
+            Physics
+          </button>
+        </div>
+
+        <!-- Open Access Legend -->
+        <div class="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-3 shadow-xl pointer-events-auto">
+          <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Access &amp; Open Access Tiers</div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded bg-amber-500"></span>
+              <span class="text-slate-300">Gold OA</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded bg-emerald-500"></span>
+              <span class="text-slate-300">Green OA</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded bg-blue-500"></span>
+              <span class="text-slate-300">Hybrid OA</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded bg-orange-500"></span>
+              <span class="text-slate-300">Bronze OA</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded bg-cyan-500"></span>
+              <span class="text-slate-300">Diamond OA</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded bg-slate-500"></span>
+              <span class="text-slate-300">Closed / Paywalled</span>
+            </div>
+          </div>
+          <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center gap-2">
+            <span class="h-0.5 w-4 bg-blue-500"></span>
+            <span>Thick blue edge = Influential Citation</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vis.js Network Canvas Container -->
+      <div id="network-container" class="flex-1 w-full h-full"></div>
+    </section>
+
+    <!-- VIEW 2: Papers Catalog Table -->
+    <section id="view-papers" class="hidden h-full flex flex-col p-6 overflow-y-auto">
+      <!-- Metric Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+          <p class="text-xs font-semibold text-slate-400 uppercase">Total Papers</p>
+          <p class="text-2xl font-bold text-white mt-1" id="stat-total-papers">0</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+          <p class="text-xs font-semibold text-slate-400 uppercase">Open Access Rate</p>
+          <p class="text-2xl font-bold text-emerald-400 mt-1" id="stat-oa-rate">0%</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+          <p class="text-xs font-semibold text-slate-400 uppercase">Paywalled Papers</p>
+          <p class="text-2xl font-bold text-amber-400 mt-1" id="stat-paywalled">0</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+          <p class="text-xs font-semibold text-slate-400 uppercase">Influential Citations</p>
+          <p class="text-2xl font-bold text-indigo-400 mt-1" id="stat-influential">0</p>
+        </div>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-4 flex flex-wrap gap-4 items-center justify-between">
+        <div class="flex-1 min-w-[240px]">
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <input type="text" id="papers-search-input" placeholder="Search by title, author, DOI, venue..." class="w-full bg-slate-950 text-slate-200 text-xs rounded-lg pl-9 pr-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <select id="papers-filter-oa" class="bg-slate-950 text-slate-200 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <option value="ALL">All Access Types</option>
+            <option value="OA">Open Access Only</option>
+            <option value="CLOSED">Paywalled / Closed Only</option>
+          </select>
+
+          <select id="papers-sort" class="bg-slate-950 text-slate-200 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <option value="citations">Sort by Citations (Desc)</option>
+            <option value="year">Sort by Year (Newest)</option>
+            <option value="title">Sort by Title (A-Z)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Papers Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex-1">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+              <tr>
+                <th class="py-3 px-4">Title &amp; Authors</th>
+                <th class="py-3 px-3 w-20">Year</th>
+                <th class="py-3 px-4 w-44">Venue &amp; Tier</th>
+                <th class="py-3 px-3 w-28">Citations</th>
+                <th class="py-3 px-3 w-28">Access</th>
+                <th class="py-3 px-3 w-24">PDF</th>
+                <th class="py-3 px-4 w-28 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="papers-table-body" class="divide-y divide-slate-800/60 font-normal">
+              <tr>
+                <td colspan="7" class="py-8 text-center text-slate-500">Loading catalog papers...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: Author Reprints Hub -->
+    <section id="view-reprints" class="hidden h-full flex flex-col p-6 overflow-y-auto">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-6 flex items-start justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            Author Preprint &amp; Reprint Unpaywalling Hub
+            <span class="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded font-mono">Academic Freedom Exemption</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1 max-w-2xl">
+            Authors possess scholarly copyright rights to share private preprints and postprints upon direct request.
+            SciFi automatically extracts corresponding author contact points, drafts custom unpaywall emails, and facilitates 1-click mailto: dispatch and received PDF ingestion.
+          </p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <select id="reprints-filter-status" class="bg-slate-950 text-slate-200 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <option value="ALL">All Requests</option>
+            <option value="DRAFT_READY">Draft Ready</option>
+            <option value="SENT">Request Sent</option>
+            <option value="RECEIVED">Received</option>
+            <option value="REJECTED">Declined / Unreachable</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Reprints Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex-1">
+        <div class="overflow-x-auto">
+          <table id="reprints-table" class="w-full text-left text-xs">
+            <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+              <tr>
+                <th class="py-3 px-4">Paper Title / DOI</th>
+                <th class="py-3 px-4 w-44">Corresponding Author</th>
+                <th class="py-3 px-4 w-64">Author Email (Inline Edit)</th>
+                <th class="py-3 px-3 w-32">Status</th>
+                <th class="py-3 px-4 w-48 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="reprints-table-body" class="divide-y divide-slate-800/60">
+              <tr>
+                <td colspan="5" class="py-8 text-center text-slate-500">Loading reprint requests...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Slide-Over Paper Details Drawer -->
+  <div id="drawer-backdrop" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 backdrop-hidden" aria-hidden="true"></div>
+  <aside id="paper-drawer" class="fixed inset-y-0 right-0 max-w-lg w-full bg-slate-900 border-l border-slate-800 shadow-2xl z-50 flex flex-col drawer-closed overflow-hidden">
+    <div class="p-5 border-b border-slate-800 flex items-start justify-between bg-slate-950/50">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <span id="drawer-oa-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300">OA Status</span>
+          <span id="drawer-retracted-badge" class="hidden px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500/20 text-red-400 border border-red-500/30">RETRACTED</span>
+        </div>
+        <h3 id="drawer-title" class="text-sm font-bold text-white leading-snug">Paper Title</h3>
+        <p id="drawer-venue-year" class="text-xs text-slate-400 mt-1">Venue, 2024</p>
+      </div>
+      <button id="drawer-close-btn" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+
+    <!-- Drawer Content Scrollable Area -->
+    <div class="flex-1 p-5 overflow-y-auto space-y-6 text-xs text-slate-300">
+      <!-- Quick Action Buttons -->
+      <div class="grid grid-cols-2 gap-2" id="drawer-action-buttons">
+        <button id="drawer-btn-view-pdf" class="py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium flex items-center justify-center gap-1.5 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          Open Document
+        </button>
+        <button id="drawer-btn-ingest-pdf" class="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-medium flex items-center justify-center gap-1.5 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          Ingest Local PDF
+        </button>
+      </div>
+
+      <!-- Core Metadata Grid -->
+      <div class="bg-slate-950/60 rounded-lg p-3.5 border border-slate-800 space-y-2">
+        <div class="flex justify-between items-center py-1 border-b border-slate-800/60">
+          <span class="text-slate-400">DOI / Identifier:</span>
+          <span id="drawer-doi" class="font-mono text-indigo-400 select-all">-</span>
+        </div>
+        <div class="flex justify-between items-center py-1 border-b border-slate-800/60">
+          <span class="text-slate-400">Citations:</span>
+          <span id="drawer-citations" class="font-medium text-slate-200">0 total (0 influential)</span>
+        </div>
+        <div class="flex justify-between items-center py-1 border-b border-slate-800/60">
+          <span class="text-slate-400">Research Gaps:</span>
+          <span id="drawer-gaps" class="font-medium text-amber-400">0 documented gaps</span>
+        </div>
+        <div class="flex justify-between items-center py-1">
+          <span class="text-slate-400">Local Copy:</span>
+          <span id="drawer-local-pdf" class="truncate max-w-[240px] text-slate-300 font-mono text-[11px]">-</span>
+        </div>
+      </div>
+
+      <!-- Authors & Affiliations -->
+      <div>
+        <h4 class="font-semibold text-slate-200 uppercase tracking-wider text-[11px] mb-2">Authors &amp; Institutions</h4>
+        <div id="drawer-authors-list" class="space-y-1.5">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Abstract -->
+      <div>
+        <h4 class="font-semibold text-slate-200 uppercase tracking-wider text-[11px] mb-2">Abstract</h4>
+        <div id="drawer-abstract" class="bg-slate-950/40 p-3 rounded-lg border border-slate-800/80 leading-relaxed text-slate-300 select-text">
+          No abstract available.
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- PDF Ingestion Modal -->
+  <div id="ingest-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm hidden modal-overlay">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          Ingest Author PDF Copy
+        </h3>
+        <button id="modal-close-btn" class="text-slate-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Target Paper ID:</label>
+          <input type="text" id="modal-paper-id" readonly class="w-full bg-slate-950 text-slate-300 font-mono p-2 rounded border border-slate-800">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Local PDF File Path (Absolute):</label>
+          <input type="text" id="modal-pdf-path" placeholder="C:\path\to\downloaded_reprint.pdf" class="w-full bg-slate-950 text-slate-200 p-2 rounded border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono">
+        </div>
+        <p class="text-[11px] text-slate-500">
+          The file will be verified, hashed with SHA-256, copied into central content-addressed storage, and linked to this project.
+        </p>
+      </div>
+
+      <div class="flex justify-end space-x-3 pt-2">
+        <button id="modal-cancel-btn" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition">
+          Cancel
+        </button>
+        <button id="modal-submit-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition">
+          Ingest Document
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Main JavaScript App -->
+  <script src="/app.js"></script>
+</body>
+</html>

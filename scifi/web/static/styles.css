@@ -1,0 +1,157 @@
+/* SciFi Research Cockpit - Custom Styles & Network Canvas Theme */
+
+:root {
+  --color-gold: #eab308;
+  --color-green: #22c55e;
+  --color-hybrid: #3b82f6;
+  --color-bronze: #f97316;
+  --color-diamond: #06b6d4;
+  --color-closed: #64748b;
+  --color-retracted: #ef4444;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Network Container & Vis.js Customization */
+#network-container {
+  width: 100%;
+  height: calc(100vh - 210px);
+  min-height: 540px;
+  background-color: #0b0f19;
+  background-image: 
+    radial-gradient(rgba(51, 65, 85, 0.25) 1px, transparent 1px),
+    radial-gradient(rgba(51, 65, 85, 0.15) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+  position: relative;
+  outline: none;
+}
+
+#network-container canvas {
+  outline: none;
+}
+
+/* Vis.js Custom Tooltip */
+.vis-tooltip {
+  position: absolute;
+  visibility: hidden;
+  padding: 8px 12px;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #f1f5f9;
+  background-color: rgba(15, 23, 42, 0.95);
+  border: 1px solid #334155;
+  border-radius: 6px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 50;
+  max-width: 320px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Paper Details Drawer Slide Animation */
+#paper-drawer {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-in-out;
+}
+#paper-drawer.drawer-closed {
+  transform: translateX(100%);
+  pointer-events: none;
+  opacity: 0;
+}
+#paper-drawer.drawer-open {
+  transform: translateX(0);
+  pointer-events: auto;
+  opacity: 1;
+}
+
+/* Backdrop */
+#drawer-backdrop {
+  transition: opacity 0.3s ease-in-out;
+}
+#drawer-backdrop.backdrop-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+#drawer-backdrop.backdrop-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Modal Transitions */
+.modal-overlay {
+  transition: opacity 0.2s ease-in-out;
+}
+.modal-overlay.hidden {
+  display: none;
+}
+
+/* Pulse animation for active sync */
+@keyframes syncPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.sync-dot {
+  animation: syncPulse 2s infinite;
+}
+
+/* Toast Notifications */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  min-width: 260px;
+  max-width: 400px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  animation: toastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes toastIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
