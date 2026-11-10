@@ -730,7 +730,12 @@ def cmd_adapt(args: argparse.Namespace) -> int:
         print(f"[SUCCESS] Migrated project in '{res['root']}' to 2-pillar structure.")
         print(f"  Citations parsed: {res['citations_found']} ({res['zotero_matches']} matched in Zotero)")
         if res.get("collection"):
-            print(f"  Linked Zotero collection: {res['collection']}")
+            if res.get("collection_staged"):
+                print(f"  Linked Zotero collection: {res['collection']} (queued in .scifi/zotero_write_queue.json)")
+                if res.get("collection_error"):
+                    print(f"    ℹ️  {res['collection_error']}")
+            else:
+                print(f"  Linked Zotero collection: {res['collection']}")
     return 0
 
 

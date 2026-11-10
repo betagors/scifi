@@ -137,6 +137,8 @@ def adapt_project(
     # Cross-reference against Zotero if available & auto-detect / provision collection
     zotero_matches = 0
     resolved_collection = collection
+    collection_staged = False
+    collection_error: Optional[str] = None
 
     zotero_dir = auto_detect_zotero_dir()
     if zotero_dir:
@@ -171,7 +173,11 @@ def adapt_project(
 
             existing_col = reader.get_collection_by_name(resolved_collection)
             if not existing_col and not dry_run:
-                writer.create_collection(resolved_collection)
+                c_res = writer.create_collection(resolved_collection)
+                if c_res.get("status") == "STAGED":
+                    collection_staged = True
+                    if c_res.get("code") == 403 or "not enabled" in str(c_res.get("body", "")).lower():
+                        collection_error = "Local API is not enabled in Zotero (Settings > Advanced > 'Allow other applications on this computer to communicate with Zotero')."
         except Exception:
             pass
 
@@ -302,4 +308,6 @@ auto_tag = true
         "citations_found": len(citations),
         "zotero_matches": zotero_matches,
         "collection": col_str,
+        "collection_staged": collection_staged,
+        "collection_error": collection_error,
     }
