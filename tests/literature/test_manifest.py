@@ -5,6 +5,7 @@ import pytest
 from scifi.literature.store import LiteratureStore
 from scifi.literature.models import (
     PaperRecord,
+    PaperLocationRecord,
     CitationRecord,
     EvidenceRecord,
     PaperGapRecord,
@@ -265,3 +266,96 @@ def test_import_manifest_missing_file_raises(tmp_path: Path):
     store = LiteratureStore(tmp_path / "central.db")
     with pytest.raises(FileNotFoundError):
         import_manifest(store, tmp_path / "does_not_exist.json")
+
+
+def test_manifest_omits_workspace_path_and_sanitizes_local_pdf_path(tmp_path: Path):
+    db_path = tmp_path / "central.db"
+    store = LiteratureStore(db_path)
+    repo = tmp_path / "sanitize_repo"
+    proj = store.register_project("sanitize-proj", str(repo))
+
+    loc = PaperLocationRecord(
+        id="loc-1",
+        paper_id="10.9999/sanitize",
+        location_type="publisher",
+        is_oa=True,
+        oa_status="gold",
+        pdf_url="https://example.com/paper.pdf",
+        local_pdf_path=str(tmp_path / "secret" / "host" / "paper.pdf"),
+    )
+    paper = PaperRecord(id="10.9999/sanitize", title="Sanitized Paper", locations=[loc])
+    store.upsert_paper(paper)
+    store.link_paper_to_project(proj.id, paper.id)
+
+    manifest_file = repo / ".scifi" / "literature_manifest.json"
+    export_manifest(store, proj.id, manifest_file)
+
+    data = json.loads(manifest_file.read_text(encoding="utf-8"))
+    # Finding 2: workspace_path must be omitted from manifest JSON
+    assert "workspace_path" not in data
+
+    # Finding 3: local_pdf_path in locations must be None (sanitized), has_local_pdf True
+    paper_entry = data["papers"][0]
+    assert paper_entry["has_local_pdf"] is True
+    assert paper_entry["locations"][0]["local_pdf_path"] is None
+
+
+def test_import_manifest_on_repo_move(tmp_path: Path):
+    db_path = tmp_path / "central.db"
+    store = LiteratureStore(db_path)
+
+    repo_v1 = tmp_path / "old_repo"
+    proj1 = store.register_project("moved-proj", str(repo_v1))
+    p = PaperRecord(id="10.1000/move", title="Moved Paper")
+    store.upsert_paper(p)
+    store.link_paper_to_project(proj1.id, p.id)
+
+    manifest_v1 = repo_v1 / ".scifi" / "literature_manifest.json"
+    export_manifest(store, proj1.id, manifest_v1)
+
+    # Simulate repo directory moved/renamed: repo_v1 renamed to repo_v2
+    repo_v2 = tmp_path / "new_repo"
+    repo_v1.rename(repo_v2)
+    assert not repo_v1.exists()
+    assert repo_v2.exists()
+
+    manifest_v2 = repo_v2 / ".scifi" / "literature_manifest.json"
+    proj_updated = import_manifest(store, manifest_v2, repo_v2)
+
+    # Finding 1 (case A): project id preserved, workspace_path updated without IntegrityError
+    assert proj_updated.id == proj1.id
+    assert proj_updated.workspace_path == str(repo_v2.resolve())
+    assert len(store.get_project_papers(proj_updated.id)) == 1
+
+
+def test_import_manifest_on_secondary_clone_or_worktree(tmp_path: Path):
+    db_path = tmp_path / "central.db"
+    store = LiteratureStore(db_path)
+
+    repo_clone1 = tmp_path / "clone_1"
+    proj1 = store.register_project("clone-proj", str(repo_clone1))
+    p = PaperRecord(id="10.1000/clone", title="Clone Paper")
+    store.upsert_paper(p)
+    store.link_paper_to_project(proj1.id, p.id)
+
+    manifest_clone1 = repo_clone1 / ".scifi" / "literature_manifest.json"
+    export_manifest(store, proj1.id, manifest_clone1)
+
+    # Simulate second clone on same machine (both exist on disk)
+    repo_clone2 = tmp_path / "clone_2"
+    repo_clone2_scifi = repo_clone2 / ".scifi"
+    repo_clone2_scifi.mkdir(parents=True, exist_ok=True)
+    manifest_clone2 = repo_clone2_scifi / "literature_manifest.json"
+    manifest_clone2.write_text(manifest_clone1.read_text(encoding="utf-8"), encoding="utf-8")
+
+    assert repo_clone1.exists()
+    assert repo_clone2.exists()
+
+    proj2 = import_manifest(store, manifest_clone2, repo_clone2)
+
+    # Finding 1 (case B): second clone gets distinct project_id without IntegrityError
+    assert proj2.id != proj1.id
+    assert proj2.workspace_path == str(repo_clone2.resolve())
+    assert len(store.get_project_papers(proj2.id)) == 1
+    assert len(store.get_project_papers(proj1.id)) == 1
+

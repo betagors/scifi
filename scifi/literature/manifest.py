@@ -75,6 +75,12 @@ def export_manifest(
         seen_paper_ids.add(p.id)
         p_dict = p.to_dict()
 
+        # Sanitize local_pdf_path in locations to prevent leaking host-specific paths
+        if "locations" in p_dict and isinstance(p_dict["locations"], list):
+            for loc in p_dict["locations"]:
+                if isinstance(loc, dict):
+                    loc["local_pdf_path"] = None
+
         # Compute convenience flags
         oa_status = "closed"
         if p.locations:
@@ -192,7 +198,6 @@ def export_manifest(
         "$schema": MANIFEST_SCHEMA_URL,
         "project_id": proj.id,
         "project_name": proj.name,
-        "workspace_path": proj.workspace_path,
         "description": proj.description,
         "synced_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "papers_count": len(papers_serialized),
@@ -264,12 +269,39 @@ def import_manifest(
     proj_id = data.get("project_id")
     description = data.get("description")
 
-    proj = store.register_project(
-        name=proj_name,
-        workspace_path=ws_path,
-        description=description,
-        project_id=proj_id,
-    )
+    existing_by_id = store.get_project(proj_id) if proj_id else None
+    existing_by_ws = store.get_project_by_workspace(ws_path)
+
+    if existing_by_id and not existing_by_ws:
+        old_ws = Path(existing_by_id.workspace_path)
+        if not old_ws.exists():
+            # Repository directory was moved or renamed. Update workspace_path in SQLite.
+            with store.transaction():
+                store.conn.execute(
+                    """
+                    UPDATE projects
+                    SET workspace_path = ?, name = ?, description = coalesce(?, description), updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (str(ws_path), proj_name, description, proj_id),
+                )
+            proj = store.get_project(proj_id)
+        else:
+            # Secondary clone or git worktree of the same repository on the same machine.
+            # Register it with a new project_id.
+            proj = store.register_project(
+                name=proj_name,
+                workspace_path=ws_path,
+                description=description,
+                project_id=None,
+            )
+    else:
+        proj = store.register_project(
+            name=proj_name,
+            workspace_path=ws_path,
+            description=description,
+            project_id=proj_id,
+        )
 
     # 1. Papers
     for p_data in data.get("papers", []):
