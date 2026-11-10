@@ -723,9 +723,13 @@ def cmd_adapt(args: argparse.Namespace) -> int:
         print(f"  Code moves: {len(res['code_moves'])}")
         print(f"  Data moves: {len(res['data_moves'])}")
         print(f"  Citations parsed: {res['citations_found']} ({res['zotero_matches']} matched in Zotero)")
+        if res.get("collection"):
+            print(f"  Target Zotero collection: {res['collection']}")
     else:
         print(f"[SUCCESS] Migrated project in '{res['root']}' to 2-pillar structure.")
         print(f"  Citations parsed: {res['citations_found']} ({res['zotero_matches']} matched in Zotero)")
+        if res.get("collection"):
+            print(f"  Linked Zotero collection: {res['collection']}")
     return 0
 
 

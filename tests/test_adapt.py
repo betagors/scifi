@@ -29,3 +29,21 @@ def test_adapt_dry_run_leaves_files_untouched(tmp_path):
     assert (flat_repo / "paper.tex").is_file()
     assert (flat_repo / "train.py").is_file()
     assert not (flat_repo / "paper").exists()
+
+
+def test_adapt_preserves_existing_paper_bib_and_parses_citations(tmp_path):
+    repo = tmp_path / "semi_structured_repo"
+    repo.mkdir()
+    paper_dir = repo / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "main.tex").write_text(r"\documentclass{article}\title{UAV Trajectory}\begin{document}Hello\end{document}", encoding="utf-8")
+    (paper_dir / "references.bib").write_text("@article{Zhang2020,\n title={UAV Caching},\n doi={10.1109/TVT.2020.1}\n}", encoding="utf-8")
+    (repo / "scifi.toml").write_text("[manuscript]\ntarget_venue = 'ieee'\ndouble_blind = false\n", encoding="utf-8")
+
+    res = adapt_project(repo, venue="ieee", dry_run=False)
+    assert res["status"] == "SUCCESS"
+    assert res["citations_found"] == 1
+    config_content = (repo / ".scifi" / "config.toml").read_text(encoding="utf-8")
+    assert 'title = "UAV Trajectory"' in config_content
+    assert "double_blind = false" in config_content
+

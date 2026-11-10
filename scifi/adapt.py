@@ -40,12 +40,14 @@ def parse_bib_keys_and_titles(bib_path: Path) -> List[Dict[str, str]]:
 
         title_m = re.search(r"title\s*=\s*[\"{](.*?)[\"}]", block, re.IGNORECASE | re.DOTALL)
         doi_m = re.search(r"doi\s*=\s*[\"{](.*?)[\"}]", block, re.IGNORECASE)
+        eprint_m = re.search(r"(?:eprint|arxiv(?:id)?)\s*=\s*[\"{](.*?)[\"}]", block, re.IGNORECASE)
 
         entries.append({
             "key": key,
             "type": entry_type,
             "title": title_m.group(1).strip() if title_m else "",
             "doi": doi_m.group(1).strip() if doi_m else "",
+            "arxiv_id": eprint_m.group(1).strip() if eprint_m else "",
         })
     return entries
 
@@ -79,7 +81,7 @@ def adapt_project(
     # Prioritize primary main/paper tex files
     all_files.sort(key=lambda p: 0 if p.name.lower() in ("main.tex", "paper.tex") else (1 if "main" in p.name.lower() or "paper" in p.name.lower() else 2))
 
-    primary_tex_assigned = False
+    primary_tex_assigned = (paper_dir / "main.tex").is_file()
     bib_files: List[Path] = []
 
     for f in all_files:
@@ -110,10 +112,26 @@ def adapt_project(
     if fig_dir.is_dir() and not (paper_dir / "figures").exists():
         publication_files.append((fig_dir, paper_dir / "figures"))
 
+    # Discover any existing .bib files in paper/
+    bib_to_parse: List[Path] = list(bib_files)
+    if (paper_dir / "references.bib").is_file() and (paper_dir / "references.bib") not in bib_to_parse:
+        bib_to_parse.append(paper_dir / "references.bib")
+    if paper_dir.is_dir():
+        for b in sorted(paper_dir.glob("*.bib")):
+            if b not in bib_to_parse:
+                bib_to_parse.append(b)
+
     # Step 2: Parse citations
     citations: List[Dict[str, str]] = []
-    for b in bib_files:
-        citations.extend(parse_bib_keys_and_titles(b))
+    seen_keys: Set[str] = set()
+    for b in bib_to_parse:
+        for entry in parse_bib_keys_and_titles(b):
+            k = entry.get("key")
+            if k:
+                if k in seen_keys:
+                    continue
+                seen_keys.add(k)
+            citations.append(entry)
 
     # Cross-reference against Zotero if available & auto-detect / provision collection
     zotero_matches = 0
@@ -132,6 +150,10 @@ def adapt_project(
                 matched = False
                 if c.get("doi"):
                     item = reader.get_item_by_doi(c["doi"])
+                    if item:
+                        matched = True
+                if not matched and c.get("arxiv_id"):
+                    item = reader.get_item_by_arxiv(c["arxiv_id"])
                     if item:
                         matched = True
                 if matched:
@@ -203,16 +225,52 @@ def adapt_project(
     if not refs_file.exists():
         refs_file.write_text("% References managed by SciFi\n", encoding="utf-8")
 
+    # Inherit existing scifi.toml configurations if present
+    scifi_toml = root / "scifi.toml"
+    scifi_toml_data: Dict[str, Any] = {}
+    if scifi_toml.is_file():
+        try:
+            import tomllib
+            scifi_toml_data = tomllib.loads(scifi_toml.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    manuscript_sec = scifi_toml_data.get("manuscript", {}) if isinstance(scifi_toml_data.get("manuscript"), dict) else {}
+    resolved_venue = manuscript_sec.get("target_venue", venue) if venue == "ieee" else venue
+    resolved_double_blind = manuscript_sec.get("double_blind", True)
+
+    # Derive human-friendly title: check paper/main.tex \title, scifi.toml, or fallback to folder name
+    project_title = root.name.replace("-", " ").title()
+    main_tex_cand = paper_dir / "main.tex"
+    if not main_tex_cand.is_file():
+        for src, dst in publication_files:
+            if dst.name == "main.tex" and src.is_file():
+                main_tex_cand = src
+                break
+
+    if main_tex_cand.is_file():
+        try:
+            tex_content = main_tex_cand.read_text(encoding="utf-8", errors="ignore")
+            title_m = re.search(r"\\title\s*\{([^}]+)\}", tex_content)
+            if title_m:
+                t = title_m.group(1).replace("\n", " ").strip()
+                t = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", t)
+                t = t.replace("~", " ").strip()
+                if t:
+                    project_title = t
+        except Exception:
+            pass
+
     # Generate .scifi/config.toml
     zotero_dir_str = str(zotero_dir).replace("\\", "/") if zotero_dir else ""
     col_str = resolved_collection or ""
 
     config_text = f"""[project]
 name = "{root.name}"
-title = "{root.name.replace('-', ' ').title()}"
-active_venue = "{venue}"
-target_venues = ["{venue}"]
-double_blind = true
+title = "{project_title}"
+active_venue = "{resolved_venue}"
+target_venues = ["{resolved_venue}"]
+double_blind = {"true" if resolved_double_blind else "false"}
 
 [manuscript]
 paper_dir = "paper"
