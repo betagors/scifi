@@ -1081,6 +1081,12 @@ def create_parser() -> argparse.ArgumentParser:
         help=f"Path to SQLite central store (default: {DEFAULT_CENTRAL_STORE_PATH})",
     )
 
+    # package (bundle)
+    p_package = subparsers.add_parser("package", aliases=["bundle"], help="Build release packages (PyPI distributions and AI Agent Plugin bundle)")
+    p_package.add_argument("--output-dir", "-o", default="dist", help="Output directory for generated packages (default: dist)")
+    p_package.add_argument("--plugin-only", action="store_true", help="Build only the AI Agent Plugin zip bundle")
+    p_package.add_argument("--python-only", action="store_true", help="Build only Python wheel and source distribution")
+
     return parser
 
 
@@ -1198,6 +1204,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_server(args)
     elif args.command in ("ui", "cockpit", "web"):
         return cmd_ui(args)
+    elif args.command in ("package", "bundle"):
+        from scifi.packaging import cmd_package
+
+        return cmd_package(args)
 
     return 0
 

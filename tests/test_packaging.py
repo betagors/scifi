@@ -71,3 +71,29 @@ def test_wheel_package_hygiene():
         skills_entries = [n for n in namelist if n.startswith("skills/") or n.startswith("skills\\")]
         assert len(skills_entries) == 0, f"Found rogue skills entries in wheel: {skills_entries}"
         assert "scifi/resources/AGENTS.md" in namelist, "scifi/resources/AGENTS.md missing in wheel"
+
+
+def test_build_and_verify_plugin_bundle(tmp_path):
+    """Verify build_plugin_bundle creates a valid scifi-plugin-v*.zip archive."""
+    from scifi.packaging import build_plugin_bundle, verify_plugin_bundle
+
+    root = Path(__file__).resolve().parent.parent
+    bundle_path = build_plugin_bundle(repo_root=root, output_dir=tmp_path)
+
+    assert bundle_path.exists(), f"Bundle file {bundle_path} was not created"
+    assert bundle_path.name.startswith("scifi-plugin-v")
+    assert bundle_path.name.endswith(".zip")
+
+    # Verify sha256 checksum file was generated
+    checksum_file = bundle_path.with_name(bundle_path.name + ".sha256")
+    assert checksum_file.exists()
+    assert len(checksum_file.read_text(encoding="utf-8").strip().split()) >= 1
+
+    # Verify archive content
+    verification = verify_plugin_bundle(bundle_path)
+    assert verification["valid"] is True
+    assert verification["skills_count"] >= 17
+    assert verification["agents_count"] >= 6
+    assert "plugin.json" in verification["files"]
+    assert "rules/AGENTS.md" in verification["files"]
+    assert "assets/logo.svg" in verification["files"]

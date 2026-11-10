@@ -608,3 +608,20 @@ def test_cli_submission_subcommands(tmp_path: Path) -> None:
     assert code == 0
     assert (bundle_out / "submission_manifest.json").exists()
 
+
+def test_cli_package_subcommand(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test sf package CLI execution for plugin-only artifact generation."""
+    out_dir = tmp_path / "pkg_dist"
+    code = scifi.cli.main(["package", "--plugin-only", "--output-dir", str(out_dir)])
+    assert code == 0
+
+    captured = capsys.readouterr().out
+    assert "SciFi Release Packager" in captured
+    assert "Build succeeded!" in captured
+    assert "Plugin Bundle Metrics:" in captured
+
+    zips = list(out_dir.glob("scifi-plugin-*.zip"))
+    assert len(zips) == 1
+    assert zips[0].exists()
+    assert (out_dir / f"{zips[0].name}.sha256").exists()
+
