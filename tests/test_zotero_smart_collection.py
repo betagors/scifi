@@ -93,9 +93,29 @@ def test_adapt_auto_detects_collection(tmp_path, mock_zotero_multi_collection_db
         encoding="utf-8"
     )
 
-    res = adapt_project(flat_repo, venue="ieee", collection=None, dry_run=False)
+    res = adapt_project(flat_repo, venue="ieee", collection=None, auto_match=True, dry_run=False)
     assert res["status"] == "SUCCESS"
     assert res["collection"] == "UAV Caching"
 
     config_text = (flat_repo / ".scifi" / "config.toml").read_text(encoding="utf-8")
     assert 'collection = "UAV Caching"' in config_text
+
+
+def test_adapt_defaults_to_project_name_collection(tmp_path, mock_zotero_multi_collection_db, monkeypatch):
+    monkeypatch.setattr("scifi.adapt.auto_detect_zotero_dir", lambda: mock_zotero_multi_collection_db)
+    monkeypatch.setattr("scifi.literature.zotero.reader.auto_detect_zotero_dir", lambda: mock_zotero_multi_collection_db)
+
+    flat_repo = tmp_path / "my_project"
+    flat_repo.mkdir()
+    (flat_repo / "paper.tex").write_text(r"\documentclass{article}\begin{document}Hello\end{document}", encoding="utf-8")
+    (flat_repo / "refs.bib").write_text(
+        "@article{p1, doi={10.1109/UAV.1}, title={UAV Paper 1}}\n",
+        encoding="utf-8"
+    )
+
+    res = adapt_project(flat_repo, venue="ieee", collection=None, dry_run=False)
+    assert res["status"] == "SUCCESS"
+    assert res["collection"] == "my_project"
+
+    config_text = (flat_repo / ".scifi" / "config.toml").read_text(encoding="utf-8")
+    assert 'collection = "my_project"' in config_text

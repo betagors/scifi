@@ -238,7 +238,12 @@ class ZoteroLocalWriter:
             resp = requests.post(f"{self.base_url}/collections", headers=self._headers(), json=payload, timeout=3)
             if resp.status_code in (200, 201):
                 return {"status": "CREATED", "response": resp.json() if resp.text else {}}
-            return {"status": "ERROR", "code": resp.status_code, "body": resp.text}
+            self._stage_write({
+                "type": "create_collection",
+                "name": name,
+                "parent_key": parent_key,
+            })
+            return {"status": "STAGED", "code": resp.status_code, "body": resp.text}
         except Exception as e:
             self._stage_write({
                 "type": "create_collection",

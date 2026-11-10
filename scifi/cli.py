@@ -714,9 +714,10 @@ def cmd_adapt(args: argparse.Namespace) -> int:
     target = getattr(args, "target", ".")
     venue = getattr(args, "venue", "ieee")
     collection = getattr(args, "collection", None)
+    auto_match = getattr(args, "auto_match", False)
     dry_run = getattr(args, "dry_run", False)
 
-    res = adapt_project(repo_dir=target, venue=venue, collection=collection, dry_run=dry_run)
+    res = adapt_project(repo_dir=target, venue=venue, collection=collection, auto_match=auto_match, dry_run=dry_run)
     if res["status"] == "DRY_RUN":
         print(f"[DRY-RUN] Proposed moves for '{res['root']}':")
         print(f"  Publication moves: {len(res['publication_moves'])}")
@@ -1036,6 +1037,7 @@ def create_parser() -> argparse.ArgumentParser:
     p_adapt.add_argument("target", nargs="?", default=".", help="Target legacy codebase directory")
     p_adapt.add_argument("--venue", default="ieee", help="Target venue profile")
     p_adapt.add_argument("--collection", help="Link to Zotero collection")
+    p_adapt.add_argument("--match", "--auto-match", dest="auto_match", action="store_true", help="Auto-match best overlapping existing Zotero collection instead of project name")
     p_adapt.add_argument("--dry-run", action="store_true", help="Preview planned directory restructuring without moving files")
 
     # setup

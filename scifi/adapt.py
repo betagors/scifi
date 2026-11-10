@@ -56,6 +56,7 @@ def adapt_project(
     repo_dir: Union[str, Path],
     venue: str = "ieee",
     collection: Optional[str] = None,
+    auto_match: bool = False,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -159,21 +160,23 @@ def adapt_project(
                 if matched:
                     zotero_matches += 1
 
-            if resolved_collection:
-                existing_col = reader.get_collection_by_name(resolved_collection)
-                if not existing_col and not dry_run:
-                    writer.create_collection(resolved_collection)
-            else:
-                best_col, best_count = reader.find_best_matching_collection(citations)
-                if best_col and best_count > 0:
-                    resolved_collection = best_col
-                else:
-                    default_name = root.name.replace("-", " ").title()
-                    resolved_collection = default_name
-                    if not dry_run:
-                        writer.create_collection(default_name)
+            if not resolved_collection:
+                if auto_match:
+                    best_col, best_count = reader.find_best_matching_collection(citations)
+                    if best_col and best_count > 0:
+                        resolved_collection = best_col
+
+                if not resolved_collection:
+                    resolved_collection = root.name
+
+            existing_col = reader.get_collection_by_name(resolved_collection)
+            if not existing_col and not dry_run:
+                writer.create_collection(resolved_collection)
         except Exception:
             pass
+
+    if not resolved_collection:
+        resolved_collection = root.name
 
     if dry_run:
         return {
