@@ -243,6 +243,7 @@ class ZoteroLocalWriter:
             m_type = item.get("type")
             key = item.get("item_key")
             try:
+                res = None
                 if m_type == "audit_note":
                     c_data = item.get("card", {})
                     card = ZoteroAuditCard(
@@ -254,14 +255,17 @@ class ZoteroLocalWriter:
                         retraction_status=c_data.get("retraction_status", "OK"),
                     )
                     res = self.push_audit_card_note(key, card)
-                    results.append(res)
                 elif m_type in ("tags", "tag"):
                     res = self.apply_tags(
                         key,
                         item.get("tags", []),
                         replace_scifi_tags=item.get("replace_scifi_tags", True),
                     )
+
+                if res and res.get("status") in ("CREATED", "UPDATED", "SUCCESS"):
                     results.append(res)
+                else:
+                    unprocessed.append(item)
             except Exception:
                 unprocessed.append(item)
 

@@ -76,6 +76,8 @@ def adapt_project(
         f for f in root.iterdir()
         if f.is_file() and f.name not in (".gitignore", "README.md", "LICENSE")
     ]
+    # Prioritize primary main/paper tex files
+    all_files.sort(key=lambda p: 0 if p.name.lower() in ("main.tex", "paper.tex") else (1 if "main" in p.name.lower() or "paper" in p.name.lower() else 2))
 
     primary_tex_assigned = False
     bib_files: List[Path] = []

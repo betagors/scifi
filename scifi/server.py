@@ -1735,7 +1735,17 @@ def scifi_zotero_get_collection_papers(collection: str | None = None) -> list[di
     """
     from scifi.literature.zotero.reader import ZoteroLocalReader
     reader = ZoteroLocalReader()
-    items = reader.get_collection_items(collection) if collection else []
+    col = collection
+    if not col:
+        from pathlib import Path
+        cfg = Path(".scifi/config.toml")
+        if cfg.is_file():
+            for line in cfg.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith("collection ="):
+                    col = line.split("=")[1].strip().strip('"').strip("'")
+                    break
+
+    items = reader.get_collection_items(col) if col else []
     return [
         {
             "key": it.key,
@@ -1790,7 +1800,7 @@ def scifi_zotero_push_audit_note(item_key: str, audit_data: dict[str, Any]) -> d
     )
     writer = ZoteroLocalWriter()
     res = writer.push_audit_card_note(item_key, card)
-    if res.get("status") in ("CREATED", "UPDATED", "SUCCESS"):
+    if res.get("status") in ("CREATED", "UPDATED", "SUCCESS", "STAGED"):
         tags = ["#scifi-audited"]
         if card.assumptions_flagged:
             tags.append("#unstated-assumption")

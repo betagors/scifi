@@ -100,3 +100,22 @@ def test_flush_staged_writes(tmp_path):
         flushed = writer.flush_staged_writes()
         assert len(flushed) == 1
         assert not queue_file.exists() or len(json.loads(queue_file.read_text(encoding="utf-8"))) == 0
+
+def test_flush_staged_writes_retains_failed_items(tmp_path):
+    queue_file = tmp_path / "zotero_write_queue.json"
+    writer = ZoteroLocalWriter(port=23119, stage_file=queue_file)
+    
+    # Stage two items
+    writer._stage_write({"type": "tag", "item_key": "ITEM1", "tags": ["#scifi-verified"]})
+    writer._stage_write({"type": "tag", "item_key": "ITEM2", "tags": ["#scifi-verified"]})
+    
+    # First succeeds, second returns STAGED (server dropped)
+    with patch.object(writer, "is_server_available", return_value=True), \
+         patch.object(writer, "apply_tags", side_effect=[{"status": "SUCCESS"}, {"status": "STAGED"}]):
+        flushed = writer.flush_staged_writes()
+        assert len(flushed) == 1
+        # queue file must still exist and hold the failed item
+        assert queue_file.exists()
+        retained = json.loads(queue_file.read_text(encoding="utf-8"))
+        assert len(retained) == 1
+        assert retained[0]["item_key"] == "ITEM2"

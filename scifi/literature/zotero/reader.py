@@ -45,9 +45,8 @@ class ZoteroLocalReader:
         if not self.sqlite_path.is_file():
             raise FileNotFoundError(f"Zotero SQLite database not found at {self.sqlite_path}")
 
-        # Construct URI path
-        norm_path = self.sqlite_path.as_posix()
-        uri = f"file:///{norm_path}?immutable=1"
+        # Construct RFC-compliant file URI in immutable mode
+        uri = f"{self.sqlite_path.as_uri()}?immutable=1"
         return sqlite3.connect(uri, uri=True, timeout=10.0)
 
     def get_collections(self) -> List[ZoteroCollection]:
@@ -147,12 +146,17 @@ class ZoteroLocalReader:
         items: List[ZoteroItem] = []
         try:
             cur = conn.cursor()
+            has_deleted = cur.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deletedItems'"
+            ).fetchone()
+            deleted_clause = "AND i.itemID NOT IN (SELECT itemID FROM deletedItems)" if has_deleted else ""
+
             item_rows = cur.execute(
-                """
+                f"""
                 SELECT i.itemID, i.key
                 FROM collectionItems ci
                 JOIN items i ON ci.itemID = i.itemID
-                WHERE ci.collectionID = ?
+                WHERE ci.collectionID = ? {deleted_clause}
                 """,
                 (col_id,),
             ).fetchall()
