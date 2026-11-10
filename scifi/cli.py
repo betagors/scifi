@@ -1022,7 +1022,7 @@ def create_parser() -> argparse.ArgumentParser:
     pz_ann.add_argument("--key", required=True, help="Zotero item key")
 
     # scaffold
-    p_scaffold = subparsers.add_parser("scaffold", aliases=["init", "new"], help="Scaffold a standard 2-pillar academic project (paper/ + code/ + .scifi/)")
+    p_scaffold = subparsers.add_parser("scaffold", aliases=["new", "bootstrap"], help="Scaffold a standard 2-pillar academic project (paper/ + code/ + .scifi/)")
     p_scaffold.add_argument("target", nargs="?", default=".", help="Target directory for project")
     p_scaffold.add_argument("--title", default="Research Manuscript", help="Manuscript title")
     p_scaffold.add_argument("--venue", default="ieee", help="Target venue profile (ieee, neurips, acm)")
@@ -1036,7 +1036,7 @@ def create_parser() -> argparse.ArgumentParser:
     p_adapt.add_argument("--dry-run", action="store_true", help="Preview planned directory restructuring without moving files")
 
     # setup
-    p_setup = subparsers.add_parser("setup", aliases=["setup-mcp", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
+    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
     p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
     p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
@@ -1175,11 +1175,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_compile(args)
     elif args.command in ("zotero", "zot"):
         return cmd_zotero(args)
-    elif args.command in ("scaffold", "init", "new"):
+    elif args.command in ("scaffold", "new", "bootstrap"):
         return cmd_scaffold(args)
     elif args.command in ("adapt", "migrate"):
         return cmd_adapt(args)
-    elif args.command in ("setup", "setup-mcp", "i"):
+    elif args.command in ("setup", "init", "i"):
         return setup_cli.cmd_setup(args)
     elif args.command == "sync":
         return setup_cli.cmd_sync(args)

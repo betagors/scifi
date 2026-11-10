@@ -1234,8 +1234,21 @@ def scifi_draft_reprint_request(
         mailto_url, author_name, and author_email.
     """
     store = get_literature_store()
-    proj = _resolve_project(store, project_name) if project_name else _resolve_project(store, None)
-    proj_id = proj.id if proj else None
+    if project_name:
+        if str(project_name).strip().lower() == "all":
+            proj_id = None
+        else:
+            proj = _resolve_project(store, project_name)
+            if proj is None:
+                return {
+                    "status": "ERROR",
+                    "message": f"Project '{project_name}' not found.",
+                    "identifier": identifier,
+                }
+            proj_id = proj.id
+    else:
+        proj = _resolve_project(store, None)
+        proj_id = proj.id if proj else None
 
     try:
         req = prepare_reprint_for_paper(
@@ -1266,8 +1279,17 @@ def scifi_list_pending_reprints(
         List of reprint request dictionaries.
     """
     store = get_literature_store()
-    proj = _resolve_project(store, project_name) if project_name else _resolve_project(store, None)
-    proj_id = proj.id if proj else None
+    if project_name:
+        if str(project_name).strip().lower() == "all":
+            proj_id = None
+        else:
+            proj = _resolve_project(store, project_name)
+            if proj is None:
+                return []
+            proj_id = proj.id
+    else:
+        proj = _resolve_project(store, None)
+        proj_id = proj.id if proj else None
 
     requests = store.get_reprint_requests(project_id=proj_id)
     return [r.to_dict() for r in requests if r.status in ("DRAFT_READY", "SENT")]
@@ -1293,8 +1315,21 @@ def scifi_ingest_paper_pdf(
         Dictionary with status ('SUCCESS' or 'ERROR'), stored_path, sha256, and paper_id.
     """
     store = get_literature_store()
-    proj = _resolve_project(store, project_name) if project_name else _resolve_project(store, None)
-    proj_id = proj.id if proj else None
+    if project_name:
+        if str(project_name).strip().lower() == "all":
+            proj_id = None
+        else:
+            proj = _resolve_project(store, project_name)
+            if proj is None:
+                return {
+                    "status": "ERROR",
+                    "message": f"Project '{project_name}' not found.",
+                    "identifier": identifier,
+                }
+            proj_id = proj.id
+    else:
+        proj = _resolve_project(store, None)
+        proj_id = proj.id if proj else None
 
     try:
         return ingest_paper_copy(

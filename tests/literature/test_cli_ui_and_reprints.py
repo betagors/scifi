@@ -151,7 +151,7 @@ def test_cli_cmd_ui_invocation(tmp_path: Path):
         assert exit_code == 0
         assert mock_server_cls.called
         assert not mock_browser_open.called
-        assert mock_instance.shutdown.called
+        assert mock_instance.server_close.called
 
 
 def test_cli_literature_sync(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

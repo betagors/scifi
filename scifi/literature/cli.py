@@ -535,7 +535,16 @@ def cmd_literature_reprints(args: argparse.Namespace) -> int:
     db_path = getattr(args, "db", None) or str(DEFAULT_CENTRAL_STORE_PATH)
     store = LiteratureStore(db_path)
     proj_arg = getattr(args, "project", None)
-    proj_id = _resolve_project_id(store, proj_arg) if proj_arg else None
+    if proj_arg:
+        if str(proj_arg).strip().lower() == "all":
+            proj_id = None
+        else:
+            proj_id = _resolve_project_id(store, proj_arg)
+            if not proj_id:
+                print(f"[WARNING] Project '{proj_arg}' not found.", file=sys.stderr)
+                return 0
+    else:
+        proj_id = None
 
     status_filter = getattr(args, "status", None)
     if status_filter:
@@ -555,7 +564,8 @@ def cmd_literature_reprints(args: argparse.Namespace) -> int:
     print("-" * 100)
     for r in reprints:
         email = r.author_email or "N/A"
-        author = (r.author_name[:18] + "..") if len(r.author_name) > 20 else r.author_name
+        raw_author = r.author_name or "Unknown"
+        author = (raw_author[:18] + "..") if len(raw_author) > 20 else raw_author
         paper = (r.paper_id[:28] + "..") if len(r.paper_id) > 30 else r.paper_id
         print(f"{r.id:<16} | {r.status:<11} | {paper:<30} | {author:<20} | {email}")
     return 0
