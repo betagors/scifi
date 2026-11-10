@@ -86,7 +86,15 @@ class SciFiRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         parts = [p for p in path.strip("/").split("/") if p]
 
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            content_length = 0
+
+        if content_length > 15 * 1024 * 1024:
+            self._send_error_json(413, "Payload Too Large: request body exceeds 15 MB limit.")
+            return
+
         if content_length > 0:
             raw_body = self.rfile.read(content_length)
             try:
@@ -330,6 +338,8 @@ class SciFiRequestHandler(BaseHTTPRequestHandler):
         """GET /api/reprints: list reprint requests (support ?project_id=)."""
         project_id = query.get("project_id", [None])[0]
         status = query.get("status", [None])[0]
+        if status and status.upper() == "REJECTED":
+            status = "DECLINED"
         paper_id = query.get("paper_id", [None])[0]
 
         reprints = self.server.store.get_reprint_requests(
@@ -365,6 +375,8 @@ class SciFiRequestHandler(BaseHTTPRequestHandler):
 
         new_email = payload.get("author_email")
         new_status = payload.get("status")
+        if new_status and new_status.upper() == "REJECTED":
+            new_status = "DECLINED"
         new_subject = payload.get("subject")
         new_body = payload.get("body")
         new_mailto = payload.get("mailto_url")

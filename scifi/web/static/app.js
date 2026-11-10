@@ -310,7 +310,8 @@
       }
 
       const res = await resp.json();
-      showToast(`PDF ingested successfully! (${(res.file_size / 1024).toFixed(1)} KB)`, 'success');
+      const sizeStr = res.file_size ? ` (${(res.file_size / 1024).toFixed(1)} KB)` : '';
+      showToast(`PDF ingested successfully!${sizeStr}`, 'success');
       closeIngestModal();
 
       // Refresh project data
@@ -604,7 +605,12 @@
     let filtered = [...state.reprints];
 
     if (state.reprintStatusFilter !== 'ALL') {
-      filtered = filtered.filter((r) => r.status === state.reprintStatusFilter);
+      filtered = filtered.filter((r) => {
+        if (state.reprintStatusFilter === 'DECLINED') {
+          return r.status === 'DECLINED' || r.status === 'REJECTED';
+        }
+        return r.status === state.reprintStatusFilter;
+      });
     }
 
     elements.reprintsTableBody.innerHTML = '';
@@ -634,7 +640,7 @@
           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
           : r.status === 'SENT'
           ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-          : r.status === 'REJECTED'
+          : r.status === 'DECLINED' || r.status === 'REJECTED'
           ? 'bg-red-500/20 text-red-300 border-red-500/30'
           : 'bg-amber-500/20 text-amber-300 border-amber-500/30';
 
@@ -660,7 +666,7 @@
             <option value="DRAFT_READY" ${r.status === 'DRAFT_READY' ? 'selected' : ''}>DRAFT_READY</option>
             <option value="SENT" ${r.status === 'SENT' ? 'selected' : ''}>SENT</option>
             <option value="RECEIVED" ${r.status === 'RECEIVED' ? 'selected' : ''}>RECEIVED</option>
-            <option value="REJECTED" ${r.status === 'REJECTED' ? 'selected' : ''}>REJECTED</option>
+            <option value="DECLINED" ${r.status === 'DECLINED' || r.status === 'REJECTED' ? 'selected' : ''}>DECLINED</option>
           </select>
         </td>
         <td class="py-3 px-4 text-right space-x-1.5">

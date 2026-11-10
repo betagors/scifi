@@ -74,7 +74,6 @@ def cmd_ui(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("\nShutting down SciFi Web Cockpit...")
     finally:
-        server.shutdown()
         server.server_close()
     return 0
 

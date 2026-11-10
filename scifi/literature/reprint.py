@@ -322,6 +322,9 @@ def ingest_paper_copy(
         raise FileNotFoundError(f"Source PDF not found at {source_path}")
 
     data = source_path.read_bytes()
+    if not (source_path.suffix.lower() == ".pdf" or data.startswith(b"%PDF")):
+        raise ValueError("Provided file is not a valid PDF document.")
+
     file_hash = hashlib.sha256(data).hexdigest()
 
     target_dir = Path(storage_dir).resolve() if storage_dir else DEFAULT_STORAGE_DIR
@@ -363,6 +366,7 @@ def ingest_paper_copy(
         "sha256": file_hash,
         "paper_id": paper_id,
         "project_id": project_id,
+        "file_size": len(data),
     }
 
 

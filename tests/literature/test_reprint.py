@@ -323,6 +323,7 @@ def test_ingest_paper_copy(tmp_path: Path):
         storage_dir=tmp_path / "global_storage",
     )
     assert result["status"] == "SUCCESS"
+    assert result["file_size"] == len(b"%PDF-1.4 dummy content")
     assert Path(result["stored_path"]).exists()
 
     # Paper location should now be marked local & accessible
@@ -445,4 +446,21 @@ def test_ingest_paper_copy_missing_file_raises(tmp_path: Path):
             project_id=proj.id,
             paper_id="10.1000/notfound",
             pdf_path=tmp_path / "non_existent.pdf",
+        )
+
+
+def test_ingest_paper_copy_invalid_pdf_raises(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    proj = store.register_project("test_proj", str(tmp_path / "workspace"))
+
+    bad_file = tmp_path / "not_a_pdf.txt"
+    bad_file.write_text("Hello, this is just plain text, not a PDF document.", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not a valid PDF"):
+        ingest_paper_copy(
+            store=store,
+            project_id=proj.id,
+            paper_id="10.1000/invalid_pdf",
+            pdf_path=bad_file,
         )

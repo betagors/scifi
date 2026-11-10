@@ -191,7 +191,28 @@ def test_web_server_update_reprint_and_ingest(tmp_path: Path):
             assert resp.status == 200
             ingest_data = json.loads(resp.read().decode())
             assert ingest_data["status"] == "SUCCESS"
+            assert ingest_data["file_size"] == len(b"%PDF-1.4 dummy reprint content")
             assert Path(ingest_data["stored_path"]).exists()
+
+        # 3. Test alias REJECTED -> DECLINED
+        decline_payload = json.dumps({"status": "REJECTED"}).encode("utf-8")
+        req_decline = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/reprints/{reprint_req.id}",
+            data=decline_payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req_decline) as resp:
+            assert resp.status == 200
+            decline_data = json.loads(resp.read().decode())
+            assert decline_data["reprint"]["status"] == "DECLINED"
+
+        # Test query ?status=REJECTED maps to DECLINED
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/reprints?status=REJECTED") as resp:
+            assert resp.status == 200
+            query_data = json.loads(resp.read().decode())
+            assert len(query_data["reprints"]) == 1
+            assert query_data["reprints"][0]["status"] == "DECLINED"
 
         # Check paper in store now has accessible PDF
         locs = store.get_paper_locations(paper.id)
@@ -276,3 +297,26 @@ def test_port_fallback():
         server.server_close()
     finally:
         sock.close()
+
+
+def test_web_server_payload_too_large(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    port = find_available_port(start_port=8970)
+    server = SciFiWebServer(store=store, host="127.0.0.1", port=port)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        req_large = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/papers/ingest",
+            data=b"{}",
+            headers={"Content-Length": str(16 * 1024 * 1024), "Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req_large)
+        assert exc_info.value.code == 413
+    finally:
+        server.shutdown()
+        server.server_close()

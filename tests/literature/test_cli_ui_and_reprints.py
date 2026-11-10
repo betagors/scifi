@@ -261,3 +261,58 @@ def test_cli_literature_ingest_pdf(tmp_path: Path, capsys: pytest.CaptureFixture
         assert len(locs) >= 1
         assert locs[0].is_oa is True
         assert locs[0].is_accessible is True
+
+
+def test_subdirectory_project_resolution_in_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Verify that _resolve_project_id walks up parent directories to match a workspace."""
+    from scifi.literature.cli import _resolve_project_id
+
+    db_path = tmp_path / "central.db"
+    store = LiteratureStore(db_path)
+    workspace = tmp_path / "project_root"
+    subdir = workspace / "subfolder" / "deep"
+    subdir.mkdir(parents=True)
+
+    proj = store.register_project("root_proj", workspace)
+
+    monkeypatch.chdir(subdir)
+    resolved_id = _resolve_project_id(store, project_name_or_path=None)
+    assert resolved_id == proj.id
+
+
+def test_subdirectory_project_resolution_with_scifi_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Verify that _resolve_project_id discovers an unindexed parent with .scifi/ folder."""
+    from scifi.literature.cli import _resolve_project_id
+
+    db_path = tmp_path / "central.db"
+    store = LiteratureStore(db_path)
+    workspace = tmp_path / "unindexed_proj"
+    scifi_dir = workspace / ".scifi"
+    scifi_dir.mkdir(parents=True)
+    subdir = workspace / "paper" / "sections"
+    subdir.mkdir(parents=True)
+
+    monkeypatch.chdir(subdir)
+    resolved_id = _resolve_project_id(store, project_name_or_path=None)
+    assert resolved_id is not None
+    proj = store.get_project(resolved_id)
+    assert proj is not None
+    assert proj.name == "unindexed_proj"
+
+
+def test_subdirectory_project_resolution_in_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Verify that _resolve_project in server.py walks up parent directories."""
+    from scifi.server import _resolve_project
+
+    db_path = tmp_path / "central.db"
+    store = LiteratureStore(db_path)
+    workspace = tmp_path / "server_proj"
+    subdir = workspace / "code" / "analysis"
+    subdir.mkdir(parents=True)
+
+    proj = store.register_project("server_proj", workspace)
+
+    monkeypatch.chdir(subdir)
+    resolved_proj = _resolve_project(store, project_name_or_path=None)
+    assert resolved_proj is not None
+    assert resolved_proj.id == proj.id

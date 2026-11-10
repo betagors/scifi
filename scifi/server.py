@@ -757,6 +757,46 @@ def _resolve_project(
                 return p
         except Exception:
             pass
+    if (cwd / ".scifi").is_dir():
+        manifest_file = cwd / ".scifi" / "literature_manifest.json"
+        if manifest_file.exists():
+            try:
+                from scifi.literature.manifest import sync_workspace
+
+                proj = sync_workspace(store, cwd)
+            except Exception:
+                proj = store.register_project(name=cwd.name, workspace_path=cwd)
+        else:
+            proj = store.register_project(name=cwd.name, workspace_path=cwd)
+        if proj is not None:
+            return proj
+
+    # Walk up parent directories to find containing project
+    for parent in cwd.parents:
+        proj = store.get_project_by_workspace(parent)
+        if proj is not None:
+            return proj
+        for p in store.list_projects():
+            try:
+                if Path(p.workspace_path).resolve() == parent:
+                    return p
+            except Exception:
+                pass
+        if (parent / ".scifi").is_dir():
+            proj = store.get_project_by_workspace(parent)
+            if proj is None:
+                manifest_file = parent / ".scifi" / "literature_manifest.json"
+                if manifest_file.exists():
+                    try:
+                        from scifi.literature.manifest import sync_workspace
+
+                        proj = sync_workspace(store, parent)
+                    except Exception:
+                        proj = store.register_project(name=parent.name, workspace_path=parent)
+                else:
+                    proj = store.register_project(name=parent.name, workspace_path=parent)
+            if proj is not None:
+                return proj
     return None
 
 
