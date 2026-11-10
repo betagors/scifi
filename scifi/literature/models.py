@@ -404,6 +404,83 @@ class BenchmarkResultRecord:
         return cls(**filtered)
 
 
+
+
+@dataclass
+class ProjectRecord:
+    id: str
+    name: str
+    workspace_path: str
+    description: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ProjectRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+    @classmethod
+    def from_row(cls, row: Any) -> ProjectRecord:
+        if hasattr(row, "keys"):
+            return cls.from_dict(dict(row))
+        return cls(
+            id=str(row[0]),
+            name=str(row[1]),
+            workspace_path=str(row[2]),
+            description=row[3] if len(row) > 3 and row[3] is not None else None,
+            created_at=str(row[4]) if len(row) > 4 and row[4] is not None else None,
+            updated_at=str(row[5]) if len(row) > 5 and row[5] is not None else None,
+        )
+
+
+@dataclass
+class ReprintRequestRecord:
+    id: str
+    project_id: Optional[str]
+    paper_id: str
+    author_name: str
+    author_email: Optional[str] = None
+    author_affiliation: Optional[str] = None
+    status: str = "DRAFT_READY"
+    subject: str = ""
+    body: str = ""
+    mailto_url: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ReprintRequestRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+    @classmethod
+    def from_row(cls, row: Any) -> ReprintRequestRecord:
+        if hasattr(row, "keys"):
+            return cls.from_dict(dict(row))
+        return cls(
+            id=str(row[0]),
+            project_id=str(row[1]) if row[1] is not None else None,
+            paper_id=str(row[2]),
+            author_name=str(row[3]),
+            author_email=row[4] if row[4] is not None else None,
+            author_affiliation=row[5] if row[5] is not None else None,
+            status=str(row[6]) if row[6] is not None else "DRAFT_READY",
+            subject=str(row[7]) if row[7] is not None else "",
+            body=str(row[8]) if row[8] is not None else "",
+            mailto_url=row[9] if len(row) > 9 and row[9] is not None else None,
+            created_at=str(row[10]) if len(row) > 10 and row[10] is not None else None,
+            updated_at=str(row[11]) if len(row) > 11 and row[11] is not None else None,
+        )
+
 __all__ = [
     "AuthorRecord",
     "BenchmarkRecord",
@@ -419,4 +496,6 @@ __all__ = [
     "PaperLocationRecord",
     "PaperRecord",
     "PaperVersionRecord",
+    "ProjectRecord",
+    "ReprintRequestRecord",
 ]

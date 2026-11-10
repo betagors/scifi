@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+import uuid
 from scifi.literature.models import (
     AuthorRecord,
     BenchmarkRecord,
@@ -27,6 +28,8 @@ from scifi.literature.models import (
     PaperLocationRecord,
     PaperRecord,
     PaperVersionRecord,
+    ProjectRecord,
+    ReprintRequestRecord,
 )
 
 SCHEMA_SQL = """
@@ -253,6 +256,48 @@ CREATE INDEX IF NOT EXISTS idx_paper_locations_paper ON paper_locations(paper_id
 CREATE INDEX IF NOT EXISTS idx_bench_results_paper ON benchmark_results(paper_id);
 CREATE INDEX IF NOT EXISTS idx_bench_results_bench ON benchmark_results(benchmark_id);
 CREATE INDEX IF NOT EXISTS idx_bench_results_sota ON benchmark_results(benchmark_id, metric_id, is_sota);
+
+-- 14. Global Projects Registry
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    workspace_path TEXT UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 15. Project-Paper Scoping Junction
+CREATE TABLE IF NOT EXISTS project_papers (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    graph_id TEXT REFERENCES graphs(id) ON DELETE SET NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    PRIMARY KEY (project_id, paper_id)
+);
+
+-- 16. Author Reprint Outreach Registry
+CREATE TABLE IF NOT EXISTS reprint_requests (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    author_name TEXT NOT NULL,
+    author_email TEXT,
+    author_affiliation TEXT,
+    status TEXT NOT NULL DEFAULT 'DRAFT_READY',
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    mailto_url TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reprint_status ON reprint_requests(status);
+CREATE INDEX IF NOT EXISTS idx_reprint_project ON reprint_requests(project_id);
+CREATE INDEX IF NOT EXISTS idx_reprint_paper ON reprint_requests(paper_id);
+CREATE INDEX IF NOT EXISTS idx_project_papers_proj ON project_papers(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_papers_paper ON project_papers(paper_id);
 """
 
 
@@ -386,6 +431,132 @@ class LiteratureStore:
                 for row in rows
             ]
 
+    def _upsert_paper_records(self, cursor: sqlite3.Cursor, paper: PaperRecord) -> None:
+        """Internal helper to upsert paper and related sub-records."""
+        cursor.execute(
+            """
+            INSERT INTO papers (
+                id, title, year, publication_date, citation_count,
+                influential_citation_count, recent_citation_growth,
+                is_retracted, abstract, venue_name, venue_tier
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                year = coalesce(excluded.year, papers.year),
+                publication_date = coalesce(excluded.publication_date, papers.publication_date),
+                citation_count = excluded.citation_count,
+                influential_citation_count = excluded.influential_citation_count,
+                recent_citation_growth = excluded.recent_citation_growth,
+                is_retracted = excluded.is_retracted,
+                abstract = coalesce(excluded.abstract, papers.abstract),
+                venue_name = coalesce(excluded.venue_name, papers.venue_name),
+                venue_tier = coalesce(excluded.venue_tier, papers.venue_tier)
+            """,
+            (
+                paper.id,
+                paper.title,
+                paper.year,
+                paper.publication_date,
+                paper.citation_count,
+                paper.influential_citation_count,
+                paper.recent_citation_growth,
+                int(paper.is_retracted),
+                paper.abstract,
+                paper.venue_name,
+                paper.venue_tier,
+            ),
+        )
+
+        # Save authors and paper_authors junction
+        for idx, author in enumerate(paper.authors, start=1):
+            cursor.execute(
+                """
+                INSERT INTO authors (id, name, orcid, email, institution)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    orcid = coalesce(excluded.orcid, authors.orcid),
+                    email = coalesce(excluded.email, authors.email),
+                    institution = coalesce(excluded.institution, authors.institution)
+                """,
+                (author.id, author.name, author.orcid, author.email, author.institution),
+            )
+            cursor.execute(
+                """
+                INSERT INTO paper_authors (paper_id, author_id, author_position, is_corresponding)
+                VALUES (?, ?, ?, 0)
+                ON CONFLICT(paper_id, author_id) DO UPDATE SET
+                    author_position = excluded.author_position
+                """,
+                (paper.id, author.id, idx),
+            )
+
+        # Save external identifiers
+        for ident in paper.identifiers:
+            cursor.execute(
+                """
+                INSERT INTO paper_identifiers (paper_id, provider, external_id, is_canonical)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(provider, external_id) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    is_canonical = excluded.is_canonical
+                """,
+                (paper.id, ident.provider, ident.external_id, int(ident.is_canonical)),
+            )
+
+        # Save versions
+        for ver in paper.versions:
+            cursor.execute(
+                """
+                INSERT INTO paper_versions (id, paper_id, version_type, version_label, doi, release_date)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    version_type = excluded.version_type,
+                    version_label = excluded.version_label,
+                    doi = excluded.doi,
+                    release_date = excluded.release_date
+                """,
+                (ver.id, paper.id, ver.version_type, ver.version_label, ver.doi, ver.release_date),
+            )
+
+        # Save document locations
+        for loc in paper.locations:
+            cursor.execute(
+                """
+                INSERT INTO paper_locations (
+                    id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    location_type = excluded.location_type,
+                    is_oa = excluded.is_oa,
+                    oa_status = excluded.oa_status,
+                    landing_page_url = excluded.landing_page_url,
+                    pdf_url = excluded.pdf_url,
+                    local_pdf_path = excluded.local_pdf_path
+                """,
+                (
+                    loc.id,
+                    paper.id,
+                    loc.location_type,
+                    int(loc.is_oa),
+                    loc.oa_status,
+                    loc.landing_page_url,
+                    loc.pdf_url,
+                    loc.local_pdf_path,
+                ),
+            )
+
+    def upsert_paper(self, paper: PaperRecord) -> None:
+        """
+        Persist or update a canonical paper record and its sub-entities (authors,
+        identifiers, versions, locations) without requiring a graph session association.
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            self._upsert_paper_records(cursor, paper)
+
     def save_paper(
         self,
         paper: PaperRecord,
@@ -399,49 +570,15 @@ class LiteratureStore:
         """
         with self.transaction():
             cursor = self.conn.cursor()
+            self._upsert_paper_records(cursor, paper)
 
-            # 1. Upsert into papers
-            cursor.execute(
-                """
-                INSERT INTO papers (
-                    id, title, year, publication_date, citation_count,
-                    influential_citation_count, recent_citation_growth,
-                    is_retracted, abstract, venue_name, venue_tier
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    year = coalesce(excluded.year, papers.year),
-                    publication_date = coalesce(excluded.publication_date, papers.publication_date),
-                    citation_count = excluded.citation_count,
-                    influential_citation_count = excluded.influential_citation_count,
-                    recent_citation_growth = excluded.recent_citation_growth,
-                    is_retracted = excluded.is_retracted,
-                    abstract = coalesce(excluded.abstract, papers.abstract),
-                    venue_name = coalesce(excluded.venue_name, papers.venue_name),
-                    venue_tier = coalesce(excluded.venue_tier, papers.venue_tier)
-                """,
-                (
-                    paper.id,
-                    paper.title,
-                    paper.year,
-                    paper.publication_date,
-                    paper.citation_count,
-                    paper.influential_citation_count,
-                    paper.recent_citation_growth,
-                    int(paper.is_retracted),
-                    paper.abstract,
-                    paper.venue_name,
-                    paper.venue_tier,
-                ),
-            )
-
-            # 2. Ensure graph exists
+            # Ensure graph exists
             cursor.execute(
                 "INSERT OR IGNORE INTO graphs (id, title) VALUES (?, ?)",
                 (graph_id, graph_id),
             )
 
-            # 3. Associate paper with graph session
+            # Associate paper with graph session
             cursor.execute(
                 """
                 INSERT INTO graph_papers (graph_id, paper_id, node_role, topological_depth)
@@ -452,87 +589,6 @@ class LiteratureStore:
                 """,
                 (graph_id, paper.id, node_role, topological_depth),
             )
-
-            # 4. Save authors and paper_authors junction
-            for idx, author in enumerate(paper.authors, start=1):
-                cursor.execute(
-                    """
-                    INSERT INTO authors (id, name, orcid, email, institution)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        name = excluded.name,
-                        orcid = coalesce(excluded.orcid, authors.orcid),
-                        email = coalesce(excluded.email, authors.email),
-                        institution = coalesce(excluded.institution, authors.institution)
-                    """,
-                    (author.id, author.name, author.orcid, author.email, author.institution),
-                )
-                cursor.execute(
-                    """
-                    INSERT INTO paper_authors (paper_id, author_id, author_position, is_corresponding)
-                    VALUES (?, ?, ?, 0)
-                    ON CONFLICT(paper_id, author_id) DO UPDATE SET
-                        author_position = excluded.author_position
-                    """,
-                    (paper.id, author.id, idx),
-                )
-
-            # 5. Save external identifiers
-            for ident in paper.identifiers:
-                cursor.execute(
-                    """
-                    INSERT INTO paper_identifiers (paper_id, provider, external_id, is_canonical)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(provider, external_id) DO UPDATE SET
-                        paper_id = excluded.paper_id,
-                        is_canonical = excluded.is_canonical
-                    """,
-                    (paper.id, ident.provider, ident.external_id, int(ident.is_canonical)),
-                )
-
-            # 6. Save versions
-            for ver in paper.versions:
-                cursor.execute(
-                    """
-                    INSERT INTO paper_versions (id, paper_id, version_type, version_label, doi, release_date)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        paper_id = excluded.paper_id,
-                        version_type = excluded.version_type,
-                        version_label = excluded.version_label,
-                        doi = excluded.doi,
-                        release_date = excluded.release_date
-                    """,
-                    (ver.id, paper.id, ver.version_type, ver.version_label, ver.doi, ver.release_date),
-                )
-
-            # 7. Save document locations
-            for loc in paper.locations:
-                cursor.execute(
-                    """
-                    INSERT INTO paper_locations (
-                        id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        paper_id = excluded.paper_id,
-                        location_type = excluded.location_type,
-                        is_oa = excluded.is_oa,
-                        oa_status = excluded.oa_status,
-                        landing_page_url = excluded.landing_page_url,
-                        pdf_url = excluded.pdf_url,
-                        local_pdf_path = excluded.local_pdf_path
-                    """,
-                    (
-                        loc.id,
-                        paper.id,
-                        loc.location_type,
-                        int(loc.is_oa),
-                        loc.oa_status,
-                        loc.landing_page_url,
-                        loc.pdf_url,
-                        loc.local_pdf_path,
-                    ),
-                )
 
     def save_paper_location(self, location: PaperLocationRecord) -> None:
         """
@@ -1401,6 +1457,353 @@ class LiteratureStore:
             result_date=str(row[10]) if row[10] is not None else None,
             provenance_source=row[11] if row[11] is not None else "author_reported",
         )
+
+    def add_citations(self, citations: list[CitationRecord]) -> None:
+        """Batch persist multiple citation records."""
+        with self.transaction():
+            for cit in citations:
+                self.save_citation(cit)
+
+    def get_paper_citations(self, paper_id: str) -> list[CitationRecord]:
+        """Retrieve all outgoing citation records originating from a given paper."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT source_paper_id, target_paper_id, is_influential, context
+                FROM citations
+                WHERE source_paper_id = ?
+                """,
+                (paper_id,),
+            )
+            rows = cursor.fetchall()
+            return [
+                CitationRecord(
+                    source_paper_id=r[0],
+                    target_paper_id=r[1],
+                    is_influential=bool(r[2]),
+                    context=r[3],
+                )
+                for r in rows
+            ]
+
+    def get_paper_locations(self, paper_id: str) -> list[PaperLocationRecord]:
+        """Retrieve all recorded document locations for a given paper."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
+                FROM paper_locations
+                WHERE paper_id = ?
+                """,
+                (paper_id,),
+            )
+            rows = cursor.fetchall()
+            return [
+                PaperLocationRecord(
+                    id=r[0],
+                    paper_id=r[1],
+                    location_type=r[2],
+                    is_oa=bool(r[3]),
+                    oa_status=r[4],
+                    landing_page_url=r[5],
+                    pdf_url=r[6],
+                    local_pdf_path=r[7],
+                )
+                for r in rows
+            ]
+
+    def register_project(
+        self,
+        name: str,
+        workspace_path: str | Path,
+        description: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ) -> ProjectRecord:
+        """
+        Register a new project workspace or update an existing project record
+        matched by canonical workspace path.
+        """
+        norm_path = str(Path(workspace_path).resolve())
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT id, name, workspace_path, description, created_at, updated_at FROM projects WHERE workspace_path = ?",
+                (norm_path,),
+            )
+            row = cursor.fetchone()
+            if row:
+                cursor.execute(
+                    """
+                    UPDATE projects
+                    SET name = ?, description = coalesce(?, description), updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (name, description, row[0]),
+                )
+                cursor.execute(
+                    "SELECT id, name, workspace_path, description, created_at, updated_at FROM projects WHERE id = ?",
+                    (row[0],),
+                )
+                return ProjectRecord.from_row(cursor.fetchone())
+
+            pid = project_id or f"proj-{uuid.uuid4().hex[:12]}"
+            cursor.execute(
+                """
+                INSERT INTO projects (id, name, workspace_path, description)
+                VALUES (?, ?, ?, ?)
+                """,
+                (pid, name, norm_path, description),
+            )
+            cursor.execute(
+                "SELECT id, name, workspace_path, description, created_at, updated_at FROM projects WHERE id = ?",
+                (pid,),
+            )
+            return ProjectRecord.from_row(cursor.fetchone())
+
+    def list_projects(self) -> list[ProjectRecord]:
+        """List all registered projects ordered by creation date."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT id, name, workspace_path, description, created_at, updated_at FROM projects ORDER BY created_at DESC"
+            )
+            return [ProjectRecord.from_row(r) for r in cursor.fetchall()]
+
+    def get_project(self, project_id: str) -> Optional[ProjectRecord]:
+        """Retrieve a registered project by its identifier."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT id, name, workspace_path, description, created_at, updated_at FROM projects WHERE id = ?",
+                (project_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ProjectRecord.from_row(row)
+
+    def get_project_by_workspace(self, workspace_path: str | Path) -> Optional[ProjectRecord]:
+        """Retrieve a registered project by its workspace path."""
+        norm_path = str(Path(workspace_path).resolve())
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT id, name, workspace_path, description, created_at, updated_at FROM projects WHERE workspace_path = ?",
+                (norm_path,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ProjectRecord.from_row(row)
+
+    def link_paper_to_project(
+        self,
+        project_id: str,
+        paper_id: str,
+        graph_id: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> None:
+        """Associate a paper with a registered project."""
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (paper_id, paper_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO project_papers (project_id, paper_id, graph_id, notes)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(project_id, paper_id) DO UPDATE SET
+                    graph_id = coalesce(excluded.graph_id, project_papers.graph_id),
+                    notes = coalesce(excluded.notes, project_papers.notes)
+                """,
+                (project_id, paper_id, graph_id, notes),
+            )
+
+    def get_project_papers(self, project_id: str) -> list[PaperRecord]:
+        """
+        Retrieve all papers linked to a project, fully rehydrating sub-entities.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.id, p.title, p.year, p.publication_date, p.citation_count,
+                       p.influential_citation_count, p.recent_citation_growth,
+                       p.is_retracted, p.abstract, p.venue_name, p.venue_tier
+                FROM papers p
+                JOIN project_papers pp ON p.id = pp.paper_id
+                WHERE pp.project_id = ?
+                ORDER BY pp.added_at ASC, p.year ASC, p.id ASC
+                """,
+                (project_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._rehydrate_paper(row, cursor) for row in rows]
+
+    def create_reprint_request(
+        self,
+        project_id: Optional[str],
+        paper_id: str,
+        author_name: str,
+        author_email: Optional[str] = None,
+        author_affiliation: Optional[str] = None,
+        subject: str = "",
+        body: str = "",
+        mailto_url: Optional[str] = None,
+        status: str = "DRAFT_READY",
+        request_id: Optional[str] = None,
+    ) -> ReprintRequestRecord:
+        """Create and persist an author reprint request draft."""
+        rid = request_id or f"rep-{uuid.uuid4().hex[:12]}"
+        with self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO papers (id, title) VALUES (?, ?)",
+                (paper_id, paper_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO reprint_requests (
+                    id, project_id, paper_id, author_name, author_email,
+                    author_affiliation, status, subject, body, mailto_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    rid,
+                    project_id,
+                    paper_id,
+                    author_name,
+                    author_email,
+                    author_affiliation,
+                    status,
+                    subject,
+                    body,
+                    mailto_url,
+                ),
+            )
+            cursor.execute(
+                """
+                SELECT id, project_id, paper_id, author_name, author_email,
+                       author_affiliation, status, subject, body, mailto_url,
+                       created_at, updated_at
+                FROM reprint_requests
+                WHERE id = ?
+                """,
+                (rid,),
+            )
+            return ReprintRequestRecord.from_row(cursor.fetchone())
+
+    def get_reprint_requests(
+        self,
+        project_id: Optional[str] = None,
+        status: Optional[str] = None,
+        paper_id: Optional[str] = None,
+    ) -> list[ReprintRequestRecord]:
+        """
+        Query reprint requests with optional filtering by project, status, or paper.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            query = """
+                SELECT id, project_id, paper_id, author_name, author_email,
+                       author_affiliation, status, subject, body, mailto_url,
+                       created_at, updated_at
+                FROM reprint_requests
+                WHERE 1=1
+            """
+            params: list[Any] = []
+            if project_id is not None:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            if status is not None:
+                query += " AND status = ?"
+                params.append(status)
+            if paper_id is not None:
+                query += " AND paper_id = ?"
+                params.append(paper_id)
+            query += " ORDER BY created_at DESC"
+            cursor.execute(query, tuple(params))
+            return [ReprintRequestRecord.from_row(r) for r in cursor.fetchall()]
+
+    def get_reprint_request(self, request_id: str) -> Optional[ReprintRequestRecord]:
+        """Retrieve a specific reprint request by identifier."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, project_id, paper_id, author_name, author_email,
+                       author_affiliation, status, subject, body, mailto_url,
+                       created_at, updated_at
+                FROM reprint_requests
+                WHERE id = ?
+                """,
+                (request_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ReprintRequestRecord.from_row(row)
+
+    def update_reprint_request(
+        self,
+        request_id: str,
+        author_email: Optional[str] = None,
+        status: Optional[str] = None,
+        mailto_url: Optional[str] = None,
+        subject: Optional[str] = None,
+        body: Optional[str] = None,
+    ) -> Optional[ReprintRequestRecord]:
+        """
+        Update mutable fields of a reprint request (email, status, draft contents).
+        """
+        with self.transaction():
+            cursor = self.conn.cursor()
+            updates = []
+            params = []
+            if author_email is not None:
+                updates.append("author_email = ?")
+                params.append(author_email)
+            if status is not None:
+                updates.append("status = ?")
+                params.append(status)
+            if mailto_url is not None:
+                updates.append("mailto_url = ?")
+                params.append(mailto_url)
+            if subject is not None:
+                updates.append("subject = ?")
+                params.append(subject)
+            if body is not None:
+                updates.append("body = ?")
+                params.append(body)
+
+            if updates:
+                updates.append("updated_at = CURRENT_TIMESTAMP")
+                sql = f"UPDATE reprint_requests SET {', '.join(updates)} WHERE id = ?"
+                params.append(request_id)
+                cursor.execute(sql, tuple(params))
+
+            cursor.execute(
+                """
+                SELECT id, project_id, paper_id, author_name, author_email,
+                       author_affiliation, status, subject, body, mailto_url,
+                       created_at, updated_at
+                FROM reprint_requests
+                WHERE id = ?
+                """,
+                (request_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ReprintRequestRecord.from_row(row)
+
+    def update_reprint_status(self, request_id: str, status: str) -> Optional[ReprintRequestRecord]:
+        """Convenience method to transition the status of a reprint request."""
+        return self.update_reprint_request(request_id, status=status)
 
     def execute_read_query(self, query_sql: str) -> list[dict[str, Any]]:
         """
