@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 import uuid
+
+DEFAULT_CENTRAL_STORE_PATH: Path = Path.home() / ".scifi" / "literature_store.db"
 from scifi.literature.models import (
     AuthorRecord,
     BenchmarkRecord,

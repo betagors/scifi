@@ -1,8 +1,9 @@
 import pytest
 from pathlib import Path
-from scifi.literature.store import LiteratureStore
+from scifi.literature.store import LiteratureStore, DEFAULT_CENTRAL_STORE_PATH
 from scifi.literature.models import (
     AuthorRecord,
+    CitationRecord,
     PaperLocationRecord,
     PaperRecord,
     ProjectRecord,
@@ -218,3 +219,47 @@ def test_cascade_delete_project_and_paper(tmp_path: Path):
     assert len(store.get_reprint_requests(project_id=proj.id)) == 0
     # Paper itself remains in global store
     assert store.get_paper(paper.id) is not None
+
+
+def test_supporting_query_methods(tmp_path: Path):
+    assert DEFAULT_CENTRAL_STORE_PATH == Path.home() / ".scifi" / "literature_store.db"
+    
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    proj = store.register_project("support-test", str(tmp_path / "sproj"))
+    
+    p1 = PaperRecord(
+        id="10.1000/p1",
+        title="Paper 1",
+        year=2021,
+        locations=[PaperLocationRecord(id="loc1", paper_id="10.1000/p1", location_type="pdf", is_oa=True, oa_status="gold")],
+    )
+    p2 = PaperRecord(id="10.1000/p2", title="Paper 2", year=2022)
+    store.upsert_paper(p1)
+    store.upsert_paper(p2)
+    
+    # Test add_citations and get_paper_citations
+    cite = CitationRecord(source_paper_id=p2.id, target_paper_id=p1.id, is_influential=True)
+    store.add_citations([cite])
+    citations = store.get_paper_citations(p2.id)
+    assert len(citations) == 1
+    assert citations[0].target_paper_id == p1.id
+    assert citations[0].is_influential is True
+    
+    # Test get_paper_locations
+    locs = store.get_paper_locations(p1.id)
+    assert len(locs) == 1
+    assert locs[0].oa_status == "gold"
+    
+    # Test get_reprint_request (singular)
+    req = store.create_reprint_request(
+        project_id=proj.id,
+        paper_id=p2.id,
+        author_name="Dr. Author",
+        author_email="author@univ.edu",
+    )
+    fetched_req = store.get_reprint_request(req.id)
+    assert fetched_req is not None
+    assert fetched_req.author_name == "Dr. Author"
+    assert fetched_req.author_email == "author@univ.edu"
+
