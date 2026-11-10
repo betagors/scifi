@@ -90,7 +90,8 @@ def resolve_author_contact(doi: str, timeout: float = 10.0) -> dict[str, Optiona
 
     # 2. Try Crossref
     try:
-        cr_url = f"{CROSSREF_WORKS_URL}/{cleaned}"
+        cr_doi = urllib.parse.quote(cleaned, safe="")
+        cr_url = f"{CROSSREF_WORKS_URL}/{cr_doi}"
         resp = _http_get(cr_url, headers=headers, timeout=timeout)
         if resp.status_code == 200:
             cr_data = resp.json().get("message") or {}
@@ -220,25 +221,35 @@ def prepare_reprint_for_paper(
     if paper is None:
         paper = PaperRecord(id=paper_id, title=paper_id)
 
-    # Resolve author contact if not explicitly supplied
-    if not author_name or not author_email:
+    caller_provided_name = bool(author_name and author_name.strip())
+    caller_provided_email = bool(author_email and author_email.strip())
+
+    # Check local paper metadata first if either is missing
+    if not caller_provided_name or not caller_provided_email:
         if paper.authors:
             first_auth = paper.authors[0]
-            if not author_name and first_auth.name:
+            if not caller_provided_name and first_auth.name:
                 author_name = first_auth.name
-            if not author_email and first_auth.email:
+            if not caller_provided_email and first_auth.email:
                 author_email = first_auth.email
             if not author_affiliation and first_auth.institution:
                 author_affiliation = first_auth.institution
 
-        if not author_name or not author_email:
+        # If email is still missing, query external registries
+        if not author_email:
             contact = resolve_author_contact(paper_id)
-            if not author_name and contact.get("name"):
-                author_name = contact["name"]
-            if not author_email and contact.get("email"):
+            if contact.get("email"):
                 author_email = contact["email"]
-            if not author_affiliation and contact.get("affiliation"):
-                author_affiliation = contact["affiliation"]
+                # Avoid desynchronization: if email resolved belongs to a corresponding author,
+                # update author_name to match unless caller explicitly supplied author_name.
+                if not caller_provided_name and contact.get("name"):
+                    author_name = contact["name"]
+                if not author_affiliation and contact.get("affiliation"):
+                    author_affiliation = contact["affiliation"]
+            elif not author_name and contact.get("name"):
+                author_name = contact["name"]
+                if not author_affiliation and contact.get("affiliation"):
+                    author_affiliation = contact["affiliation"]
 
     if not author_name:
         author_name = "Corresponding Author"
@@ -318,7 +329,11 @@ def ingest_paper_copy(
     dest_path = target_dir / f"{file_hash}.pdf"
     dest_path.write_bytes(data)
 
-    loc_id = f"loc-{file_hash[:12]}"
+    # Defensively ensure paper stub exists to satisfy foreign key constraints
+    if store.get_paper(paper_id) is None:
+        store.upsert_paper(PaperRecord(id=paper_id, title=paper_id))
+
+    loc_id = f"loc-{hashlib.sha256(f'{paper_id}:{file_hash}'.encode()).hexdigest()[:12]}"
     location = PaperLocationRecord(
         id=loc_id,
         paper_id=paper_id,
@@ -333,10 +348,13 @@ def ingest_paper_copy(
     if project_id:
         store.link_paper_to_project(project_id, paper_id)
 
-    # Transition pending reprint requests to RECEIVED
+    # Transition pending reprint requests (DRAFT_READY or SENT) to RECEIVED
     pending = store.get_reprint_requests(paper_id=paper_id)
     for req in pending:
-        if project_id is None or req.project_id is None or req.project_id == project_id:
+        if (project_id is None or req.project_id is None or req.project_id == project_id) and req.status in (
+            "DRAFT_READY",
+            "SENT",
+        ):
             store.update_reprint_status(req.id, "RECEIVED")
 
     return {

@@ -527,8 +527,8 @@ class LiteratureStore:
             cursor.execute(
                 """
                 INSERT INTO paper_locations (
-                    id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path, is_accessible
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     paper_id = excluded.paper_id,
                     location_type = excluded.location_type,
@@ -536,7 +536,8 @@ class LiteratureStore:
                     oa_status = excluded.oa_status,
                     landing_page_url = excluded.landing_page_url,
                     pdf_url = excluded.pdf_url,
-                    local_pdf_path = excluded.local_pdf_path
+                    local_pdf_path = excluded.local_pdf_path,
+                    is_accessible = excluded.is_accessible
                 """,
                 (
                     loc.id,
@@ -547,6 +548,7 @@ class LiteratureStore:
                     loc.landing_page_url,
                     loc.pdf_url,
                     loc.local_pdf_path,
+                    int(loc.is_accessible),
                 ),
             )
 

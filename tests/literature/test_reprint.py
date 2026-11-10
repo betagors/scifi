@@ -4,9 +4,10 @@ Tests for Author Reprint Outreach Engine (scifi.literature.reprint).
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import urllib.parse
 import pytest
 
-from scifi.literature.models import AuthorRecord, PaperRecord
+from scifi.literature.models import AuthorRecord, PaperLocationRecord, PaperRecord
 from scifi.literature.store import LiteratureStore
 from scifi.literature.reprint import (
     DEFAULT_STORAGE_DIR,
@@ -147,11 +148,14 @@ def test_resolve_author_contact_crossref_fallback():
     cr_resp.status_code = 200
     cr_resp.json.return_value = cr_data
 
-    with patch("scifi.literature.reprint._http_get", side_effect=[oa_resp, cr_resp]):
+    with patch("scifi.literature.reprint._http_get", side_effect=[oa_resp, cr_resp]) as mock_get:
         contact = resolve_author_contact("10.1016/j.crossref.2023")
         assert contact["name"] == "Gregory House"
         assert contact["email"] == "ghouse@princeton.edu"
         assert contact["affiliation"] == "Princeton-Plainsboro"
+        # Verify Crossref query uses percent-encoded DOI
+        second_call_url = mock_get.call_args_list[1][0][0]
+        assert "10.1016%2Fj.crossref.2023" in second_call_url
 
 
 def test_resolve_author_contact_semantic_scholar_fallback():
@@ -246,6 +250,33 @@ def test_prepare_reprint_for_paper_triggers_contact_resolution(tmp_path: Path):
         assert req.author_affiliation == "Org"
 
 
+def test_prepare_reprint_for_paper_synchronizes_author_name_and_email(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    proj = store.register_project("test_proj", str(tmp_path / "workspace"))
+    # Local paper only has a first author without email (e.g. graduate student)
+    paper = PaperRecord(
+        id="10.1000/synctest",
+        title="Synchronized Author Test",
+        year=2023,
+        authors=[AuthorRecord(id="a1", name="Student Alice", email=None, institution="Lab A")],
+    )
+    store.upsert_paper(paper)
+    store.link_paper_to_project(proj.id, paper.id)
+
+    # External contact resolution finds the corresponding author (PI)
+    with patch(
+        "scifi.literature.reprint.resolve_author_contact",
+        return_value={"name": "Prof. Bob (PI)", "email": "bob@pi.edu", "affiliation": "Lab A"},
+    ):
+        req = prepare_reprint_for_paper(store=store, project_id=proj.id, paper_id=paper.id)
+        # Author name should be synchronized with the resolved corresponding email
+        assert req.author_name == "Prof. Bob (PI)"
+        assert req.author_email == "bob@pi.edu"
+        assert "Dear Prof. Bob (PI)" in req.body
+        assert "mailto:bob@pi.edu" in req.mailto_url
+
+
 def test_create_reprint_record_helper(tmp_path: Path):
     db_file = tmp_path / "test_store.db"
     store = LiteratureStore(db_file)
@@ -304,6 +335,103 @@ def test_ingest_paper_copy(tmp_path: Path):
     # Reprint request should transition to RECEIVED
     updated_req = store.get_reprint_request(reprint_req.id)
     assert updated_req.status == "RECEIVED"
+
+
+def test_ingest_paper_copy_unindexed_paper_creates_stub(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    proj = store.register_project("test_proj", str(tmp_path / "workspace"))
+
+    dummy_pdf = tmp_path / "unindexed.pdf"
+    dummy_pdf.write_bytes(b"%PDF-1.4 brand new paper")
+
+    # Ingest without prior upsert_paper
+    result = ingest_paper_copy(
+        store=store,
+        project_id=proj.id,
+        paper_id="10.1000/unindexed.never.seen",
+        pdf_path=dummy_pdf,
+        storage_dir=tmp_path / "storage",
+    )
+    assert result["status"] == "SUCCESS"
+    paper = store.get_paper("10.1000/unindexed.never.seen")
+    assert paper is not None
+    assert paper.id == "10.1000/unindexed.never.seen"
+
+    locations = store.get_paper_locations("10.1000/unindexed.never.seen")
+    assert len(locations) == 1
+    assert locations[0].is_accessible is True
+
+
+def test_ingest_paper_copy_distinct_location_ids_for_shared_pdf(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    proj = store.register_project("test_proj", str(tmp_path / "workspace"))
+
+    shared_pdf = tmp_path / "shared_volume.pdf"
+    shared_pdf.write_bytes(b"%PDF-1.4 conference proceedings volume")
+
+    # Ingest same PDF for two distinct papers
+    result1 = ingest_paper_copy(store, proj.id, "10.1000/paper_a", shared_pdf, storage_dir=tmp_path / "storage")
+    result2 = ingest_paper_copy(store, proj.id, "10.1000/paper_b", shared_pdf, storage_dir=tmp_path / "storage")
+
+    locs_a = store.get_paper_locations("10.1000/paper_a")
+    locs_b = store.get_paper_locations("10.1000/paper_b")
+
+    assert len(locs_a) == 1
+    assert len(locs_b) == 1
+    assert locs_a[0].id != locs_b[0].id
+    assert locs_a[0].local_pdf_path == locs_b[0].local_pdf_path
+
+
+def test_ingest_paper_copy_preserves_declined_and_skipped_status(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+    proj = store.register_project("test_proj", str(tmp_path / "workspace"))
+
+    req_sent = store.create_reprint_request(proj.id, "10.1000/status_test", "Author A", status="SENT")
+    req_skipped = store.create_reprint_request(proj.id, "10.1000/status_test", "Author B", status="SKIPPED")
+    req_declined = store.create_reprint_request(proj.id, "10.1000/status_test", "Author C", status="DECLINED")
+
+    dummy_pdf = tmp_path / "copy.pdf"
+    dummy_pdf.write_bytes(b"%PDF-1.4 test")
+
+    ingest_paper_copy(store, proj.id, "10.1000/status_test", dummy_pdf, storage_dir=tmp_path / "storage")
+
+    assert store.get_reprint_request(req_sent.id).status == "RECEIVED"
+    assert store.get_reprint_request(req_skipped.id).status == "SKIPPED"
+    assert store.get_reprint_request(req_declined.id).status == "DECLINED"
+
+
+def test_store_upsert_paper_preserves_is_accessible(tmp_path: Path):
+    db_file = tmp_path / "test_store.db"
+    store = LiteratureStore(db_file)
+
+    loc = PaperLocationRecord(
+        id="loc-accessible-test",
+        paper_id="10.1000/accessible",
+        location_type="local",
+        is_oa=True,
+        oa_status="gold",
+        is_accessible=True,
+        local_pdf_path="/path/to/paper.pdf",
+    )
+    paper = PaperRecord(
+        id="10.1000/accessible",
+        title="Accessible Paper",
+        year=2024,
+        locations=[loc],
+    )
+    store.upsert_paper(paper)
+
+    rehydrated = store.get_paper("10.1000/accessible")
+    assert rehydrated is not None
+    assert len(rehydrated.locations) == 1
+    assert rehydrated.locations[0].is_accessible is True
+
+    locs = store.get_paper_locations("10.1000/accessible")
+    assert len(locs) == 1
+    assert locs[0].is_accessible is True
 
 
 def test_ingest_paper_copy_missing_file_raises(tmp_path: Path):
