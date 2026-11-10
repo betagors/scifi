@@ -201,6 +201,12 @@ class ResilientSession(requests.Session):
                         )
                         return response
 
+                    # Release intermediate socket back to pool before sleeping
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+
                     # Determine retry delay
                     retry_after = parse_retry_after(
                         response.headers.get("Retry-After"),
