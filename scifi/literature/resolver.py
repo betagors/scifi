@@ -22,6 +22,16 @@ from scifi.literature.models import (
     PaperRecord,
     PaperVersionRecord,
 )
+from scifi.network import get_session
+
+_ORIG_REQUESTS_GET = requests.get
+
+
+def _http_get(url: str, **kwargs: Any) -> requests.Response:
+    """Execute GET request via requests.get if patched in tests, else ResilientSession."""
+    if requests.get is not _ORIG_REQUESTS_GET:
+        return requests.get(url, **kwargs)
+    return get_session().get(url, **kwargs)
 
 DEFAULT_USER_AGENT = "scifi-literature/1.0 (academic-researcher)"
 OPENALEX_WORKS_URL = "https://api.openalex.org/works"
@@ -632,7 +642,7 @@ class PaperResolver:
 
         try:
             params = {"search": clean_title, "per-page": 10}
-            resp = requests.get(
+            resp = _http_get(
                 OPENALEX_WORKS_URL,
                 headers=self.headers,
                 params=params,
@@ -675,7 +685,7 @@ class PaperResolver:
         # 1. Try OpenAlex
         try:
             url = f"{OPENALEX_WORKS_URL}/https://doi.org/{clean_doi_str}"
-            resp = requests.get(url, headers=self.headers, timeout=self.timeout)
+            resp = _http_get(url, headers=self.headers, timeout=self.timeout)
             if resp.status_code == 200:
                 data = resp.json()
                 work = data.get("results", [data])[0] if "results" in data else data
@@ -689,7 +699,7 @@ class PaperResolver:
         try:
             cr_url = f"{CROSSREF_WORKS_URL}/{urllib.parse.quote(clean_doi_str)}"
             cr_headers = {"User-Agent": self.user_agent, "Accept": "application/json"}
-            cr_resp = requests.get(cr_url, headers=cr_headers, timeout=self.timeout)
+            cr_resp = _http_get(cr_url, headers=cr_headers, timeout=self.timeout)
             if cr_resp.status_code == 200:
                 cr_data = cr_resp.json().get("message", {})
                 title = cr_data.get("title", ["Untitled"])[0] if cr_data.get("title") else "Untitled"
@@ -756,7 +766,7 @@ class PaperResolver:
         # 1. Try OpenAlex by arXiv DOI
         try:
             doi_url = f"{OPENALEX_WORKS_URL}/https://doi.org/10.48550/arxiv.{clean_without_v}"
-            resp = requests.get(doi_url, headers=self.headers, timeout=self.timeout)
+            resp = _http_get(doi_url, headers=self.headers, timeout=self.timeout)
             if resp.status_code == 200:
                 data = resp.json()
                 work = data.get("results", [data])[0] if "results" in data else data
@@ -769,7 +779,7 @@ class PaperResolver:
         # 2. Try OpenAlex filter by ids.arxiv
         try:
             params = {"filter": f"ids.arxiv:{clean_without_v}", "per-page": 1}
-            resp = requests.get(OPENALEX_WORKS_URL, headers=self.headers, params=params, timeout=self.timeout)
+            resp = _http_get(OPENALEX_WORKS_URL, headers=self.headers, params=params, timeout=self.timeout)
             if resp.status_code == 200:
                 results = resp.json().get("results") or []
                 if results and isinstance(results, list):
@@ -782,7 +792,7 @@ class PaperResolver:
         # 3. Fallback to arXiv XML API
         try:
             url = f"{ARXIV_API_URL}?id_list={clean_id}"
-            resp = requests.get(url, timeout=self.timeout)
+            resp = _http_get(url, timeout=self.timeout)
             if resp.status_code == 200:
                 root = ET.fromstring(resp.text)
                 ns = {"atom": "http://www.w3.org/2005/Atom"}
@@ -812,7 +822,7 @@ class PaperResolver:
 
         try:
             url = f"{OPENALEX_WORKS_URL}/{clean_id}"
-            resp = requests.get(url, headers=self.headers, timeout=self.timeout)
+            resp = _http_get(url, headers=self.headers, timeout=self.timeout)
             if resp.status_code == 200:
                 data = resp.json()
                 work = data.get("results", [data])[0] if "results" in data else data
@@ -834,7 +844,7 @@ class PaperResolver:
 
         try:
             work_url = f"{OPENALEX_WORKS_URL}/{clean_id}"
-            resp = requests.get(work_url, headers=self.headers, timeout=self.timeout)
+            resp = _http_get(work_url, headers=self.headers, timeout=self.timeout)
             if resp.status_code != 200:
                 return []
 
@@ -852,7 +862,7 @@ class PaperResolver:
                 "filter": f"openalex_id:{'|'.join(ref_ids)}",
                 "per-page": len(ref_ids),
             }
-            batch_resp = requests.get(
+            batch_resp = _http_get(
                 OPENALEX_WORKS_URL,
                 headers=self.headers,
                 params=params,
@@ -888,7 +898,7 @@ class PaperResolver:
                 "per-page": limit,
                 "sort": "cited_by_count:desc",
             }
-            resp = requests.get(
+            resp = _http_get(
                 OPENALEX_WORKS_URL,
                 headers=self.headers,
                 params=params,

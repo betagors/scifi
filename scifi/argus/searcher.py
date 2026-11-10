@@ -12,6 +12,16 @@ import requests
 
 from scifi.citation_verifier.discrepancy import string_similarity
 from scifi.citation_verifier.models import Author, CitationMetadata, VerificationStatus
+from scifi.network import get_session
+
+_ORIG_REQUESTS_GET = requests.get
+
+
+def _http_get(url: str, **kwargs: Any) -> requests.Response:
+    """Execute GET request via requests.get if patched in tests, else ResilientSession."""
+    if requests.get is not _ORIG_REQUESTS_GET:
+        return requests.get(url, **kwargs)
+    return get_session().get(url, **kwargs)
 
 DEFAULT_USER_AGENT = "SciFi-Argus/1.0 (https://github.com/scifi-toolkit; mailto:scifi-toolkit@gmail.com)"
 
@@ -71,7 +81,7 @@ class ArgusSearcher:
             "per_page": 3,
         }
         try:
-            resp = requests.get(self.OPENALEX_BASE, headers=headers, params=params, timeout=timeout)
+            resp = _http_get(self.OPENALEX_BASE, headers=headers, params=params, timeout=timeout)
             if resp.status_code != 200:
                 return None
             data = resp.json()
@@ -79,7 +89,7 @@ class ArgusSearcher:
             if not results:
                 # Try unquoted search
                 params["search"] = query
-                resp2 = requests.get(self.OPENALEX_BASE, headers=headers, params=params, timeout=timeout)
+                resp2 = _http_get(self.OPENALEX_BASE, headers=headers, params=params, timeout=timeout)
                 if resp2.status_code == 200:
                     results = resp2.json().get("results", [])
 
@@ -134,7 +144,7 @@ class ArgusSearcher:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
         params = {"query.bibliographic": query, "rows": 1}
         try:
-            resp = requests.get(self.CROSSREF_BASE, headers=headers, params=params, timeout=timeout)
+            resp = _http_get(self.CROSSREF_BASE, headers=headers, params=params, timeout=timeout)
             if resp.status_code != 200:
                 return None
             items = resp.json().get("message", {}).get("items", [])

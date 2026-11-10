@@ -400,3 +400,28 @@ class TestPaperResolver:
         assert p2 is not None
         assert p2.id == p1.id
         assert mock_get.call_count == 1
+
+    @patch("scifi.literature.resolver.get_session")
+    def test_routes_through_resilient_session(self, mock_get_session):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "results": [
+                {
+                    "id": "https://openalex.org/W99999",
+                    "title": "Resilient Session Test",
+                    "publication_year": 2024,
+                }
+            ]
+        }
+        mock_get_session.return_value.get.return_value = mock_resp
+
+        resolver = PaperResolver()
+        p = resolver.resolve_by_title("Resilient Session Test")
+
+        assert p is not None
+        assert p.title == "Resilient Session Test"
+        assert mock_get_session.return_value.get.called
+        args, kwargs = mock_get_session.return_value.get.call_args
+        assert "api.openalex.org" in args[0]
+

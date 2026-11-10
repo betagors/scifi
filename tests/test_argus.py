@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # Ensure scifi package is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,6 +23,7 @@ from scifi.argus.detector import (
 from scifi.argus.engine import ArgusEngine
 from scifi.argus.models import AttributionCategory, SuggestedAction
 from scifi.argus.patcher import append_bibtex_entry, insert_cite_into_latex
+from scifi.argus.searcher import ArgusSearcher
 
 
 class TestArgusDetector(unittest.TestCase):
@@ -127,6 +129,37 @@ class TestArgusEngine(unittest.TestCase):
         finding = report.findings[0]
         self.assertEqual(finding.category, AttributionCategory.INFORMAL_WEB)
         self.assertEqual(finding.suggested_action, SuggestedAction.REFORMULATE)
+
+
+class TestArgusSearcherResilientSessionIntegration(unittest.TestCase):
+    @patch("scifi.argus.searcher.get_session")
+    def test_searcher_routes_through_resilient_session(self, mock_get_session):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "results": [
+                {
+                    "id": "https://openalex.org/W12345",
+                    "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+                    "doi": "https://doi.org/10.48550/arxiv.2106.09685",
+                    "publication_year": 2021,
+                    "cited_by_count": 5000,
+                    "authorships": [{"author": {"display_name": "Edward J. Hu"}}],
+                }
+            ]
+        }
+        mock_get_session.return_value.get.return_value = mock_resp
+
+        searcher = ArgusSearcher()
+        result = searcher.search_canonical_work("Low-Rank Adaptation")
+
+        self.assertIsNotNone(result)
+        metadata, confidence, is_self = result
+        self.assertEqual(metadata.title, "LoRA: Low-Rank Adaptation of Large Language Models")
+        self.assertTrue(mock_get_session.return_value.get.called)
+        args, kwargs = mock_get_session.return_value.get.call_args
+        self.assertIn("api.openalex.org", args[0])
+
 
 
 if __name__ == "__main__":

@@ -349,3 +349,22 @@ class TestClientCaching:
         meta2 = client.get_paper_metadata("10.1234/meta")
         assert meta2["title"] == "Cached Title"
         assert mock_get.call_count == 1
+
+
+class TestResilientSessionIntegration:
+    @patch("scifi.literature.semantic_scholar.get_session")
+    def test_routes_through_get_session(self, mock_get_session):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"paperId": "abc12345", "title": "Centralized Network Test"}
+        mock_get_session.return_value.get.return_value = mock_resp
+
+        client = SemanticScholarClient()
+        meta = client.get_paper_metadata("10.1234/test")
+
+        assert meta is not None
+        assert meta["title"] == "Centralized Network Test"
+        assert mock_get_session.return_value.get.called
+        args, kwargs = mock_get_session.return_value.get.call_args
+        assert "api.semanticscholar.org" in args[0]
+

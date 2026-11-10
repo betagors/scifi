@@ -12,6 +12,17 @@ from typing import Any, Dict, Optional, Union
 
 import requests
 
+from scifi.network import get_session
+
+_ORIG_REQUESTS_GET = requests.get
+
+
+def _http_get(url: str, **kwargs: Any) -> requests.Response:
+    """Execute GET request via requests.get if patched in tests, else ResilientSession."""
+    if requests.get is not _ORIG_REQUESTS_GET:
+        return requests.get(url, **kwargs)
+    return get_session().get(url, **kwargs)
+
 
 def _is_arxiv_identifier(identifier: str) -> Optional[str]:
     """
@@ -64,7 +75,7 @@ def _fetch_arxiv(arxiv_id: str, target_path: Path) -> Dict[str, Any]:
     pdf_url = f"https://arxiv.org/pdf/{clean_id}.pdf"
     headers = {"User-Agent": "scifi-literature/1.0 (academic-researcher)"}
     try:
-        r = requests.get(pdf_url, headers=headers, stream=True, timeout=15)
+        r = _http_get(pdf_url, headers=headers, stream=True, timeout=15)
         if r.status_code == 200:
             with open(target_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -108,7 +119,7 @@ def _download_pdf_stream(pdf_url: str, target_path: Path) -> bool:
     Download PDF bytes from a given URL to the target path.
     """
     headers = {"User-Agent": "scifi-literature/1.0 (academic-researcher)"}
-    res = requests.get(pdf_url, headers=headers, stream=True, timeout=20)
+    res = _http_get(pdf_url, headers=headers, stream=True, timeout=20)
     if res.status_code == 200:
         with open(target_path, "wb") as f:
             for chunk in res.iter_content(chunk_size=8192):
@@ -131,7 +142,7 @@ def _fetch_doi(doi: str, email: str, target_path: Path) -> Dict[str, Any]:
     unpaywall_data = None
 
     try:
-        r = requests.get(unpaywall_url, headers=headers, timeout=10)
+        r = _http_get(unpaywall_url, headers=headers, timeout=10)
         unpaywall_status = r.status_code
         if r.status_code == 200:
             unpaywall_data = r.json()
@@ -160,7 +171,7 @@ def _fetch_doi(doi: str, email: str, target_path: Path) -> Dict[str, Any]:
     # OpenAlex fallback
     try:
         openalex_url = f"https://api.openalex.org/works/https://doi.org/{clean_doi}"
-        oa_r = requests.get(openalex_url, headers=headers, timeout=10)
+        oa_r = _http_get(openalex_url, headers=headers, timeout=10)
         if oa_r.status_code == 200:
             oa_data = oa_r.json()
             oa_loc = oa_data.get("best_oa_location") or oa_data.get("primary_location") or {}

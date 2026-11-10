@@ -221,3 +221,18 @@ class TestPaperFetcher:
             res = fetch_paper_pdf("arxiv:2301.12345", output_dir=tmp_path)
             assert res["status"] == "ERROR"
             assert "Network timeout" in res.get("error_message", res.get("message", ""))
+
+    def test_fetch_paper_pdf_routes_through_resilient_session(self, tmp_path):
+        fake_pdf_bytes = b"%PDF-1.4 resilient session content"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.iter_content = MagicMock(return_value=[fake_pdf_bytes])
+
+        with patch("scifi.literature.fetcher.get_session") as mock_get_session:
+            mock_get_session.return_value.get.return_value = mock_response
+            res = fetch_paper_pdf("arxiv:2301.12345", output_dir=tmp_path)
+            assert res["status"] == "SUCCESS"
+            assert mock_get_session.return_value.get.called
+            args, kwargs = mock_get_session.return_value.get.call_args
+            assert "arxiv.org/pdf" in args[0]
+
