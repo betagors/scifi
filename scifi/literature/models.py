@@ -74,6 +74,7 @@ class PaperLocationRecord:
     landing_page_url: Optional[str] = None
     pdf_url: Optional[str] = None
     local_pdf_path: Optional[str] = None
+    is_accessible: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

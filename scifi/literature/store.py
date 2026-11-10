@@ -601,8 +601,8 @@ class LiteratureStore:
             cursor.execute(
                 """
                 INSERT INTO paper_locations (
-                    id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path, is_accessible
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     paper_id = excluded.paper_id,
                     location_type = excluded.location_type,
@@ -610,7 +610,8 @@ class LiteratureStore:
                     oa_status = excluded.oa_status,
                     landing_page_url = excluded.landing_page_url,
                     pdf_url = excluded.pdf_url,
-                    local_pdf_path = excluded.local_pdf_path
+                    local_pdf_path = excluded.local_pdf_path,
+                    is_accessible = excluded.is_accessible
                 """,
                 (
                     location.id,
@@ -621,6 +622,7 @@ class LiteratureStore:
                     location.landing_page_url,
                     location.pdf_url,
                     location.local_pdf_path,
+                    int(location.is_accessible),
                 ),
             )
 
@@ -761,7 +763,7 @@ class LiteratureStore:
         # Locations
         cursor.execute(
             """
-            SELECT id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
+            SELECT id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path, is_accessible
             FROM paper_locations
             WHERE paper_id = ?
             """,
@@ -777,6 +779,7 @@ class LiteratureStore:
                 landing_page_url=r[5],
                 pdf_url=r[6],
                 local_pdf_path=r[7],
+                is_accessible=bool(r[8]),
             )
             for r in cursor.fetchall()
         ]
@@ -1495,7 +1498,7 @@ class LiteratureStore:
             cursor = self.conn.cursor()
             cursor.execute(
                 """
-                SELECT id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path
+                SELECT id, paper_id, location_type, is_oa, oa_status, landing_page_url, pdf_url, local_pdf_path, is_accessible
                 FROM paper_locations
                 WHERE paper_id = ?
                 """,
@@ -1512,6 +1515,7 @@ class LiteratureStore:
                     landing_page_url=r[5],
                     pdf_url=r[6],
                     local_pdf_path=r[7],
+                    is_accessible=bool(r[8]),
                 )
                 for r in rows
             ]
