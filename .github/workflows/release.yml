@@ -44,11 +44,14 @@ jobs:
           cp dist/*.whl dist_pypi/
           cp dist/*.tar.gz dist_pypi/
 
+      # To publish publicly to PyPI in the future:
+      # 1. Configure PyPI Trusted Publishing for this repo on pypi.org
+      # 2. Change `if: false` below to `if: true`
       - name: Publish to PyPI (OIDC Trusted Publishing)
+        if: false  # Disabled while repository is private. Enable when ready for public release.
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist_pypi
-        continue-on-error: true  # Prevents hard failure if PyPI OIDC is pending initial user configuration
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
