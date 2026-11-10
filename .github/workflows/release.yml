@@ -1,0 +1,60 @@
+name: SciFi Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run test suite
+        run: uv run pytest tests/ -v
+
+      - name: Build distributions and AI agent plugin bundle
+        run: uv run sf package --output-dir dist
+
+      - name: Stage PyPI artifacts
+        run: |
+          mkdir -p dist_pypi
+          cp dist/*.whl dist_pypi/
+          cp dist/*.tar.gz dist_pypi/
+
+      - name: Publish to PyPI (OIDC Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist_pypi
+        continue-on-error: true  # Prevents hard failure if PyPI OIDC is pending initial user configuration
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          generate_release_notes: true

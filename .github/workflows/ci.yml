@@ -15,6 +15,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.12"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.13"
+            experimental: true
+
+    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - name: Checkout repository
@@ -34,8 +40,13 @@ jobs:
       - name: Run pytest suite
         run: uv run pytest tests/ -v
 
-      - name: Verify CLI help & rule sync check
+      - name: Verify CLI commands & doctor
         run: |
           uv run sf --help
           uv run sf doctor --help
           uv run sf sync --dry-run
+
+      - name: Verify package build & AI agent plugin bundle
+        run: |
+          uv run sf package --output-dir dist_ci
+          uv run python -c "import zipfile, glob; zf = zipfile.ZipFile(glob.glob('dist_ci/scifi-plugin-*.zip')[0]); print('Plugin entries:', len(zf.namelist()))"

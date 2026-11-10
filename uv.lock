@@ -1006,7 +1006,6 @@ wheels = [
 
 [[package]]
 name = "scifi"
-version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
