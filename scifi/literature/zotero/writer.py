@@ -219,6 +219,34 @@ class ZoteroLocalWriter:
             })
             return {"status": "STAGED", "error": str(e)}
 
+    def create_collection(self, name: str, parent_key: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new collection in Zotero (via local HTTP API or offline queue).
+        """
+        if not self.is_server_available():
+            self._stage_write({
+                "type": "create_collection",
+                "name": name,
+                "parent_key": parent_key,
+            })
+            return {"status": "STAGED", "message": f"Zotero is offline; collection '{name}' creation staged in queue."}
+
+        try:
+            payload = [{"name": name}]
+            if parent_key:
+                payload[0]["parentCollection"] = parent_key
+            resp = requests.post(f"{self.base_url}/collections", headers=self._headers(), json=payload, timeout=3)
+            if resp.status_code in (200, 201):
+                return {"status": "CREATED", "response": resp.json() if resp.text else {}}
+            return {"status": "ERROR", "code": resp.status_code, "body": resp.text}
+        except Exception as e:
+            self._stage_write({
+                "type": "create_collection",
+                "name": name,
+                "parent_key": parent_key,
+            })
+            return {"status": "STAGED", "error": str(e)}
+
     def flush_staged_writes(self) -> List[Dict[str, Any]]:
         """
         Replay all staged mutations when the Zotero server is available.
@@ -260,6 +288,11 @@ class ZoteroLocalWriter:
                         key,
                         item.get("tags", []),
                         replace_scifi_tags=item.get("replace_scifi_tags", True),
+                    )
+                elif m_type == "create_collection":
+                    res = self.create_collection(
+                        item.get("name", ""),
+                        parent_key=item.get("parent_key"),
                     )
 
                 if res and res.get("status") in ("CREATED", "UPDATED", "SUCCESS"):

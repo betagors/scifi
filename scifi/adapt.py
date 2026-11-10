@@ -115,21 +115,43 @@ def adapt_project(
     for b in bib_files:
         citations.extend(parse_bib_keys_and_titles(b))
 
-    # Cross-reference against Zotero if available
+    # Cross-reference against Zotero if available & auto-detect / provision collection
     zotero_matches = 0
-    try:
-        from scifi.literature.zotero.reader import ZoteroLocalReader
-        reader = ZoteroLocalReader()
-        for c in citations:
-            matched = False
-            if c.get("doi"):
-                item = reader.get_item_by_doi(c["doi"])
-                if item:
-                    matched = True
-            if matched:
-                zotero_matches += 1
-    except Exception:
-        pass
+    resolved_collection = collection
+
+    zotero_dir = auto_detect_zotero_dir()
+    if zotero_dir:
+        try:
+            from scifi.literature.zotero.reader import ZoteroLocalReader
+            from scifi.literature.zotero.writer import ZoteroLocalWriter
+
+            reader = ZoteroLocalReader(data_dir=zotero_dir)
+            writer = ZoteroLocalWriter()
+
+            for c in citations:
+                matched = False
+                if c.get("doi"):
+                    item = reader.get_item_by_doi(c["doi"])
+                    if item:
+                        matched = True
+                if matched:
+                    zotero_matches += 1
+
+            if resolved_collection:
+                existing_col = reader.get_collection_by_name(resolved_collection)
+                if not existing_col and not dry_run:
+                    writer.create_collection(resolved_collection)
+            else:
+                best_col, best_count = reader.find_best_matching_collection(citations)
+                if best_col and best_count > 0:
+                    resolved_collection = best_col
+                else:
+                    default_name = root.name.replace("-", " ").title()
+                    resolved_collection = default_name
+                    if not dry_run:
+                        writer.create_collection(default_name)
+        except Exception:
+            pass
 
     if dry_run:
         return {
@@ -140,6 +162,7 @@ def adapt_project(
             "data_moves": [(str(src), str(dst)) for src, dst in data_files],
             "citations_found": len(citations),
             "zotero_matches": zotero_matches,
+            "collection": resolved_collection or "",
         }
 
     # Step 3: Execute moves
@@ -181,9 +204,8 @@ def adapt_project(
         refs_file.write_text("% References managed by SciFi\n", encoding="utf-8")
 
     # Generate .scifi/config.toml
-    zotero_dir = auto_detect_zotero_dir()
     zotero_dir_str = str(zotero_dir).replace("\\", "/") if zotero_dir else ""
-    col_str = collection or ""
+    col_str = resolved_collection or ""
 
     config_text = f"""[project]
 name = "{root.name}"

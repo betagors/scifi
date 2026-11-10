@@ -76,6 +76,47 @@ class ZoteroLocalReader:
                 return col
         return None
 
+    def find_best_matching_collection(self, citations: List[Dict[str, str]]) -> Tuple[Optional[str], int]:
+        """
+        Check which existing collection has the highest citation overlap with the given list of citations.
+        Returns (best_collection_name, match_count).
+        """
+        if not citations:
+            return None, 0
+
+        collections = self.get_collections()
+        if not collections:
+            return None, 0
+
+        # Build lookup set of clean DOIs and normalized titles
+        cited_dois = {
+            re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", c["doi"], flags=re.IGNORECASE).strip().lower()
+            for c in citations if c.get("doi")
+        }
+        cited_titles = {
+            re.sub(r"[^a-zA-Z0-9]", "", c["title"].lower())
+            for c in citations if c.get("title") and len(c["title"]) >= 8
+        }
+
+        best_col: Optional[str] = None
+        best_count = 0
+
+        for col in collections:
+            items = self.get_collection_items(col.collection_id)
+            count = 0
+            for item in items:
+                if item.doi and item.doi.lower() in cited_dois:
+                    count += 1
+                elif item.title:
+                    clean_t = re.sub(r"[^a-zA-Z0-9]", "", item.title.lower())
+                    if clean_t and clean_t in cited_titles:
+                        count += 1
+            if count > best_count:
+                best_count = count
+                best_col = col.name
+
+        return best_col, best_count
+
     def _extract_item_fields(self, cur: sqlite3.Cursor, item_id: int) -> Dict[str, str]:
         """Extract metadata key-value pairs for an item."""
         rows = cur.execute(
