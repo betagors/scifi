@@ -82,7 +82,7 @@ def set_global_config_value(
     config_path: Path | str | None = None,
 ) -> Path:
     """Set a single key in ~/.scifi/config.json."""
-    valid_keys = {"email", "s2_api_key", "default_venue", "author_whitelist"}
+    valid_keys = {"email", "s2_api_key", "default_venue", "author_whitelist", "zotero_local_api_key"}
     norm_key = key.strip().lower().replace("-", "_")
     if norm_key not in valid_keys:
         raise ValueError(f"Unsupported config key '{key}'. Valid keys: {', '.join(sorted(valid_keys))}")

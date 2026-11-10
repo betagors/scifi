@@ -41,13 +41,60 @@ class ZoteroLocalWriter:
         self.api_key = api_key
         self.base_url = f"http://{host}:{port}/api/users/0"
         self.stage_file = Path(stage_file) if stage_file else Path(".scifi/zotero_write_queue.json")
+        self._server_id: Optional[str] = None
 
     def is_server_available(self) -> bool:
         """Check if Zotero local server is responding."""
         return is_zotero_port_open(self.host, self.port, timeout=0.5)
 
+    def _ensure_session(self) -> None:
+        """Ensure Zotero-Server-ID and local API key are discovered and initialized."""
+        if not self.is_server_available():
+            return
+
+        if not self._server_id:
+            try:
+                resp = requests.get(f"{self.base_url}/collections", timeout=2)
+                self._server_id = resp.headers.get("Zotero-Server-ID")
+            except Exception:
+                self._server_id = None
+
+        if not self.api_key:
+            try:
+                from scifi.config import load_global_config, set_global_config_value
+                g_cfg = load_global_config()
+                cached_key = g_cfg.get("zotero_local_api_key")
+                if cached_key:
+                    self.api_key = cached_key
+                else:
+                    auth_headers = {"Content-Type": "application/json"}
+                    if self._server_id:
+                        auth_headers["Zotero-Server-ID"] = self._server_id
+                    auth_resp = requests.post(
+                        f"http://{self.host}:{self.port}/api/local/authorize",
+                        headers=auth_headers,
+                        json={"appName": "SciFi", "purpose": "Manage project literature collections"},
+                        timeout=3,
+                    )
+                    if auth_resp.status_code == 200:
+                        key = auth_resp.json().get("key")
+                        if key:
+                            self.api_key = key
+                            try:
+                                set_global_config_value("zotero_local_api_key", key)
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
     def _headers(self, version: Optional[int] = None) -> Dict[str, str]:
-        headers = {"Content-Type": "application/json"}
+        self._ensure_session()
+        headers = {
+            "Content-Type": "application/json",
+            "Zotero-API-Version": "3",
+        }
+        if self._server_id:
+            headers["Zotero-Server-ID"] = self._server_id
         if self.api_key:
             headers["Zotero-API-Key"] = self.api_key
         if version is not None:
