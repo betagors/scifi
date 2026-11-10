@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scifi"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, mathematical derivations, and LaTeX manuscripts."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -62,5 +62,8 @@ alex = "scifi.citation_verifier.cli:main"
 scifi-argus = "scifi.argus.cli:main"
 argus = "scifi.argus.cli:main"
 
+[tool.hatch.version]
+path = "scifi/__init__.py"
+
 [tool.hatch.build.targets.wheel]
-packages = ["scifi", "skills"]
+packages = ["scifi"]
