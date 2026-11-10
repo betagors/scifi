@@ -11,6 +11,7 @@ Provides unified CLI entrypoints for:
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 import webbrowser
@@ -18,10 +19,58 @@ from typing import Optional
 
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.reporter import save_bibtex_file, save_markdown_report
-from scifi.literature.store import LiteratureStore
+from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
 from scifi.literature.visualizer import save_interactive_html
 
 DEFAULT_DB_PATH = Path(".scifi/literature_store.db")
+
+
+def _resolve_project_id(
+    store: LiteratureStore,
+    project_name_or_path: Optional[str | Path] = None,
+) -> Optional[str]:
+    """
+    Resolve a project ID from an ID, name, or workspace path.
+    If project_name_or_path is omitted, auto-discovers from current working directory.
+    """
+    if project_name_or_path:
+        target_str = str(project_name_or_path).strip()
+        if target_str.lower() == "all":
+            return None
+        # 1. Exact ID match
+        proj = store.get_project(target_str)
+        if proj is not None:
+            return proj.id
+        # 2. Canonical workspace path match
+        target_path = Path(target_str).resolve()
+        proj = store.get_project_by_workspace(target_path)
+        if proj is not None:
+            return proj.id
+        # 3. Match name or directory name
+        for p in store.list_projects():
+            if p.name.lower() == target_str.lower():
+                return p.id
+            if Path(p.workspace_path).name.lower() == target_str.lower():
+                return p.id
+            try:
+                if Path(p.workspace_path).resolve() == target_path:
+                    return p.id
+            except Exception:
+                pass
+        return None
+
+    # Auto-discover from Path.cwd()
+    cwd = Path.cwd().resolve()
+    proj = store.get_project_by_workspace(cwd)
+    if proj is not None:
+        return proj.id
+    for p in store.list_projects():
+        try:
+            if Path(p.workspace_path).resolve() == cwd:
+                return p.id
+        except Exception:
+            pass
+    return None
 
 
 def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
@@ -153,6 +202,86 @@ def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
         "--db",
         default=str(DEFAULT_DB_PATH),
         help=f"Path to SQLite knowledge store (default: {DEFAULT_DB_PATH})",
+    )
+
+    # 4. sync
+    p_sync = lit_subparsers.add_parser(
+        "sync",
+        help="Synchronize workspace with central literature store",
+    )
+    p_sync.add_argument(
+        "--workspace",
+        default=None,
+        help="Path to project workspace (default: current working directory)",
+    )
+    p_sync.add_argument(
+        "--db",
+        default=str(DEFAULT_CENTRAL_STORE_PATH),
+        help=f"Path to SQLite knowledge store (default: {DEFAULT_CENTRAL_STORE_PATH})",
+    )
+
+    # 5. reprint
+    p_reprint = lit_subparsers.add_parser(
+        "reprint",
+        help="Generate author reprint request draft and mailto URL for paywalled paper",
+    )
+    p_reprint.add_argument("identifier", help="DOI or paper identifier")
+    p_reprint.add_argument(
+        "--project",
+        default=None,
+        help="Project name, ID, or workspace path (default: current working directory)",
+    )
+    p_reprint.add_argument("--email", default=None, help="Explicit corresponding author email")
+    p_reprint.add_argument("--name", default=None, help="Explicit corresponding author name")
+    p_reprint.add_argument("--affiliation", default=None, help="Explicit corresponding author affiliation")
+    p_reprint.add_argument(
+        "--db",
+        default=str(DEFAULT_CENTRAL_STORE_PATH),
+        help=f"Path to SQLite knowledge store (default: {DEFAULT_CENTRAL_STORE_PATH})",
+    )
+
+    # 6. reprints
+    p_reprints = lit_subparsers.add_parser(
+        "reprints",
+        help="List reprint requests with optional project or status filtering",
+    )
+    p_reprints.add_argument(
+        "--project",
+        default=None,
+        help="Filter by project name, ID, or workspace path",
+    )
+    p_reprints.add_argument(
+        "--status",
+        default=None,
+        help="Filter by status (DRAFT_READY, SENT, RECEIVED, DECLINED)",
+    )
+    p_reprints.add_argument(
+        "--db",
+        default=str(DEFAULT_CENTRAL_STORE_PATH),
+        help=f"Path to SQLite knowledge store (default: {DEFAULT_CENTRAL_STORE_PATH})",
+    )
+    p_reprints.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON",
+    )
+
+    # 7. ingest-pdf
+    p_ingest = lit_subparsers.add_parser(
+        "ingest-pdf",
+        help="Ingest a local PDF into the content-addressed central store",
+    )
+    p_ingest.add_argument("--doi", required=True, help="DOI or paper identifier")
+    p_ingest.add_argument("--pdf", required=True, help="Path to local PDF file")
+    p_ingest.add_argument(
+        "--project",
+        default=None,
+        help="Project name, ID, or workspace path",
+    )
+    p_ingest.add_argument(
+        "--db",
+        default=str(DEFAULT_CENTRAL_STORE_PATH),
+        help=f"Path to SQLite knowledge store (default: {DEFAULT_CENTRAL_STORE_PATH})",
     )
 
 
@@ -348,6 +477,115 @@ def cmd_db_export_bib(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_literature_sync(args: argparse.Namespace) -> int:
+    """Synchronize a project workspace with the central knowledge store."""
+    from scifi.literature.manifest import sync_workspace
+
+    ws_arg = getattr(args, "workspace", None)
+    ws = Path(ws_arg).resolve() if ws_arg else Path.cwd().resolve()
+    db_path = getattr(args, "db", None) or str(DEFAULT_CENTRAL_STORE_PATH)
+    store = LiteratureStore(db_path)
+
+    try:
+        proj = sync_workspace(store, ws)
+        print(f"[SUCCESS] Synchronized workspace '{proj.name}' (Project ID: {proj.id})")
+        print(f"  Workspace: {proj.workspace_path}")
+        print(f"  Manifest:  {ws / '.scifi' / 'literature_manifest.json'}")
+        print(f"  BibTeX:    {ws / '.scifi' / 'references.bib'}")
+        return 0
+    except Exception as e:
+        print(f"[ERROR] Sync failed: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_literature_reprint(args: argparse.Namespace) -> int:
+    """Draft an author reprint request letter and mailto URL."""
+    from scifi.literature.reprint import prepare_reprint_for_paper
+
+    db_path = getattr(args, "db", None) or str(DEFAULT_CENTRAL_STORE_PATH)
+    store = LiteratureStore(db_path)
+    proj_arg = getattr(args, "project", None)
+    proj_id = _resolve_project_id(store, proj_arg)
+
+    try:
+        record = prepare_reprint_for_paper(
+            store=store,
+            project_id=proj_id,
+            paper_id=args.identifier,
+            author_name=getattr(args, "name", None),
+            author_email=getattr(args, "email", None),
+            author_affiliation=getattr(args, "affiliation", None),
+        )
+        print(f"[SUCCESS] Reprint draft ready for '{args.identifier}':")
+        print(f"  Author:   {record.author_name} <{record.author_email or 'unlisted'}>")
+        print(f"  Status:   {record.status}")
+        print(f"  Subject:  {record.subject}")
+        if record.mailto_url:
+            print(f"  Mailto:   {record.mailto_url}")
+        print("\n--- Message Body ---")
+        print(record.body)
+        return 0
+    except Exception as e:
+        print(f"[ERROR] Failed to draft reprint request: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_literature_reprints(args: argparse.Namespace) -> int:
+    """List reprint requests from the central store."""
+    db_path = getattr(args, "db", None) or str(DEFAULT_CENTRAL_STORE_PATH)
+    store = LiteratureStore(db_path)
+    proj_arg = getattr(args, "project", None)
+    proj_id = _resolve_project_id(store, proj_arg) if proj_arg else None
+
+    status_filter = getattr(args, "status", None)
+    if status_filter:
+        status_filter = status_filter.upper()
+
+    reprints = store.get_reprint_requests(project_id=proj_id, status=status_filter)
+
+    if getattr(args, "json", False):
+        print(json.dumps([r.to_dict() for r in reprints], indent=2))
+        return 0
+
+    if not reprints:
+        print("No reprint requests found.")
+        return 0
+
+    print(f"{'ID':<16} | {'Status':<11} | {'Paper ID':<30} | {'Author':<20} | {'Email'}")
+    print("-" * 100)
+    for r in reprints:
+        email = r.author_email or "N/A"
+        author = (r.author_name[:18] + "..") if len(r.author_name) > 20 else r.author_name
+        paper = (r.paper_id[:28] + "..") if len(r.paper_id) > 30 else r.paper_id
+        print(f"{r.id:<16} | {r.status:<11} | {paper:<30} | {author:<20} | {email}")
+    return 0
+
+
+def cmd_literature_ingest_pdf(args: argparse.Namespace) -> int:
+    """Ingest a local PDF into the content-addressed central store."""
+    from scifi.literature.reprint import ingest_paper_copy
+
+    db_path = getattr(args, "db", None) or str(DEFAULT_CENTRAL_STORE_PATH)
+    store = LiteratureStore(db_path)
+    proj_arg = getattr(args, "project", None)
+    proj_id = _resolve_project_id(store, proj_arg)
+
+    try:
+        res = ingest_paper_copy(
+            store=store,
+            project_id=proj_id,
+            paper_id=args.doi,
+            pdf_path=args.pdf,
+        )
+        print(f"[SUCCESS] Ingested PDF for {args.doi}:")
+        print(f"  Stored: {res['stored_path']}")
+        print(f"  SHA256: {res['sha256']}")
+        return 0
+    except Exception as e:
+        print(f"[ERROR] Failed to ingest PDF: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_literature(args: argparse.Namespace, parser: Optional[argparse.ArgumentParser] = None) -> int:
     """Dispatch literature subcommands."""
     lit_cmd = getattr(args, "lit_command", None)
@@ -355,7 +593,7 @@ def cmd_literature(args: argparse.Namespace, parser: Optional[argparse.ArgumentP
         if parser:
             parser.print_help()
         else:
-            print("usage: scifi literature [-h] {report,map,db} ...")
+            print("usage: scifi literature [-h] {report,map,db,sync,reprint,reprints,ingest-pdf} ...")
         return 0
 
     if lit_cmd == "report":
@@ -371,15 +609,28 @@ def cmd_literature(args: argparse.Namespace, parser: Optional[argparse.ArgumentP
             return cmd_db_list_graphs(args)
         elif db_cmd == "export-bib":
             return cmd_db_export_bib(args)
+    elif lit_cmd == "sync":
+        return cmd_literature_sync(args)
+    elif lit_cmd == "reprint":
+        return cmd_literature_reprint(args)
+    elif lit_cmd == "reprints":
+        return cmd_literature_reprints(args)
+    elif lit_cmd == "ingest-pdf":
+        return cmd_literature_ingest_pdf(args)
 
     return 0
 
 
 __all__ = [
+    "DEFAULT_CENTRAL_STORE_PATH",
     "DEFAULT_DB_PATH",
     "cmd_db_export_bib",
     "cmd_db_list_graphs",
     "cmd_literature",
+    "cmd_literature_ingest_pdf",
+    "cmd_literature_reprint",
+    "cmd_literature_reprints",
+    "cmd_literature_sync",
     "cmd_map",
     "cmd_report",
     "register_literature_subparsers",

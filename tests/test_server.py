@@ -74,6 +74,11 @@ EXPECTED_TOOLS = {
     "scifi_generate_cover_letter",
     "scifi_package_anonymous_code",
     "scifi_prepare_submission_bundle",
+    "scifi_list_projects",
+    "scifi_get_project_summary",
+    "scifi_draft_reprint_request",
+    "scifi_list_pending_reprints",
+    "scifi_ingest_paper_pdf",
 }
 
 

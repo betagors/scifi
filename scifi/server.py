@@ -57,10 +57,16 @@ from scifi.literature.models import (
     EvaluationConditionRecord,
     EvaluationMetricRecord,
     PaperRecord,
+    ProjectRecord,
+    ReprintRequestRecord,
+)
+from scifi.literature.reprint import (
+    ingest_paper_copy,
+    prepare_reprint_for_paper,
 )
 from scifi.literature.reporter import save_bibtex_file, save_markdown_report
 from scifi.literature.sota import SotaEvaluator
-from scifi.literature.store import LiteratureStore
+from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
 from scifi.literature.visualizer import save_interactive_html
 from scifi.math import (
     check_convexity,
@@ -694,13 +700,64 @@ def scifi_extract_pdf_text(
 # 8. Literature Lineage & Knowledge Store (Discovery)
 # ---------------------------------------------------------------------------
 
-DEFAULT_LITERATURE_DB_PATH = Path(".scifi/literature_store.db")
+DEFAULT_LITERATURE_DB_PATH = DEFAULT_CENTRAL_STORE_PATH
 
 
 def get_literature_store(db_path: Path | str | None = None) -> LiteratureStore:
     """Return a LiteratureStore instance for literature intelligence."""
-    path = db_path or DEFAULT_LITERATURE_DB_PATH
+    path = db_path or DEFAULT_CENTRAL_STORE_PATH
     return LiteratureStore(path)
+
+
+def _resolve_project(
+    store: LiteratureStore,
+    project_name_or_path: str | Path | None = None,
+) -> Optional[ProjectRecord]:
+    """
+    Resolve a ProjectRecord from an ID, name, workspace path, or current working directory.
+    If project_name_or_path is omitted, auto-discovers from Path.cwd().
+    """
+    if project_name_or_path:
+        target_str = str(project_name_or_path).strip()
+        if target_str.lower() == "all":
+            return None
+        # 1. Exact ID match
+        proj = store.get_project(target_str)
+        if proj is not None:
+            return proj
+
+        # 2. Canonical workspace path match
+        target_path = Path(target_str).resolve()
+        proj = store.get_project_by_workspace(target_path)
+        if proj is not None:
+            return proj
+
+        # 3. Match by name or directory name
+        all_projects = store.list_projects()
+        for p in all_projects:
+            if p.name.lower() == target_str.lower():
+                return p
+            if Path(p.workspace_path).name.lower() == target_str.lower():
+                return p
+            try:
+                if Path(p.workspace_path).resolve() == target_path:
+                    return p
+            except Exception:
+                pass
+        return None
+
+    # Omitted or None: auto-discover from Path.cwd()
+    cwd = Path.cwd().resolve()
+    proj = store.get_project_by_workspace(cwd)
+    if proj is not None:
+        return proj
+    for p in store.list_projects():
+        try:
+            if Path(p.workspace_path).resolve() == cwd:
+                return p
+        except Exception:
+            pass
+    return None
 
 
 @mcp.tool()
@@ -1094,7 +1151,169 @@ def scifi_export_bibtex(
 
 
 # ---------------------------------------------------------------------------
-# 9. Unified Manuscript Audit, Shannon SEO, Tables & Venue Compliance
+# 9. Central Literature Hub, Projects & Author Reprints
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def scifi_list_projects() -> list[dict[str, Any]]:
+    """
+    List all registered research projects in the central literature knowledge store.
+
+    Returns:
+        List of project metadata dictionaries with ID, name, workspace_path,
+        description, and timestamps.
+    """
+    store = get_literature_store()
+    projects = store.list_projects()
+    return [p.to_dict() for p in projects]
+
+
+@mcp.tool()
+def scifi_get_project_summary(
+    project_name_or_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Retrieve project statistics, paper counts, open-access distribution,
+    and reprint requests for a registered project workspace.
+    If project_name_or_path is omitted, auto-discovers from current working directory.
+
+    Args:
+        project_name_or_path: Optional project name, ID, or workspace path.
+
+    Returns:
+        Dictionary with status, project metadata, paper counts, open access counts,
+        and pending reprint requests.
+    """
+    store = get_literature_store()
+    proj = _resolve_project(store, project_name_or_path)
+    if proj is None:
+        return {
+            "status": "NOT_FOUND",
+            "message": f"Project '{project_name_or_path or Path.cwd()}' not found.",
+            "available_projects": [p.name for p in store.list_projects()],
+        }
+
+    papers = store.get_project_papers(proj.id)
+    reprints = store.get_reprint_requests(project_id=proj.id)
+
+    oa_count = sum(1 for p in papers if any(loc.is_oa for loc in p.locations))
+    paywalled_count = len(papers) - oa_count
+    pending_reprints = [r for r in reprints if r.status in ("DRAFT_READY", "SENT")]
+    received_reprints = [r for r in reprints if r.status == "RECEIVED"]
+
+    return {
+        "status": "SUCCESS",
+        "project": proj.to_dict(),
+        "total_papers": len(papers),
+        "open_access_papers": oa_count,
+        "paywalled_papers": paywalled_count,
+        "total_reprint_requests": len(reprints),
+        "pending_reprints_count": len(pending_reprints),
+        "received_reprints_count": len(received_reprints),
+        "pending_reprints": [r.to_dict() for r in pending_reprints],
+    }
+
+
+@mcp.tool()
+def scifi_draft_reprint_request(
+    identifier: str,
+    project_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Generate an academic-standard author reprint request letter and mailto URL
+    for a paywalled paper. Queries public registries for author contact and saves
+    the draft to the central literature store.
+
+    Args:
+        identifier: DOI or paper identifier (e.g. '10.1016/j.neucom.2023.12345').
+        project_name: Optional project name, ID, or workspace path to link with.
+
+    Returns:
+        Dictionary containing status ('DRAFT_READY' or 'ERROR'), subject, body,
+        mailto_url, author_name, and author_email.
+    """
+    store = get_literature_store()
+    proj = _resolve_project(store, project_name) if project_name else _resolve_project(store, None)
+    proj_id = proj.id if proj else None
+
+    try:
+        req = prepare_reprint_for_paper(
+            store=store,
+            project_id=proj_id,
+            paper_id=identifier,
+        )
+        return req.to_dict()
+    except Exception as e:
+        return {
+            "status": "ERROR",
+            "message": str(e),
+            "identifier": identifier,
+        }
+
+
+@mcp.tool()
+def scifi_list_pending_reprints(
+    project_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    List pending reprint requests awaiting author responses (status DRAFT_READY or SENT).
+
+    Args:
+        project_name: Optional project name, ID, or workspace path filter.
+
+    Returns:
+        List of reprint request dictionaries.
+    """
+    store = get_literature_store()
+    proj = _resolve_project(store, project_name) if project_name else _resolve_project(store, None)
+    proj_id = proj.id if proj else None
+
+    requests = store.get_reprint_requests(project_id=proj_id)
+    return [r.to_dict() for r in requests if r.status in ("DRAFT_READY", "SENT")]
+
+
+@mcp.tool()
+def scifi_ingest_paper_pdf(
+    identifier: str,
+    pdf_path: str,
+    project_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Ingest an acquired paper PDF copy into the content-addressed central store.
+    Marks the paper location as accessible OA and transitions associated reprint
+    requests to RECEIVED.
+
+    Args:
+        identifier: DOI or paper identifier.
+        pdf_path: Local filesystem path to the PDF file.
+        project_name: Optional project name, ID, or workspace path to link paper to.
+
+    Returns:
+        Dictionary with status ('SUCCESS' or 'ERROR'), stored_path, sha256, and paper_id.
+    """
+    store = get_literature_store()
+    proj = _resolve_project(store, project_name) if project_name else _resolve_project(store, None)
+    proj_id = proj.id if proj else None
+
+    try:
+        return ingest_paper_copy(
+            store=store,
+            project_id=proj_id,
+            paper_id=identifier,
+            pdf_path=pdf_path,
+        )
+    except Exception as e:
+        return {
+            "status": "ERROR",
+            "message": str(e),
+            "identifier": identifier,
+            "pdf_path": pdf_path,
+        }
+
+
+# ---------------------------------------------------------------------------
+# 10. Unified Manuscript Audit, Shannon SEO, Tables & Venue Compliance
 # ---------------------------------------------------------------------------
 
 

@@ -32,6 +32,8 @@ from scifi import setup_cli
 from scifi.argus import cli as argus_cli
 from scifi.citation_verifier import cli as citation_cli
 from scifi.literature.cli import cmd_literature, register_literature_subparsers
+from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
+from scifi.web.server import SciFiWebServer
 
 cmd_verify = citation_cli.cmd_verify
 cmd_audit = citation_cli.cmd_audit
@@ -39,6 +41,42 @@ cmd_search = citation_cli.cmd_search
 cmd_argus = argus_cli.cmd_audit
 cmd_setup = setup_cli.cmd_setup
 cmd_sync = setup_cli.cmd_sync
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Launch the SciFi Web Cockpit local server and open browser."""
+    import webbrowser
+
+    db_path = getattr(args, "db", None) or str(DEFAULT_CENTRAL_STORE_PATH)
+    store = LiteratureStore(db_path)
+    host = getattr(args, "host", "127.0.0.1")
+    port = getattr(args, "port", 8080)
+    no_browser = getattr(args, "no_browser", False)
+
+    try:
+        server = SciFiWebServer(store=store, host=host, port=port, auto_fallback=True)
+    except Exception as e:
+        print(f"[ERROR] Failed to start SciFi Web Cockpit: {e}", file=sys.stderr)
+        return 1
+
+    actual_url = f"http://{host}:{server.port}"
+    print(f"[SUCCESS] SciFi Web Cockpit running at {actual_url}")
+    print("Press Ctrl+C to stop.")
+
+    if not no_browser:
+        try:
+            webbrowser.open(actual_url)
+        except Exception:
+            pass
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down SciFi Web Cockpit...")
+    finally:
+        server.shutdown()
+        server.server_close()
+    return 0
 
 
 def cmd_server(args: argparse.Namespace) -> int:
@@ -863,6 +901,17 @@ def create_parser() -> argparse.ArgumentParser:
     p_server = subparsers.add_parser("server", aliases=["mcp", "serve"], help="Run the SciFi FastMCP server daemon")
     p_server.add_argument("--transport", choices=["stdio", "sse"], default="stdio", help="MCP transport mode (default: stdio)")
 
+    # ui (cockpit)
+    p_ui = subparsers.add_parser("ui", aliases=["cockpit", "web"], help="Launch local SciFi Web Research Cockpit dashboard")
+    p_ui.add_argument("--port", type=int, default=8080, help="Port to bind Web Cockpit server (default: 8080)")
+    p_ui.add_argument("--host", default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
+    p_ui.add_argument("--no-browser", action="store_true", help="Do not automatically open web browser")
+    p_ui.add_argument(
+        "--db",
+        default=str(DEFAULT_CENTRAL_STORE_PATH),
+        help=f"Path to SQLite central store (default: {DEFAULT_CENTRAL_STORE_PATH})",
+    )
+
     return parser
 
 
@@ -972,6 +1021,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return setup_cli.cmd_sync(args)
     elif args.command in ("server", "mcp", "serve"):
         return cmd_server(args)
+    elif args.command in ("ui", "cockpit", "web"):
+        return cmd_ui(args)
 
     return 0
 
