@@ -79,6 +79,10 @@ EXPECTED_TOOLS = {
     "scifi_draft_reprint_request",
     "scifi_list_pending_reprints",
     "scifi_ingest_paper_pdf",
+    "scifi_zotero_status",
+    "scifi_zotero_get_collection_papers",
+    "scifi_zotero_get_annotations",
+    "scifi_zotero_push_audit_note",
 }
 
 
