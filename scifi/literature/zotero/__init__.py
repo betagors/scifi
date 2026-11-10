@@ -10,6 +10,7 @@ from scifi.literature.zotero.models import (
     ZoteroItem,
 )
 from scifi.literature.zotero.reader import ZoteroLocalReader
+from scifi.literature.zotero.writer import ZoteroLocalWriter
 
 __all__ = [
     "ZoteroAnnotation",
@@ -18,4 +19,5 @@ __all__ = [
     "ZoteroConfig",
     "ZoteroItem",
     "ZoteroLocalReader",
+    "ZoteroLocalWriter",
 ]
