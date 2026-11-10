@@ -547,6 +547,7 @@ def install_mcp_config(
     scifi_root: Path | str | None = None,
     dry_run: bool = False,
     format_type: str = "standard",
+    use_uvx: bool = False,
 ) -> bool:
     """
     Install or update the SciFi FastMCP server entry in a target JSON config.
@@ -556,6 +557,7 @@ def install_mcp_config(
         scifi_root: Path to SciFi repository root (defaults to parent of scifi package).
         dry_run: If True, do not modify files, only print planned changes.
         format_type: "standard" for mcpServers or "opencode" for mcp.
+        use_uvx: If True, configure server execution via zero-install `uvx scifi server`.
 
     Returns:
         True if operation succeeded (or would succeed in dry_run), False on error.
@@ -573,7 +575,12 @@ def install_mcp_config(
     )
 
     if format_type == "opencode":
-        if is_source_checkout:
+        if use_uvx:
+            server_entry = {
+                "type": "local",
+                "command": ["uvx", "scifi", "server"],
+            }
+        elif is_source_checkout:
             server_entry = {
                 "type": "local",
                 "command": ["uv", "run", "python", "-m", "scifi.server"],
@@ -585,7 +592,12 @@ def install_mcp_config(
                 "command": ["sf", "server"],
             }
     else:
-        if is_source_checkout:
+        if use_uvx:
+            server_entry = {
+                "command": "uvx",
+                "args": ["scifi", "server"],
+            }
+        elif is_source_checkout:
             server_entry = {
                 "command": "uv",
                 "args": ["run", "python", "-m", "scifi.server"],
@@ -659,10 +671,11 @@ def cmd_setup(args: argparse.Namespace) -> int:
     dry_run = getattr(args, "dry_run", False)
     scifi_root = getattr(args, "scifi_root", None)
     target = getattr(args, "target", None)
+    use_uvx = getattr(args, "use_uvx", False)
 
     if target:
         target_path = Path(target)
-        success = install_mcp_config(target_path, scifi_root=scifi_root, dry_run=dry_run)
+        success = install_mcp_config(target_path, scifi_root=scifi_root, dry_run=dry_run, use_uvx=use_uvx)
         if success:
             action = "Simulated configuration of" if dry_run else "Successfully configured"
             print(f"{action} SciFi MCP in {target_path}")
@@ -686,7 +699,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         ]
         all_ok = True
         for cfg_p, name, fmt in ws_targets:
-            ok = install_mcp_config(cfg_p, scifi_root=scifi_root, dry_run=dry_run, format_type=fmt)
+            ok = install_mcp_config(cfg_p, scifi_root=scifi_root, dry_run=dry_run, format_type=fmt, use_uvx=use_uvx)
             action = "[DRY-RUN] Would configure" if dry_run else "Configured"
             if ok:
                 print(f"{action} {name} ({cfg_p})")
@@ -762,6 +775,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
             scifi_root=scifi_root,
             dry_run=dry_run,
             format_type=env.format_type,
+            use_uvx=use_uvx,
         )
         if success:
             action = "[DRY-RUN] Would configure" if dry_run else "Configured"

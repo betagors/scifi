@@ -1055,6 +1055,7 @@ def create_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--list", action="store_true", help="List all supported and detected AI environments")
     p_setup.add_argument("--rules", action="store_true", help="Synchronize SciFi scientific rules to project instruction files")
     p_setup.add_argument("--workspace", action="store_true", help="Configure workspace MCP manifests (.cursor, .mcp.json, opencode.json) and sync rules")
+    p_setup.add_argument("--use-uvx", action="store_true", help="Configure MCP client to execute via zero-install 'uvx scifi server'")
 
     # sync
     p_sync = subparsers.add_parser("sync", help="Synchronize SciFi scientific rules to CLAUDE.md, .clinerules, .cursorrules, etc.")

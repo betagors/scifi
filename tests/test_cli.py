@@ -235,6 +235,33 @@ def test_setup_install_mcp_config_dry_run(tmp_path: Path) -> None:
     assert not target_cfg.parent.exists()
 
 
+def test_setup_install_mcp_config_uvx_mode(tmp_path: Path) -> None:
+    """install_mcp_config with use_uvx=True must emit zero-install uvx scifi server command."""
+    # Standard format
+    std_cfg = tmp_path / "claude_desktop_config.json"
+    ok = scifi.setup_cli.install_mcp_config(
+        target=std_cfg,
+        use_uvx=True,
+    )
+    assert ok is True
+    data = json.loads(std_cfg.read_text(encoding="utf-8"))
+    entry = data["mcpServers"]["scifi"]
+    assert entry["command"] == "uvx"
+    assert entry["args"] == ["scifi", "server"]
+
+    # OpenCode format
+    oc_cfg = tmp_path / "opencode.json"
+    ok = scifi.setup_cli.install_mcp_config(
+        target=oc_cfg,
+        format_type="opencode",
+        use_uvx=True,
+    )
+    assert ok is True
+    oc_data = json.loads(oc_cfg.read_text(encoding="utf-8"))
+    oc_entry = oc_data["mcp"]["scifi"]
+    assert oc_entry["command"] == ["uvx", "scifi", "server"]
+
+
 def test_setup_install_opencode_schema(tmp_path: Path) -> None:
     """install_mcp_config with format_type='opencode' must format using 'mcp' dict and flat command."""
     target_cfg = tmp_path / "opencode.json"
@@ -303,6 +330,18 @@ def test_setup_cmd_setup_target_flag(tmp_path: Path) -> None:
     assert target_cfg.exists()
     data = json.loads(target_cfg.read_text(encoding="utf-8"))
     assert "scifi" in data["mcpServers"]
+
+
+def test_setup_cmd_setup_use_uvx_flag(tmp_path: Path) -> None:
+    """sf setup with --use-uvx should write uvx scifi server."""
+    target_cfg = tmp_path / "custom" / "mcp.json"
+    code = scifi.cli.main(["setup", "--target", str(target_cfg), "--use-uvx"])
+    assert code == 0
+    assert target_cfg.exists()
+    data = json.loads(target_cfg.read_text(encoding="utf-8"))
+    entry = data["mcpServers"]["scifi"]
+    assert entry["command"] == "uvx"
+    assert entry["args"] == ["scifi", "server"]
 
 
 def test_setup_cmd_setup_auto_flow(tmp_path: Path) -> None:
