@@ -104,7 +104,7 @@ SciFi separates **deterministic computation** (25 FastMCP tools) from **cognitiv
 flowchart TD
     subgraph AgentLayer ["Agent Environment (Antigravity / Claude / Cursor)"]
         Rules["Rules: AGENTS.md (Invariants & Standards)"]
-        Skills["Skills: alex, argus, turing, gauss, human, popper, compiler, hypatia, shannon"]
+        Skills["Skills: manuscript-audit, alex, argus, turing, gauss, human, popper, compiler, hypatia, shannon"]
         Subagents["Subagents: scholar, theorist, scribe, auditor, argus, shannon"]
     end
 
