@@ -15,7 +15,7 @@ def test_cli_zotero_parser_registration():
     assert "zotero" in choices
     assert "scaffold" in choices
     assert "adapt" in choices
-    assert "init" in choices
+    assert "setup" in choices
 
 def test_cli_zotero_status_invocation(capsys):
     ret = main(["zotero", "status"])
