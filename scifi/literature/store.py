@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
-import uuid
-
-DEFAULT_CENTRAL_STORE_PATH: Path = Path.home() / ".scifi" / "literature_store.db"
 from scifi.literature.models import (
     AuthorRecord,
     BenchmarkRecord,
@@ -33,6 +32,8 @@ from scifi.literature.models import (
     ProjectRecord,
     ReprintRequestRecord,
 )
+
+DEFAULT_CENTRAL_STORE_PATH: Path = Path.home() / ".scifi" / "literature_store.db"
 
 SCHEMA_SQL = """
 -- 1. Multi-Graph Session Scoping
@@ -379,9 +380,7 @@ class LiteratureStore:
                     self.conn.execute("ROLLBACK")
                 raise
 
-    def create_or_get_graph(
-        self, graph_id: str, title: str, seed_paper_id: Optional[str] = None
-    ) -> GraphSessionRecord:
+    def create_or_get_graph(self, graph_id: str, title: str, seed_paper_id: str | None = None) -> GraphSessionRecord:
         """
         Create a new graph session or return the existing session record.
         """
@@ -421,9 +420,7 @@ class LiteratureStore:
         """List all registered graph sessions ordered by creation date."""
         with self._lock:
             cursor = self.conn.cursor()
-            cursor.execute(
-                "SELECT id, title, seed_paper_id, created_at FROM graphs ORDER BY created_at DESC"
-            )
+            cursor.execute("SELECT id, title, seed_paper_id, created_at FROM graphs ORDER BY created_at DESC")
             rows = cursor.fetchall()
             return [
                 GraphSessionRecord(
@@ -684,7 +681,7 @@ class LiteratureStore:
             rows = cursor.fetchall()
             return [self._rehydrate_paper(row, cursor) for row in rows]
 
-    def get_paper(self, paper_id: str) -> Optional[PaperRecord]:
+    def get_paper(self, paper_id: str) -> PaperRecord | None:
         """
         Retrieve a single canonical paper record by ID.
         """
@@ -721,8 +718,7 @@ class LiteratureStore:
             (paper_id,),
         )
         authors = [
-            AuthorRecord(id=r[0], name=r[1], orcid=r[2], email=r[3], institution=r[4])
-            for r in cursor.fetchall()
+            AuthorRecord(id=r[0], name=r[1], orcid=r[2], email=r[3], institution=r[4]) for r in cursor.fetchall()
         ]
 
         # Identifiers
@@ -736,9 +732,7 @@ class LiteratureStore:
             (paper_id,),
         )
         identifiers = [
-            PaperIdentifierRecord(
-                paper_id=r[0], provider=r[1], external_id=r[2], is_canonical=bool(r[3])
-            )
+            PaperIdentifierRecord(paper_id=r[0], provider=r[1], external_id=r[2], is_canonical=bool(r[3]))
             for r in cursor.fetchall()
         ]
 
@@ -1167,9 +1161,7 @@ class LiteratureStore:
             rows = cursor.fetchall()
             return [self._row_to_gap(r) for r in rows]
 
-    def get_citation_contexts(
-        self, source_id: str, target_id: str
-    ) -> list[CitationContextRecord]:
+    def get_citation_contexts(self, source_id: str, target_id: str) -> list[CitationContextRecord]:
         """
         Retrieve granular in-text citation contexts between source and target papers.
         """
@@ -1303,9 +1295,7 @@ class LiteratureStore:
             rows = cursor.fetchall()
             return [self._row_to_benchmark_result(r) for r in rows]
 
-    def get_graph_benchmark_results(
-        self, graph_id: str
-    ) -> dict[str, list[BenchmarkResultRecord]]:
+    def get_graph_benchmark_results(self, graph_id: str) -> dict[str, list[BenchmarkResultRecord]]:
         """
         Retrieve all benchmark results for papers belonging to the specified graph session,
         grouped by paper_id.
@@ -1394,9 +1384,7 @@ class LiteratureStore:
             rows = cursor.fetchall()
             return {r[0]: self._row_to_condition(r) for r in rows}
 
-    def get_sota_leaders(
-        self, benchmark_id: str, metric_id: str
-    ) -> list[BenchmarkResultRecord]:
+    def get_sota_leaders(self, benchmark_id: str, metric_id: str) -> list[BenchmarkResultRecord]:
         """
         Retrieve all benchmark results marked as is_sota = 1 for the specified benchmark and metric.
         """
@@ -1528,8 +1516,8 @@ class LiteratureStore:
         self,
         name: str,
         workspace_path: str | Path,
-        description: Optional[str] = None,
-        project_id: Optional[str] = None,
+        description: str | None = None,
+        project_id: str | None = None,
     ) -> ProjectRecord:
         """
         Register a new project workspace or update an existing project record
@@ -1581,7 +1569,7 @@ class LiteratureStore:
             )
             return [ProjectRecord.from_row(r) for r in cursor.fetchall()]
 
-    def get_project(self, project_id: str) -> Optional[ProjectRecord]:
+    def get_project(self, project_id: str) -> ProjectRecord | None:
         """Retrieve a registered project by its identifier."""
         with self._lock:
             cursor = self.conn.cursor()
@@ -1594,7 +1582,7 @@ class LiteratureStore:
                 return None
             return ProjectRecord.from_row(row)
 
-    def get_project_by_workspace(self, workspace_path: str | Path) -> Optional[ProjectRecord]:
+    def get_project_by_workspace(self, workspace_path: str | Path) -> ProjectRecord | None:
         """Retrieve a registered project by its workspace path."""
         norm_path = str(Path(workspace_path).resolve())
         with self._lock:
@@ -1612,8 +1600,8 @@ class LiteratureStore:
         self,
         project_id: str,
         paper_id: str,
-        graph_id: Optional[str] = None,
-        notes: Optional[str] = None,
+        graph_id: str | None = None,
+        notes: str | None = None,
     ) -> None:
         """Associate a paper with a registered project."""
         with self.transaction():
@@ -1656,16 +1644,16 @@ class LiteratureStore:
 
     def create_reprint_request(
         self,
-        project_id: Optional[str],
+        project_id: str | None,
         paper_id: str,
         author_name: str,
-        author_email: Optional[str] = None,
-        author_affiliation: Optional[str] = None,
+        author_email: str | None = None,
+        author_affiliation: str | None = None,
         subject: str = "",
         body: str = "",
-        mailto_url: Optional[str] = None,
+        mailto_url: str | None = None,
         status: str = "DRAFT_READY",
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ) -> ReprintRequestRecord:
         """Create and persist an author reprint request draft."""
         rid = request_id or f"rep-{uuid.uuid4().hex[:12]}"
@@ -1709,9 +1697,9 @@ class LiteratureStore:
 
     def get_reprint_requests(
         self,
-        project_id: Optional[str] = None,
-        status: Optional[str] = None,
-        paper_id: Optional[str] = None,
+        project_id: str | None = None,
+        status: str | None = None,
+        paper_id: str | None = None,
     ) -> list[ReprintRequestRecord]:
         """
         Query reprint requests with optional filtering by project, status, or paper.
@@ -1739,7 +1727,7 @@ class LiteratureStore:
             cursor.execute(query, tuple(params))
             return [ReprintRequestRecord.from_row(r) for r in cursor.fetchall()]
 
-    def get_reprint_request(self, request_id: str) -> Optional[ReprintRequestRecord]:
+    def get_reprint_request(self, request_id: str) -> ReprintRequestRecord | None:
         """Retrieve a specific reprint request by identifier."""
         with self._lock:
             cursor = self.conn.cursor()
@@ -1761,12 +1749,12 @@ class LiteratureStore:
     def update_reprint_request(
         self,
         request_id: str,
-        author_email: Optional[str] = None,
-        status: Optional[str] = None,
-        mailto_url: Optional[str] = None,
-        subject: Optional[str] = None,
-        body: Optional[str] = None,
-    ) -> Optional[ReprintRequestRecord]:
+        author_email: str | None = None,
+        status: str | None = None,
+        mailto_url: str | None = None,
+        subject: str | None = None,
+        body: str | None = None,
+    ) -> ReprintRequestRecord | None:
         """
         Update mutable fields of a reprint request (email, status, draft contents).
         """
@@ -1811,7 +1799,7 @@ class LiteratureStore:
                 return None
             return ReprintRequestRecord.from_row(row)
 
-    def update_reprint_status(self, request_id: str, status: str) -> Optional[ReprintRequestRecord]:
+    def update_reprint_status(self, request_id: str, status: str) -> ReprintRequestRecord | None:
         """Convenience method to transition the status of a reprint request."""
         return self.update_reprint_request(request_id, status=status)
 
@@ -1822,12 +1810,13 @@ class LiteratureStore:
         Raises PermissionError if any mutation (INSERT, UPDATE, DELETE, DROP, ALTER, etc.) is attempted.
         """
         with self._lock:
+
             def authorizer_callback(
                 action: int,
-                arg1: Optional[str],
-                arg2: Optional[str],
-                dbname: Optional[str],
-                source: Optional[str],
+                arg1: str | None,
+                arg2: str | None,
+                dbname: str | None,
+                source: str | None,
             ) -> int:
                 allowed = (
                     sqlite3.SQLITE_SELECT,

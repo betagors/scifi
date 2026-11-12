@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
-
 
 VENUE_ABBREVIATIONS: dict[str, str] = {
     # Top AI/ML conferences
@@ -49,12 +47,8 @@ VENUE_ABBREVIATIONS: dict[str, str] = {
     "siam journal on optimization": "SIAM J. Optim.",
 }
 
-RE_BOOKTITLE = re.compile(
-    r'(booktitle\s*=\s*[\{\"])(.*?)([\}\"])', re.IGNORECASE
-)
-RE_JOURNAL = re.compile(
-    r'(journal\s*=\s*[\{\"])(.*?)([\}\"])', re.IGNORECASE
-)
+RE_BOOKTITLE = re.compile(r"(booktitle\s*=\s*[\{\"])(.*?)([\}\"])", re.IGNORECASE)
+RE_JOURNAL = re.compile(r"(journal\s*=\s*[\{\"])(.*?)([\}\"])", re.IGNORECASE)
 
 
 def abbreviate_venue(venue_str: str) -> str:

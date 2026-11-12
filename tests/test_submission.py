@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-from scifi.submission.profiles import get_publisher_profile
 from scifi.submission.models import AuthorInfo
+from scifi.submission.profiles import get_publisher_profile
 
 
 def test_publisher_profiles():
@@ -48,7 +47,6 @@ def test_highlights_validation_elsevier():
 
 def test_title_page_generation():
     from scifi.submission.title_page import generate_title_page
-    from scifi.submission.models import AuthorInfo
 
     authors = [
         AuthorInfo(
@@ -102,6 +100,7 @@ def test_cover_letter_generation():
 
 def test_anonymous_code_packager(tmp_path):
     import zipfile
+
     from scifi.submission.code_packager import package_anonymous_code
 
     src = tmp_path / "code_src"
@@ -137,7 +136,8 @@ def test_submission_bundler(tmp_path):
     from scifi.submission.bundler import prepare_submission_bundle
 
     tex_file = tmp_path / "main.tex"
-    tex_file.write_text(r"""
+    tex_file.write_text(
+        r"""
     \documentclass{article}
     \title{Deep Kernel Learning for Dynamics}
     \author{John Doe \and Jane Doe}
@@ -145,7 +145,9 @@ def test_submission_bundler(tmp_path):
     \begin{document}
     \maketitle
     \end{document}
-    """, encoding="utf-8")
+    """,
+        encoding="utf-8",
+    )
 
     out_dir = tmp_path / "dist" / "submission"
     res = prepare_submission_bundle(
@@ -165,6 +167,7 @@ def test_submission_bundler(tmp_path):
 
 def test_code_packager_path_variants_and_syntax_preservation(tmp_path):
     import zipfile
+
     from scifi.submission.code_packager import package_anonymous_code
 
     src = tmp_path / "code_src"
@@ -208,7 +211,6 @@ def process():
 
 def test_cover_letter_springer_ethics_and_latex_parity():
     from scifi.submission.cover_letter import generate_cover_letter
-    from scifi.submission.models import AuthorInfo
 
     authors = [
         AuthorInfo(
@@ -243,9 +245,3 @@ def test_highlights_count_validation():
     res = generate_highlights(few_bullets, venue="elsevier")
     assert res.all_valid is False
     assert any("fewer than 3" in (h.issue or "") for h in res.highlights)
-
-
-
-
-
-

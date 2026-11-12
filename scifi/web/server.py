@@ -11,9 +11,8 @@ import socket
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from scifi.literature.models import PaperRecord, ProjectRecord, ReprintRequestRecord
 from scifi.literature.reprint import build_mailto_url, ingest_paper_copy
 from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
 from scifi.literature.visualizer import OA_COLORS, determine_oa_status, format_node_label
@@ -42,9 +41,7 @@ def find_available_port(
                 return port
         except OSError:
             continue
-    raise OSError(
-        f"No available port found in range {start_port}..{start_port + max_attempts - 1}"
-    )
+    raise OSError(f"No available port found in range {start_port}..{start_port + max_attempts - 1}")
 
 
 class SciFiRequestHandler(BaseHTTPRequestHandler):
@@ -189,9 +186,9 @@ class SciFiRequestHandler(BaseHTTPRequestHandler):
             is_oa = oa_status != "closed"
 
             has_pdf = False
-            local_pdf: Optional[str] = None
-            pdf_url: Optional[str] = None
-            doi: Optional[str] = None
+            local_pdf: str | None = None
+            pdf_url: str | None = None
+            doi: str | None = None
 
             for loc in p.locations or []:
                 if loc.local_pdf_path:
@@ -247,13 +244,9 @@ class SciFiRequestHandler(BaseHTTPRequestHandler):
 
         self._send_json({"project_id": project_id, "papers": papers_res})
 
-    def _handle_get_project_graph(
-        self, project_id: str, query: dict[str, list[str]]
-    ) -> None:
+    def _handle_get_project_graph(self, project_id: str, query: dict[str, list[str]]) -> None:
         """GET /api/projects/<id>/graph: nodes and edges for Vis.js."""
-        session_id = query.get("session_id", [None])[0] or query.get(
-            "graph_id", [None]
-        )[0]
+        session_id = query.get("session_id", [None])[0] or query.get("graph_id", [None])[0]
 
         if session_id:
             papers = self.server.store.get_graph_papers(session_id)
@@ -382,15 +375,9 @@ class SciFiRequestHandler(BaseHTTPRequestHandler):
         new_mailto = payload.get("mailto_url")
 
         # Auto-recompute mailto_url if email or text updated without explicit mailto_url
-        if (
-            new_email is not None or new_subject is not None or new_body is not None
-        ) and "mailto_url" not in payload:
-            effective_email = (
-                new_email if new_email is not None else existing.author_email
-            )
-            effective_subj = (
-                new_subject if new_subject is not None else existing.subject
-            )
+        if (new_email is not None or new_subject is not None or new_body is not None) and "mailto_url" not in payload:
+            effective_email = new_email if new_email is not None else existing.author_email
+            effective_subj = new_subject if new_subject is not None else existing.subject
             effective_body = new_body if new_body is not None else existing.body
             new_mailto = build_mailto_url(effective_email, effective_subj, effective_body)
 
@@ -530,27 +517,21 @@ class SciFiWebServer(ThreadingHTTPServer):
 
     def __init__(
         self,
-        store: Optional[LiteratureStore] = None,
+        store: LiteratureStore | None = None,
         host: str = "127.0.0.1",
         port: int = 8080,
-        static_dir: Optional[Path | str] = None,
+        static_dir: Path | str | None = None,
         auto_fallback: bool = True,
         max_attempts: int = 10,
     ) -> None:
         self.host = host
         self.requested_port = port
-        self.store = (
-            store if store is not None else LiteratureStore(DEFAULT_CENTRAL_STORE_PATH)
-        )
-        self.static_dir = (
-            Path(static_dir).resolve()
-            if static_dir is not None
-            else get_default_static_dir()
-        )
+        self.store = store if store is not None else LiteratureStore(DEFAULT_CENTRAL_STORE_PATH)
+        self.static_dir = Path(static_dir).resolve() if static_dir is not None else get_default_static_dir()
 
         if auto_fallback:
             bound = False
-            last_err: Optional[Exception] = None
+            last_err: Exception | None = None
             for offset in range(max_attempts):
                 candidate_port = port + offset
                 try:
@@ -561,9 +542,7 @@ class SciFiWebServer(ThreadingHTTPServer):
                     last_err = e
                     continue
             if not bound:
-                raise OSError(
-                    f"Could not bind to any port in range {port}..{port + max_attempts - 1}: {last_err}"
-                )
+                raise OSError(f"Could not bind to any port in range {port}..{port + max_attempts - 1}: {last_err}")
         else:
             super().__init__((host, port), SciFiRequestHandler)
 

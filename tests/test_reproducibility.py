@@ -1,7 +1,6 @@
 """Tests for scifi.reproducibility conference checklist auditor (bacon/doctor)."""
 
 from pathlib import Path
-import pytest
 
 from scifi.reproducibility.auditor import audit_reproducibility
 from scifi.reproducibility.models import ReproducibilityCategory

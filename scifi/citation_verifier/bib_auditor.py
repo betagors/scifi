@@ -6,17 +6,16 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import bibtexparser
-import requests
 
 from scifi.network import get_session
+
 from .discrepancy import audit_discrepancies
-from .fetchers import OpenAlexFetcher, resolve_citation
+from .fetchers import resolve_citation
 from .identifiers import clean_doi, extract_identifier
 from .models import (
-    Author,
     BibAuditReport,
     CitationMetadata,
     ClaimedMetadata,
@@ -25,12 +24,12 @@ from .models import (
 )
 
 
-def search_identifier_by_title(title: str, author_hint: Optional[str] = None, timeout: int = 8) -> Optional[Tuple[str, str]]:
+def search_identifier_by_title(title: str, author_hint: str | None = None, timeout: int = 8) -> tuple[str, str] | None:
     """Search OpenAlex by title to find DOI for citations lacking an explicit identifier."""
     if not title or len(title.strip()) < 5:
         return None
     url = "https://api.openalex.org/works"
-    params = {"search": title.strip(), "per-page": 3}
+    params: dict[str, str | int] = {"search": title.strip(), "per-page": 3}
     headers = {"User-Agent": "SciFi-CitationVerifier/1.0 (mailto:scifi-toolkit@gmail.com)"}
     try:
         resp = get_session().get(url, params=params, headers=headers, timeout=timeout)
@@ -46,11 +45,13 @@ def search_identifier_by_title(title: str, author_hint: Optional[str] = None, ti
     return None
 
 
-def extract_claimed_metadata_from_bib_entry(entry: Any) -> Tuple[ClaimedMetadata, Optional[Tuple[str, str, Dict[str, str]]]]:
+def extract_claimed_metadata_from_bib_entry(
+    entry: Any,
+) -> tuple[ClaimedMetadata, tuple[str, str, dict[str, str]] | None]:
     """Extract claimed fields and best candidate identifier from a bibtexparser Entry."""
     fields = entry.fields_dict
 
-    def get_val(key: str) -> Optional[str]:
+    def get_val(key: str) -> str | None:
         field_obj = fields.get(key)
         if field_obj is not None:
             val = str(field_obj.value).strip()
@@ -66,13 +67,13 @@ def extract_claimed_metadata_from_bib_entry(entry: Any) -> Tuple[ClaimedMetadata
     url_val = get_val("url")
     eprint_val = get_val("eprint")
 
-    claimed_authors: List[str] = []
+    claimed_authors: list[str] = []
     if author_str:
         for a in author_str.split(" and "):
             if a.strip():
                 claimed_authors.append(a.strip())
 
-    claimed_year: Optional[int] = None
+    claimed_year: int | None = None
     if year_str:
         m = re.search(r"\b(\d{4})\b", year_str)
         if m:
@@ -102,7 +103,7 @@ def extract_claimed_metadata_from_bib_entry(entry: Any) -> Tuple[ClaimedMetadata
 
 def audit_bib_content(
     bib_content: str,
-    file_path: Optional[str] = None,
+    file_path: str | None = None,
     search_missing: bool = True,
     timeout: int = 10,
 ) -> BibAuditReport:
@@ -170,7 +171,7 @@ def audit_bib_content(
     return report
 
 
-def audit_bib_file(file_path: Union[str, Path], search_missing: bool = True) -> BibAuditReport:
+def audit_bib_file(file_path: str | Path, search_missing: bool = True) -> BibAuditReport:
     """Read and audit a .bib file from disk."""
     path = Path(file_path)
     content = path.read_text(encoding="utf-8")
@@ -182,7 +183,7 @@ def generate_sanitized_bib(report: BibAuditReport) -> str:
     Generate an enhanced, cleaned BibTeX library from an audit report.
     Adds warnings for retracted papers and fills in verified DOIs and metadata.
     """
-    bib_chunks: List[str] = []
+    bib_chunks: list[str] = []
 
     for meta in report.entries:
         claimed = meta.claimed_metadata
@@ -206,8 +207,6 @@ def generate_sanitized_bib(report: BibAuditReport) -> str:
             # Re-serialize original unverified entry if available
             bib_chunks.append(f"% Unverified citation: {meta.identifier_value}")
             if claimed and claimed.title:
-                bib_chunks.append(
-                    f"@misc{{{key},\n  title = {{{claimed.title}}},\n  note = {{Unverified}}\n}}"
-                )
+                bib_chunks.append(f"@misc{{{key},\n  title = {{{claimed.title}}},\n  note = {{Unverified}}\n}}")
 
     return "\n\n".join(bib_chunks)

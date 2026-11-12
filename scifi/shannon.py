@@ -9,8 +9,8 @@ or multi-file LaTeX projects (e.g. main.tex + sections/abstract.tex).
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 from scifi.latex.project import resolve_latex_project, strip_tex_comments
@@ -24,7 +24,6 @@ from skills.shannon.scripts.test_keywords import (
     evaluate_triage_score,
     generate_diagnostic_report,
 )
-
 
 RE_LATEX_CMD_CLEAN = re.compile(r"\\[a-zA-Z]+\*?\{([^}]*)\}")
 RE_ABSTRACT_ENV = re.compile(

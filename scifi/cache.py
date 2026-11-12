@@ -7,12 +7,13 @@ to prevent rate limits and ensure instantaneous repeated lookups.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
-from pathlib import Path
 import sqlite3
 import time
-from typing import Any, Generator
+from collections.abc import Generator
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
 
 
 class RegistryCache:
@@ -64,9 +65,7 @@ class RegistryCache:
                         )
                         """
                     )
-                    conn.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_expires_at ON registry_cache (expires_at)"
-                    )
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_expires_at ON registry_cache (expires_at)")
                 self._initialized = True
             yield conn
         finally:

@@ -7,18 +7,17 @@ injection of polite User-Agent and registry API keys.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import email.utils
 import logging
 import random
 import threading
 import time
-from typing import Any, Mapping, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import requests
-from requests.exceptions import ChunkedEncodingError
+from requests.exceptions import ChunkedEncodingError, RequestException, Timeout
 from requests.exceptions import ConnectionError as RequestsConnectionError
-from requests.exceptions import RequestException, Timeout
 
 from scifi.config import DEFAULT_FALLBACK_EMAIL, ScifiConfig, resolve_config
 from scifi.network.rate_limiter import DomainRateLimiter
@@ -34,9 +33,9 @@ RETRY_STATUS_CODES: set[int] = {429, 502, 503, 504}
 
 
 def parse_retry_after(
-    header_val: Optional[str],
-    max_backoff: Optional[float] = None,
-) -> Optional[float]:
+    header_val: str | None,
+    max_backoff: float | None = None,
+) -> float | None:
     """Parse a Retry-After header value into delay in seconds.
 
     Handles integer/float second durations (e.g. '12', '0.5') as well as
@@ -74,8 +73,8 @@ def parse_retry_after(
         if target_dt is None:
             return None
         if target_dt.tzinfo is None:
-            target_dt = target_dt.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
+            target_dt = target_dt.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
         delay = (target_dt - now).total_seconds()
         delay = max(0.0, delay)
         if max_backoff is not None:
@@ -126,8 +125,8 @@ class ResilientSession(requests.Session):
         max_retries: int = DEFAULT_MAX_RETRIES,
         backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
         max_backoff: float = DEFAULT_MAX_BACKOFF,
-        rate_limiter: Optional[DomainRateLimiter] = None,
-        config: Optional[ScifiConfig] = None,
+        rate_limiter: DomainRateLimiter | None = None,
+        config: ScifiConfig | None = None,
     ) -> None:
         """Initialize the resilient session.
 
@@ -150,7 +149,7 @@ class ResilientSession(requests.Session):
             f"SciFi-Toolkit/1.0 (academic-researcher; +https://github.com/scifi-toolkit; mailto:{email})"
         )
 
-    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+    def request(self, method: str, url: str | bytes, *args: Any, **kwargs: Any) -> requests.Response:
         """Send an HTTP request with proactive pacing and reactive backoff retry.
 
         Args:
@@ -165,9 +164,10 @@ class ResilientSession(requests.Session):
             requests.exceptions.RequestException: Re-raised if retries are exhausted
                 on network transport errors (ConnectionError, Timeout).
         """
+        url_str = url.decode("utf-8") if isinstance(url, bytes) else str(url)
         # Inject Semantic Scholar API key if targeting api.semanticscholar.org
         # and not already provided by caller headers
-        domain = DomainRateLimiter.extract_domain(url)
+        domain = DomainRateLimiter.extract_domain(url_str)
         if domain == "api.semanticscholar.org" and self.config.s2_api_key:
             req_headers = dict(kwargs.get("headers") or {})
             has_key = any(k.lower() in ("x-api-key", "api-key") for k in req_headers)
@@ -180,11 +180,11 @@ class ResilientSession(requests.Session):
         if "headers" in kwargs and kwargs["headers"]:
             merged_headers.update(kwargs["headers"])
 
-        last_response: Optional[requests.Response] = None
+        last_response: requests.Response | None = None
 
         for attempt in range(self.max_retries + 1):
             # Proactive pacing
-            self.rate_limiter.acquire(url, headers=merged_headers)
+            self.rate_limiter.acquire(url_str, headers=merged_headers)
 
             try:
                 response = super().request(method, url, **kwargs)
@@ -265,10 +265,10 @@ class ResilientSession(requests.Session):
 
         if last_response is not None:
             return last_response
-        raise RequestException(f"Failed to execute request {method} {url}")
+        raise RequestException(f"Failed to execute request {method} {url_str}")
 
 
-_session: Optional[ResilientSession] = None
+_session: ResilientSession | None = None
 _session_lock = threading.Lock()
 
 

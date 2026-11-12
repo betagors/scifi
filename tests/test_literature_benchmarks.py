@@ -1,9 +1,7 @@
-import pytest
-
 from scifi.literature.benchmarks import (
-    BenchmarkExtractor,
     CANONICAL_BENCHMARKS,
     CANONICAL_METRICS,
+    BenchmarkExtractor,
 )
 from scifi.literature.models import (
     BenchmarkRecord,

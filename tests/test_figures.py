@@ -1,15 +1,13 @@
 """Tests for scifi.figures auditor (da-vinci)."""
 
-from pathlib import Path
-import pytest
 import struct
+from pathlib import Path
 
 from scifi.figures.auditor import (
-    audit_figure_accessibility,
-    parse_image_dimensions_and_dpi,
     audit_latex_figures,
+    parse_image_dimensions_and_dpi,
 )
-from scifi.figures.models import FigureIssueCategory, FigureSeverity
+from scifi.figures.models import FigureIssueCategory
 
 
 def create_minimal_png(width: int, height: int, dpi: int | None = None) -> bytes:
@@ -18,8 +16,9 @@ def create_minimal_png(width: int, height: int, dpi: int | None = None) -> bytes
     sig = b"\x89PNG\r\n\x1a\n"
     # IHDR chunk: length=13, "IHDR", width(4), height(4), bit_depth(1), color_type(1), compression(1), filter(1), interlace(1), crc(4)
     import zlib
+
     ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    ihdr_crc = struct.pack(">I", zlib.crc32(b"IHDR" + ihdr_data) & 0xffffffff)
+    ihdr_crc = struct.pack(">I", zlib.crc32(b"IHDR" + ihdr_data) & 0xFFFFFFFF)
     ihdr = struct.pack(">I", 13) + b"IHDR" + ihdr_data + ihdr_crc
 
     phys = b""
@@ -27,11 +26,11 @@ def create_minimal_png(width: int, height: int, dpi: int | None = None) -> bytes
         # 1 inch = 0.0254 meters => ppm = round(dpi / 0.0254)
         ppm = round(dpi / 0.0254)
         phys_data = struct.pack(">IIB", ppm, ppm, 1)  # 1 = unit is meter
-        phys_crc = struct.pack(">I", zlib.crc32(b"pHYs" + phys_data) & 0xffffffff)
+        phys_crc = struct.pack(">I", zlib.crc32(b"pHYs" + phys_data) & 0xFFFFFFFF)
         phys = struct.pack(">I", 9) + b"pHYs" + phys_data + phys_crc
 
     # IEND chunk
-    iend_crc = struct.pack(">I", zlib.crc32(b"IEND") & 0xffffffff)
+    iend_crc = struct.pack(">I", zlib.crc32(b"IEND") & 0xFFFFFFFF)
     iend = struct.pack(">I", 0) + b"IEND" + iend_crc
 
     return sig + ihdr + phys + iend

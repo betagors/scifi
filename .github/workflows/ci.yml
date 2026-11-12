@@ -37,6 +37,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Lint and format check with ruff
+        run: |
+          uv run ruff check scifi tests
+          uv run ruff format --check scifi tests
+
+      - name: Type check with mypy
+        run: uv run mypy --ignore-missing-imports scifi
+
       - name: Run pytest suite
         run: uv run pytest tests/ -v
 

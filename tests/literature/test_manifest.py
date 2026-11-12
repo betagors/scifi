@@ -1,19 +1,20 @@
 import json
 from pathlib import Path
+
 import pytest
 
-from scifi.literature.store import LiteratureStore
+from scifi.literature.manifest import export_manifest, import_manifest, sync_workspace
 from scifi.literature.models import (
-    PaperRecord,
-    PaperLocationRecord,
-    CitationRecord,
-    EvidenceRecord,
-    PaperGapRecord,
     BenchmarkRecord,
     BenchmarkResultRecord,
+    CitationRecord,
     EvaluationMetricRecord,
+    EvidenceRecord,
+    PaperGapRecord,
+    PaperLocationRecord,
+    PaperRecord,
 )
-from scifi.literature.manifest import export_manifest, import_manifest, sync_workspace
+from scifi.literature.store import LiteratureStore
 
 
 def test_manifest_export_and_import_roundtrip(tmp_path: Path):
@@ -34,7 +35,7 @@ def test_manifest_export_and_import_roundtrip(tmp_path: Path):
     assert manifest_file.exists()
     assert exported_path == manifest_file
 
-    with open(manifest_file, "r", encoding="utf-8") as f:
+    with open(manifest_file, encoding="utf-8") as f:
         data = json.load(f)
     assert data["project_name"] == "uav-research"
     assert data["papers_count"] == 2
@@ -163,7 +164,7 @@ def test_manifest_roundtrip_with_gaps_and_benchmarks(tmp_path: Path):
 
     # Machine 2 re-hydration
     store2 = LiteratureStore(tmp_path / "central2.db")
-    proj2 = import_manifest(store2, manifest_file, str(repo))
+    import_manifest(store2, manifest_file, str(repo))
 
     gaps2 = store2.get_paper_gaps(paper.id)
     assert len(gaps2) == 1
@@ -189,7 +190,7 @@ def test_manifest_roundtrip_with_reprint_requests(tmp_path: Path):
     store1.upsert_paper(p)
     store1.link_paper_to_project(proj.id, p.id)
 
-    req = store1.create_reprint_request(
+    store1.create_reprint_request(
         project_id=proj.id,
         paper_id=p.id,
         author_name="Dr. Author",
@@ -358,4 +359,3 @@ def test_import_manifest_on_secondary_clone_or_worktree(tmp_path: Path):
     assert proj2.workspace_path == str(repo_clone2.resolve())
     assert len(store.get_project_papers(proj2.id)) == 1
     assert len(store.get_project_papers(proj1.id)) == 1
-

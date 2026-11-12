@@ -15,8 +15,7 @@ import pytest
 import requests
 
 from scifi.citation_verifier.bib_auditor import audit_bib_content
-from scifi.citation_verifier.models import VerificationStatus
-from scifi.network import DomainRateLimiter, ResilientSession, get_session
+from scifi.network import DomainRateLimiter, ResilientSession
 
 SAMPLE_BIB = """
 @article{paper1,
@@ -81,8 +80,7 @@ def test_bib_audit_e2e_with_resilient_session():
         resp._content = json.dumps(payload).encode("utf-8")
         return resp
 
-    with patch.object(requests.Session, "request", side_effect=mock_request), \
-         patch("time.sleep") as mock_sleep:
+    with patch.object(requests.Session, "request", side_effect=mock_request), patch("time.sleep") as mock_sleep:
         report = audit_bib_content(SAMPLE_BIB, search_missing=False)
 
         assert report.total_entries == 2
@@ -124,10 +122,11 @@ def test_domain_rate_limiter_pacing_across_sequential_registry_lookups():
         sleep_calls.append(duration)
         current_time += duration
 
-    with patch.object(requests.Session, "request", return_value=resp_200), \
-         patch("time.monotonic", side_effect=fake_monotonic), \
-         patch("time.sleep", side_effect=fake_sleep):
-
+    with (
+        patch.object(requests.Session, "request", return_value=resp_200),
+        patch("time.monotonic", side_effect=fake_monotonic),
+        patch("time.sleep", side_effect=fake_sleep),
+    ):
         # 1. First request to crossref (limit = 5.0 req/s -> 0.20s interval)
         session.get("https://api.crossref.org/works/10.1000/1")
         assert len(sleep_calls) == 0  # First request fires without delay
@@ -233,8 +232,7 @@ def test_bib_audit_e2e_recovers_from_transient_503_and_429():
         resp._content = json.dumps(payload).encode("utf-8")
         return resp
 
-    with patch.object(requests.Session, "request", side_effect=mock_request), \
-         patch("time.sleep"):
+    with patch.object(requests.Session, "request", side_effect=mock_request), patch("time.sleep"):
         report = audit_bib_content(three_papers_bib, search_missing=False)
 
         assert report.total_entries == 3

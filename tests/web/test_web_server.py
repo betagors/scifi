@@ -12,7 +12,6 @@ from scifi.literature.store import LiteratureStore
 from scifi.web.server import (
     SciFiWebServer,
     find_available_port,
-    get_default_static_dir,
 )
 
 
@@ -25,9 +24,7 @@ def test_web_server_api_routes(tmp_path: Path):
     store.link_paper_to_project(proj.id, paper.id)
 
     port = find_available_port(start_port=8900)
-    server = SciFiWebServer(
-        store=store, host="127.0.0.1", port=port, static_dir=tmp_path / "static"
-    )
+    server = SciFiWebServer(store=store, host="127.0.0.1", port=port, static_dir=tmp_path / "static")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -41,9 +38,7 @@ def test_web_server_api_routes(tmp_path: Path):
         assert data["projects"][0]["paper_count"] == 1
 
         # 2. Test GET /api/projects/<id>/papers
-        req_papers = urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/api/projects/{proj.id}/papers"
-        )
+        req_papers = urllib.request.urlopen(f"http://127.0.0.1:{port}/api/projects/{proj.id}/papers")
         assert req_papers.status == 200
         pdata = json.loads(req_papers.read().decode())
         assert len(pdata["papers"]) == 1
@@ -89,17 +84,13 @@ def test_web_server_graph_and_reprints(tmp_path: Path):
     )
 
     port = find_available_port(start_port=8910)
-    server = SciFiWebServer(
-        store=store, host="127.0.0.1", port=port, static_dir=tmp_path / "static"
-    )
+    server = SciFiWebServer(store=store, host="127.0.0.1", port=port, static_dir=tmp_path / "static")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
     try:
         # GET /api/projects/<id>/graph
-        res_graph = urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/api/projects/{proj.id}/graph"
-        )
+        res_graph = urllib.request.urlopen(f"http://127.0.0.1:{port}/api/projects/{proj.id}/graph")
         assert res_graph.status == 200
         gdata = json.loads(res_graph.read().decode())
         assert len(gdata["nodes"]) == 2
@@ -109,9 +100,7 @@ def test_web_server_graph_and_reprints(tmp_path: Path):
         assert gdata["edges"][0]["is_influential"] is True
 
         # GET /api/reprints with project_id filter
-        res_reprints = urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/api/reprints?project_id={proj.id}"
-        )
+        res_reprints = urllib.request.urlopen(f"http://127.0.0.1:{port}/api/reprints?project_id={proj.id}")
         assert res_reprints.status == 200
         rdata = json.loads(res_reprints.read().decode())
         assert len(rdata["reprints"]) == 1
@@ -141,9 +130,7 @@ def test_web_server_update_reprint_and_ingest(tmp_path: Path):
     )
 
     port = find_available_port(start_port=8920)
-    server = SciFiWebServer(
-        store=store, host="127.0.0.1", port=port, static_dir=tmp_path / "static"
-    )
+    server = SciFiWebServer(store=store, host="127.0.0.1", port=port, static_dir=tmp_path / "static")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -238,9 +225,7 @@ def test_web_server_static_files_and_path_traversal(tmp_path: Path):
     store = LiteratureStore(db_file)
 
     port = find_available_port(start_port=8930)
-    server = SciFiWebServer(
-        store=store, host="127.0.0.1", port=port, static_dir=static_dir
-    )
+    server = SciFiWebServer(store=store, host="127.0.0.1", port=port, static_dir=static_dir)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 

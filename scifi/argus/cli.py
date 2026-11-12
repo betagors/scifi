@@ -36,7 +36,9 @@ def cmd_audit(args: argparse.Namespace) -> int:
         print(f"Argus Audit: {report.source_file}")
         print(f"Total findings: {report.total_findings}")
         for f in report.findings:
-            print(f"[{f.id}] Line {f.line_number}: {f.category.value} -> {f.suggested_action.value} ({f.matched_entity})")
+            print(
+                f"[{f.id}] Line {f.line_number}: {f.category.value} -> {f.suggested_action.value} ({f.matched_entity})"
+            )
             print(f"       Hint: {f.remediation_hint}")
 
     # Automated / interactive fix
@@ -56,7 +58,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 fixed_count += 1
                 print(f"[FIXED] Inserted \\cite{{{f.cite_key}}} and updated {bib_path.name}")
             elif f.suggested_action == SuggestedAction.REFORMULATE:
-                print(f"[PROMPT TO REFORMULATE] Generated instructions for 'human' skill:")
+                print("[PROMPT TO REFORMULATE] Generated instructions for 'human' skill:")
                 print(generate_reformulate_prompt(f))
 
         print(f"\nCompleted: {fixed_count} citations injected and verified.")
@@ -94,13 +96,18 @@ def cmd_search(args: argparse.Namespace) -> int:
     bibtex = metadata.to_bibtex(key=cite_key)
 
     if args.format == "json":
-        print(json.dumps({
-            "query": args.query,
-            "confidence": confidence,
-            "metadata": metadata.to_dict(),
-            "cite_key": cite_key,
-            "bibtex": bibtex,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "query": args.query,
+                    "confidence": confidence,
+                    "metadata": metadata.to_dict(),
+                    "cite_key": cite_key,
+                    "bibtex": bibtex,
+                },
+                indent=2,
+            )
+        )
     elif args.format == "bibtex":
         print(bibtex)
     else:
@@ -138,7 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     p_audit.add_argument("--bib", help="Path to target references.bib file")
     p_audit.add_argument("--format", choices=["markdown", "json", "text"], default="markdown")
     p_audit.add_argument("--fix", action="store_true", help="Automatically insert \\cite and append BibTeX")
-    p_audit.add_argument("--author-whitelist", nargs="*", help="Author names to whitelist against self-plagiarism flags")
+    p_audit.add_argument(
+        "--author-whitelist", nargs="*", help="Author names to whitelist against self-plagiarism flags"
+    )
     p_audit.add_argument("--preprint-doi", help="DOI of author's preprint")
     p_audit.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
 

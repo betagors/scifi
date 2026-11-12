@@ -6,9 +6,9 @@ project directories, and raw LaTeX strings.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from pathlib import Path
-import re
 from typing import Any
 
 from scifi.latex.project import resolve_latex_project
@@ -22,17 +22,11 @@ RE_ENV = re.compile(
     re.DOTALL,
 )
 
-RE_SECTION = re.compile(
-    r"\\(?:section|subsection|subsubsection|chapter)\*?\{([^}]*)\}"
-)
+RE_SECTION = re.compile(r"\\(?:section|subsection|subsubsection|chapter)\*?\{([^}]*)\}")
 
 # Math font commands
-RE_FONT_CMD = re.compile(
-    r"\\(?:mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}"
-)
-FONT_RE = re.compile(
-    r"\\(mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}"
-)
+RE_FONT_CMD = re.compile(r"\\(?:mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}")
+FONT_RE = re.compile(r"\\(mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}")
 
 RE_SUBSCRIPT = re.compile(r"_\{[^}]*\}|_[A-Za-z0-9]")
 RE_SUPERSCRIPT = re.compile(r"\^\{[^}]*\}|\^[A-Za-z0-9]")
@@ -85,7 +79,7 @@ def split_into_sections(text: str) -> list[tuple[str, str]]:
 
     parts: list[tuple[str, str]] = []
     if positions[0] > 0:
-        parts.append(("preamble", text[:positions[0]]))
+        parts.append(("preamble", text[: positions[0]]))
 
     for i, (label, pos) in enumerate(zip(labels, positions)):
         end = positions[i + 1] if i + 1 < len(positions) else len(text)
@@ -149,9 +143,7 @@ def check_notation(
     if sections is not None:
         target_filters = [s.strip().lower() for s in sections if s.strip()]
         matched_sections = [
-            (label, sec_text)
-            for label, sec_text in all_sections
-            if any(tf in label.lower() for tf in target_filters)
+            (label, sec_text) for label, sec_text in all_sections if any(tf in label.lower() for tf in target_filters)
         ]
         if matched_sections:
             all_sections = matched_sections
@@ -182,23 +174,17 @@ def check_notation(
     multi_variant_flags: list[dict[str, Any]] = []
     for base, variants in symbol_variants.items():
         if len(variants) > 1:
-            multi_variant_flags.append({
-                "base_symbol": base,
-                "variants_seen": sorted(variants),
-                "sections": sorted(set(
-                    sec
-                    for v in variants
-                    for sec in symbol_sections.get(v, [])
-                )),
-            })
+            multi_variant_flags.append(
+                {
+                    "base_symbol": base,
+                    "variants_seen": sorted(variants),
+                    "sections": sorted(set(sec for v in variants for sec in symbol_sections.get(v, []))),
+                }
+            )
 
     # Cross-section symbol manifest
     manifest = {
-        sec: sorted(set(
-            letter
-            for block in extract_math_blocks(sec_txt)
-            for letter in symbols_in_block(block)
-        ))
+        sec: sorted(set(letter for block in extract_math_blocks(sec_txt) for letter in symbols_in_block(block)))
         for sec, sec_txt in all_sections
     }
 

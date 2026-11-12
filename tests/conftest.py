@@ -1,4 +1,5 @@
 """Shared test isolation: never touch the developer's real Zotero library or config."""
+
 import pytest
 
 from scifi.literature.zotero.writer import ZoteroLocalWriter

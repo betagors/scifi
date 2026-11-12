@@ -12,13 +12,12 @@ import math
 import re
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from scifi.literature.benchmarks import BenchmarkExtractor
-from scifi.literature.gaps import GapExtractor
-from scifi.literature.sota import SotaEvaluator
 from scifi.literature.extractor import extract_pdf_text
 from scifi.literature.fetcher import resolve_paper_pdf
+from scifi.literature.gaps import GapExtractor
 from scifi.literature.models import (
     CitationContextRecord,
     CitationRecord,
@@ -29,10 +28,11 @@ from scifi.literature.models import (
 )
 from scifi.literature.resolver import PaperResolver, clean_arxiv_id, clean_doi
 from scifi.literature.semantic_scholar import SemanticScholarClient
+from scifi.literature.sota import SotaEvaluator
 from scifi.literature.store import LiteratureStore
 
 
-def _extract_external_id_for_s2(paper: PaperRecord) -> Optional[str]:
+def _extract_external_id_for_s2(paper: PaperRecord) -> str | None:
     """
     Find best external identifier (DOI or arXiv ID) for Semantic Scholar citation context lookup.
     """
@@ -66,7 +66,7 @@ def _extract_external_id_for_s2(paper: PaperRecord) -> Optional[str]:
     return None
 
 
-def _extract_year_and_date(paper: PaperRecord | None) -> Tuple[int, str]:
+def _extract_year_and_date(paper: PaperRecord | None) -> tuple[int, str]:
     """
     Extract best available publication year and ISO date string from a PaperRecord.
     Returns (year, date_string). Defaults to (9999, "") if unknown.
@@ -93,13 +93,13 @@ class LineageCrawler:
 
     def __init__(
         self,
-        resolver: Optional[PaperResolver] = None,
-        store: Optional[LiteratureStore] = None,
+        resolver: PaperResolver | None = None,
+        store: LiteratureStore | None = None,
         max_request_budget: int = 25,
-        s2_client: Optional[SemanticScholarClient] = None,
-        gap_extractor: Optional[GapExtractor] = None,
-        benchmark_extractor: Optional[BenchmarkExtractor] = None,
-        sota_evaluator: Optional[SotaEvaluator] = None,
+        s2_client: SemanticScholarClient | None = None,
+        gap_extractor: GapExtractor | None = None,
+        benchmark_extractor: BenchmarkExtractor | None = None,
+        sota_evaluator: SotaEvaluator | None = None,
     ) -> None:
         self.resolver = resolver or PaperResolver()
         self.store = store
@@ -121,7 +121,7 @@ class LineageCrawler:
         self.request_count += 1
         return True
 
-    def _get_openalex_id(self, paper: PaperRecord) -> Optional[str]:
+    def _get_openalex_id(self, paper: PaperRecord) -> str | None:
         """Extract OpenAlex work ID from a paper's identifiers or canonical id."""
         for ident in paper.identifiers:
             if ident.provider.lower() == "openalex" and ident.external_id:
@@ -134,9 +134,9 @@ class LineageCrawler:
     def is_paper_accepted(
         self,
         paper: PaperRecord,
-        min_year: Optional[int] = None,
-        max_year: Optional[int] = None,
-        venue_tier: Optional[str] = None,
+        min_year: int | None = None,
+        max_year: int | None = None,
+        venue_tier: str | None = None,
         require_evidence: bool = False,
     ) -> bool:
         """
@@ -179,7 +179,11 @@ class LineageCrawler:
                         pass
 
                 if not has_evidence:
-                    if re.search(r"\b(?:\d+(?:\.\d+)?%|\baccuracy\b|\blatency\b|\bthroughput\b|\bbenchmark\b|\bempirical(?:ly)?\b|\bevaluation\b)", paper.abstract, re.IGNORECASE):
+                    if re.search(
+                        r"\b(?:\d+(?:\.\d+)?%|\baccuracy\b|\blatency\b|\bthroughput\b|\bbenchmark\b|\bempirical(?:ly)?\b|\bevaluation\b)",
+                        paper.abstract,
+                        re.IGNORECASE,
+                    ):
                         has_evidence = True
 
             if not has_evidence:
@@ -190,9 +194,9 @@ class LineageCrawler:
     def resolve_seed(
         self,
         query: str | PaperRecord,
-        min_year: Optional[int] = None,
-        max_year: Optional[int] = None,
-    ) -> Optional[PaperRecord]:
+        min_year: int | None = None,
+        max_year: int | None = None,
+    ) -> PaperRecord | None:
         """
         Resolve a seed paper from a query string (title, DOI, arXiv ID, OpenAlex ID)
         or pass through if already a PaperRecord.
@@ -246,20 +250,16 @@ class LineageCrawler:
             return None
         return self.resolver.resolve_by_title(clean_q, min_year=min_year, max_year=max_year)
 
-    def rank_foundations(
-        self, candidate_refs: List[PaperRecord], top_k: int = 5
-    ) -> List[PaperRecord]:
+    def rank_foundations(self, candidate_refs: list[PaperRecord], top_k: int = 5) -> list[PaperRecord]:
         """
         Backward (Foundations) ranking:
         Seed references ranked by composite weight: log(1 + C_global) + 2.0 * I_influential.
         Select top_k per expansion.
         """
-        scored: List[Tuple[float, PaperRecord]] = []
+        scored: list[tuple[float, PaperRecord]] = []
         for p in candidate_refs:
             c_global = max(0, p.citation_count)
-            is_influential = 1.0 if (
-                p.influential_citation_count > 0 or getattr(p, "is_influential", False)
-            ) else 0.0
+            is_influential = 1.0 if (p.influential_citation_count > 0 or getattr(p, "is_influential", False)) else 0.0
             weight = math.log1p(c_global) + (2.0 * is_influential)
             scored.append((weight, p))
 
@@ -269,17 +269,17 @@ class LineageCrawler:
 
     def rank_frontier(
         self,
-        candidate_citing: List[PaperRecord],
+        candidate_citing: list[PaperRecord],
         top_k: int = 5,
-        min_year: Optional[int] = None,
-    ) -> List[PaperRecord]:
+        min_year: int | None = None,
+    ) -> list[PaperRecord]:
         """
         Forward (Frontier) ranking:
         Papers citing seed ranked by annualized velocity: C / max(0.5, CurrentYear - Year + 1).
         Filter to recent works (<= 3 years old) or within min_year window. Select top_k per expansion.
         """
         cur_year = datetime.date.today().year
-        scored: List[Tuple[float, PaperRecord]] = []
+        scored: list[tuple[float, PaperRecord]] = []
 
         for p in candidate_citing:
             year, _ = _extract_year_and_date(p)
@@ -304,41 +304,41 @@ class LineageCrawler:
         return [p for _, p in scored[:top_k]]
 
     def detect_and_rectify_cycles(
-        self, papers: List[PaperRecord], citations: List[CitationRecord]
-    ) -> List[CitationRecord]:
+        self, papers: list[PaperRecord], citations: list[CitationRecord]
+    ) -> list[CitationRecord]:
         """
         Detect cycles in the directed citation network and rectify them by
         resolving circular citations using publication year/date hierarchy:
         removes the chronological violator (the edge where an older paper appears
         to cite a strictly newer paper).
         """
-        paper_map: Dict[str, PaperRecord] = {p.id: p for p in papers}
+        paper_map: dict[str, PaperRecord] = {p.id: p for p in papers}
 
         # Deduplicate incoming citations
-        current_citations: List[CitationRecord] = []
-        seen_edges: Set[Tuple[str, str]] = set()
+        current_citations: list[CitationRecord] = []
+        seen_edges: set[tuple[str, str]] = set()
         for c in citations:
             edge = (c.source_paper_id, c.target_paper_id)
             if edge not in seen_edges and c.source_paper_id != c.target_paper_id:
                 seen_edges.add(edge)
                 current_citations.append(c)
 
-        def _find_cycle(edges: List[CitationRecord]) -> Optional[List[Tuple[str, str]]]:
+        def _find_cycle(edges: list[CitationRecord]) -> list[tuple[str, str]] | None:
             """DFS-based cycle finder returning list of edges in the first found cycle."""
-            adj: Dict[str, List[str]] = {}
+            adj: dict[str, list[str]] = {}
             for edge_record in edges:
                 adj.setdefault(edge_record.source_paper_id, []).append(edge_record.target_paper_id)
 
             # 0: unvisited, 1: visiting, 2: visited
-            state: Dict[str, int] = {}
+            state: dict[str, int] = {}
             nodes = list(adj.keys())
 
             for start_node in nodes:
                 if state.get(start_node, 0) != 0:
                     continue
 
-                stack: List[Tuple[str, int]] = [(start_node, 0)]
-                path: List[str] = [start_node]
+                stack: list[tuple[str, int]] = [(start_node, 0)]
+                path: list[str] = [start_node]
                 state[start_node] = 1
 
                 while stack:
@@ -351,10 +351,7 @@ class LineageCrawler:
                         if v_state == 1:
                             # Cycle detected
                             cycle_nodes = path[path.index(v) :]
-                            cycle_edges = [
-                                (cycle_nodes[i], cycle_nodes[i + 1])
-                                for i in range(len(cycle_nodes) - 1)
-                            ]
+                            cycle_edges = [(cycle_nodes[i], cycle_nodes[i + 1]) for i in range(len(cycle_nodes) - 1)]
                             cycle_edges.append((cycle_nodes[-1], v))
                             return cycle_edges
                         elif v_state == 0:
@@ -376,7 +373,7 @@ class LineageCrawler:
             # For edge (u, v): u is citing v.
             # Normal causality: year(u) >= year(v).
             # Violator: year(u) < year(v) (older paper citing strictly newer paper).
-            worst_edge: Optional[Tuple[str, str]] = None
+            worst_edge: tuple[str, str] | None = None
             max_violation = -float("inf")
 
             for u, v in cycle:
@@ -406,9 +403,7 @@ class LineageCrawler:
 
         return current_citations
 
-    def compute_topological_depths(
-        self, papers: List[PaperRecord], citations: List[CitationRecord]
-    ) -> Dict[str, int]:
+    def compute_topological_depths(self, papers: list[PaperRecord], citations: list[CitationRecord]) -> dict[str, int]:
         """
         Compute integer topological depths: 0 <= depth <= D.
         Visual and intellectual lineage flows from Roots/Foundations (depth 0)
@@ -423,13 +418,13 @@ class LineageCrawler:
             paper_ids.add(c.target_paper_id)
 
         # Lineage dependency: source cites target, so target (foundation) is predecessor of source (citing)
-        predecessors: Dict[str, List[str]] = {pid: [] for pid in paper_ids}
+        predecessors: dict[str, list[str]] = {pid: [] for pid in paper_ids}
         for c in rectified_citations:
             if c.source_paper_id in paper_ids and c.target_paper_id in paper_ids:
                 predecessors[c.source_paper_id].append(c.target_paper_id)
 
-        depths: Dict[str, int] = {}
-        visiting: Set[str] = set()
+        depths: dict[str, int] = {}
+        visiting: set[str] = set()
 
         def _calc_depth(node: str) -> int:
             if node in depths:
@@ -456,17 +451,17 @@ class LineageCrawler:
         query: str | PaperRecord,
         depth: int = 2,
         max_papers: int = 25,
-        graph_id: Optional[str] = None,
+        graph_id: str | None = None,
         extract_gaps: bool = True,
         extract_benchmarks: bool = True,
-        min_year: Optional[int] = None,
-        max_year: Optional[int] = None,
-        venue_tier: Optional[str] = None,
+        min_year: int | None = None,
+        max_year: int | None = None,
+        venue_tier: str | None = None,
         require_evidence: bool = False,
         extract_fulltext_gaps: bool = True,
-        pdf_dir: Optional[str | Path] = None,
+        pdf_dir: str | Path | None = None,
         auto_fetch_pdf: bool = False,
-    ) -> Tuple[str, List[PaperRecord], List[CitationRecord]]:
+    ) -> tuple[str, list[PaperRecord], list[CitationRecord]]:
         """
         Execute multi-signal lineage crawl starting from query or seed paper:
         - Expands backward (foundations) and forward (frontier)
@@ -482,10 +477,10 @@ class LineageCrawler:
         if not seed:
             return (assigned_graph_id, [], [])
 
-        discovered_papers: Dict[str, PaperRecord] = {seed.id: seed}
-        node_roles: Dict[str, str] = {seed.id: "seed"}
-        citations: List[CitationRecord] = []
-        seen_citations: Set[Tuple[str, str]] = set()
+        discovered_papers: dict[str, PaperRecord] = {seed.id: seed}
+        node_roles: dict[str, str] = {seed.id: "seed"}
+        citations: list[CitationRecord] = []
+        seen_citations: set[tuple[str, str]] = set()
 
         def _add_citation(src: str, tgt: str, influential: bool = False) -> None:
             if src == tgt:
@@ -508,8 +503,8 @@ class LineageCrawler:
             if len(discovered_papers) >= max_papers or not self._can_request():
                 break
 
-            next_foundations: List[PaperRecord] = []
-            next_frontier: List[PaperRecord] = []
+            next_foundations: list[PaperRecord] = []
+            next_frontier: list[PaperRecord] = []
 
             # 1. Expand Foundations Backward
             for p in current_foundations:
@@ -525,7 +520,8 @@ class LineageCrawler:
                     raw_refs = []
 
                 filtered_refs = [
-                    ref for ref in raw_refs
+                    ref
+                    for ref in raw_refs
                     if self.is_paper_accepted(
                         ref,
                         min_year=min_year,
@@ -558,7 +554,8 @@ class LineageCrawler:
                     raw_cits = []
 
                 filtered_cits = [
-                    cit for cit in raw_cits
+                    cit
+                    for cit in raw_cits
                     if self.is_paper_accepted(
                         cit,
                         min_year=min_year,
@@ -610,7 +607,7 @@ class LineageCrawler:
                 s2 = self.s2_client or SemanticScholarClient()
                 extractor = self.gap_extractor or GapExtractor()
 
-                raw_gaps: List[Tuple[EvidenceRecord, PaperGapRecord]] = []
+                raw_gaps: list[tuple[EvidenceRecord, PaperGapRecord]] = []
 
                 for p in paper_list:
                     # 1. Extract self-reported abstract limitations
@@ -652,11 +649,10 @@ class LineageCrawler:
                     # 3. Extract citation context limitations via S2
                     ext_id = _extract_external_id_for_s2(p)
                     if ext_id:
-                        contexts: List[CitationContextRecord] = []
+                        contexts: list[CitationContextRecord] = []
                         try:
-                            fetch_fn = (
-                                getattr(s2, "fetch_citation_contexts", None)
-                                or getattr(s2, "get_paper_citations_with_contexts", None)
+                            fetch_fn = getattr(s2, "fetch_citation_contexts", None) or getattr(
+                                s2, "get_paper_citations_with_contexts", None
                             )
                             if fetch_fn:
                                 contexts = fetch_fn(ext_id) or []

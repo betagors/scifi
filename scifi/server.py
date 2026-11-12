@@ -9,12 +9,12 @@ and open-access literature retrieval.
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
 import requests
+from mcp.server.fastmcp import FastMCP
 
 from scifi.argus.engine import ArgusEngine
 from scifi.argus.models import SuggestedAction
@@ -38,17 +38,6 @@ from scifi.human import audit_human_prose
 from scifi.latex import check_venue_compliance, compile_latex, generate_latex_table
 from scifi.layout import audit_trim_budget
 from scifi.literature import extract_pdf_text, fetch_paper_pdf
-from scifi.proofs import audit_latex_proofs
-from scifi.rebuttal import diff_manuscript, format_rebuttal_scaffold
-from scifi.reproducibility import audit_reproducibility
-from scifi.shannon import evaluate_manuscript_metadata
-from scifi.submission import (
-    generate_cover_letter,
-    generate_highlights,
-    generate_title_page,
-    package_anonymous_code,
-    prepare_submission_bundle,
-)
 from scifi.literature.benchmarks import CANONICAL_BENCHMARKS
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import (
@@ -58,13 +47,12 @@ from scifi.literature.models import (
     EvaluationMetricRecord,
     PaperRecord,
     ProjectRecord,
-    ReprintRequestRecord,
 )
+from scifi.literature.reporter import save_bibtex_file, save_markdown_report
 from scifi.literature.reprint import (
     ingest_paper_copy,
     prepare_reprint_for_paper,
 )
-from scifi.literature.reporter import save_bibtex_file, save_markdown_report
 from scifi.literature.sota import SotaEvaluator
 from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
 from scifi.literature.visualizer import save_interactive_html
@@ -77,8 +65,19 @@ from scifi.math import (
     verify_derivation_step,
     verify_derivative,
 )
+from scifi.proofs import audit_latex_proofs
+from scifi.rebuttal import diff_manuscript, format_rebuttal_scaffold
+from scifi.reproducibility import audit_reproducibility
 from scifi.review import audit_claims
+from scifi.shannon import evaluate_manuscript_metadata
 from scifi.stats import audit_statistics, verify_curve
+from scifi.submission import (
+    generate_cover_letter,
+    generate_highlights,
+    generate_title_page,
+    package_anonymous_code,
+    prepare_submission_bundle,
+)
 
 mcp = FastMCP("scifi", instructions="Scientific Research & Academic Writing Toolkit")
 
@@ -146,10 +145,7 @@ def scifi_verify_citation(
         year=claimed_year,
         venue=claimed_venue,
     )
-    cached_authors = [
-        a["name"] if isinstance(a, dict) else str(a)
-        for a in canonical_data.get("authors", [])
-    ]
+    cached_authors = [a["name"] if isinstance(a, dict) else str(a) for a in canonical_data.get("authors", [])]
     discrepancies = audit_discrepancies(
         claimed,
         verified_title=canonical_data.get("title"),
@@ -165,7 +161,10 @@ def scifi_verify_citation(
         "venue": claimed_venue,
     }
     result["discrepancies"] = [d.to_dict() for d in discrepancies]
-    if any(d.severity == Severity.ERROR for d in discrepancies) and result.get("status") == VerificationStatus.VERIFIED.value:
+    if (
+        any(d.severity == Severity.ERROR for d in discrepancies)
+        and result.get("status") == VerificationStatus.VERIFIED.value
+    ):
         result["status"] = VerificationStatus.MISMATCH.value
     return result
 
@@ -242,7 +241,7 @@ def scifi_search_literature(
         resp = requests.get(
             "https://api.openalex.org/works",
             headers=headers,
-            params={"search": query, "per_page": limit},
+            params={"search": query, "per_page": str(limit)},
             timeout=10,
         )
         if resp.status_code == 200:
@@ -276,16 +275,18 @@ def scifi_search_literature(
                 )
                 cite_key = meta.generate_cite_key()
                 bibtex = meta.to_bibtex(key=cite_key)
-                results.append({
-                    "title": title,
-                    "doi": doi,
-                    "authors": authors,
-                    "year": year,
-                    "venue": venue,
-                    "citation_count": citation_count,
-                    "cite_key": cite_key,
-                    "bibtex": bibtex,
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "doi": doi,
+                        "authors": authors,
+                        "year": year,
+                        "venue": venue,
+                        "citation_count": citation_count,
+                        "cite_key": cite_key,
+                        "bibtex": bibtex,
+                    }
+                )
     except Exception:
         pass
 
@@ -295,17 +296,19 @@ def scifi_search_literature(
         if canonical:
             meta, conf, _ = canonical
             cite_key = meta.generate_cite_key()
-            results.append({
-                "title": meta.title,
-                "doi": meta.canonical_doi,
-                "authors": [a.name for a in meta.authors],
-                "year": meta.year,
-                "venue": meta.venue,
-                "citation_count": meta.citation_count,
-                "cite_key": cite_key,
-                "bibtex": meta.to_bibtex(key=cite_key),
-                "confidence": conf,
-            })
+            results.append(
+                {
+                    "title": meta.title,
+                    "doi": meta.canonical_doi,
+                    "authors": [a.name for a in meta.authors],
+                    "year": meta.year,
+                    "venue": meta.venue,
+                    "citation_count": meta.citation_count,
+                    "cite_key": cite_key,
+                    "bibtex": meta.to_bibtex(key=cite_key),
+                    "confidence": conf,
+                }
+            )
 
     if results:
         cache.set(cache_key, {"results": results})
@@ -372,11 +375,13 @@ def scifi_audit_attribution(
                     )
                 append_bibtex_entry(bib_file, bib_entry, f.cite_key)
                 fixed_count += 1
-                fixed_details.append({
-                    "entity": f.matched_entity,
-                    "cite_key": f.cite_key,
-                    "line": f.line_number,
-                })
+                fixed_details.append(
+                    {
+                        "entity": f.matched_entity,
+                        "cite_key": f.cite_key,
+                        "line": f.line_number,
+                    }
+                )
         findings_dict["autofix"] = {
             "applied": True,
             "fixed_count": fixed_count,
@@ -1510,8 +1515,6 @@ def scifi_audit_human(
     )
 
 
-
-
 @mcp.tool()
 def scifi_audit_figures(
     tex_path: str,
@@ -1774,10 +1777,12 @@ def scifi_zotero_get_collection_papers(collection: str | None = None) -> list[di
     Retrieve papers belonging to a Zotero collection with their local PDF file paths.
     """
     from scifi.literature.zotero.reader import ZoteroLocalReader
+
     reader = ZoteroLocalReader()
     col = collection
     if not col:
         from pathlib import Path
+
         cfg = Path(".scifi/config.toml")
         if cfg.is_file():
             for line in cfg.read_text(encoding="utf-8").splitlines():
@@ -1807,6 +1812,7 @@ def scifi_zotero_get_annotations(item_key: str) -> list[dict[str, Any]]:
     Retrieve user PDF highlights, notes, and comments for a Zotero paper.
     """
     from scifi.literature.zotero.reader import ZoteroLocalReader
+
     reader = ZoteroLocalReader()
     annos = reader.get_user_annotations(item_key)
     return [

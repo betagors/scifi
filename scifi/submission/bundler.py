@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from scifi.latex.project import resolve_latex_project
 from scifi.submission.code_packager import package_anonymous_code
@@ -41,6 +42,7 @@ def _load_scifi_toml(root: Path) -> dict[str, Any]:
 
     try:
         import tomllib
+
         with open(toml_path, "rb") as f:
             return tomllib.load(f)
     except Exception:
@@ -197,9 +199,15 @@ def prepare_submission_bundle(
         "title": final_title,
         "artifacts": {
             "cover_letter_md": {"path": str(cl_path), "md5": _compute_md5(cl_path)},
-            "cover_letter_tex": {"path": str(out_path / "cover_letter.tex"), "md5": _compute_md5(out_path / "cover_letter.tex")},
+            "cover_letter_tex": {
+                "path": str(out_path / "cover_letter.tex"),
+                "md5": _compute_md5(out_path / "cover_letter.tex"),
+            },
             "highlights_md": {"path": str(hl_path), "md5": _compute_md5(hl_path), "all_valid": hl_res.all_valid},
-            "highlights_tex": {"path": str(out_path / "highlights.tex"), "md5": _compute_md5(out_path / "highlights.tex")},
+            "highlights_tex": {
+                "path": str(out_path / "highlights.tex"),
+                "md5": _compute_md5(out_path / "highlights.tex"),
+            },
             "title_page_tex": {"path": str(tp_tex_path), "md5": _compute_md5(tp_tex_path)},
             "title_page_md": {"path": str(out_path / "title_page.md"), "md5": _compute_md5(out_path / "title_page.md")},
         },

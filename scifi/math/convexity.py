@@ -5,6 +5,7 @@ Positive definiteness, Hessian analysis, and convexity verification engine (scif
 from __future__ import annotations
 
 from typing import Any
+
 import sympy as sp
 from sympy.parsing.latex import parse_latex
 
@@ -60,10 +61,7 @@ def check_convexity(
         f = _parse_latex_or_expr(expr)
 
         # Construct Hessian matrix
-        H_entries = [
-            [sp.diff(f, vi, vj) for vj in variables]
-            for vi in variables
-        ]
+        H_entries = [[sp.diff(f, vi, vj) for vj in variables] for vi in variables]
         H = sp.Matrix(H_entries)
         H_simplified = sp.simplify(H)
 
@@ -107,9 +105,9 @@ def check_convexity(
         elif claimed_norm == "strictly_concave":
             is_correct = is_nd
         elif claimed_norm == "indefinite":
-            is_correct = (not is_psd and not is_nsd)
+            is_correct = not is_psd and not is_nsd
         else:
-            is_correct = (actual == claimed_norm)
+            is_correct = actual == claimed_norm
 
         result: dict[str, Any] = {
             "status": "VALID" if is_correct else "INVALID_CONVEXITY_CLAIM",

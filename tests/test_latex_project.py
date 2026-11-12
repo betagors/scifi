@@ -5,7 +5,6 @@ Unit tests for Multi-File LaTeX Project Resolver (scifi.latex.project).
 from __future__ import annotations
 
 from pathlib import Path
-import pytest
 
 from scifi.latex.project import find_main_tex, resolve_latex_project
 
@@ -28,8 +27,7 @@ def test_multifile_latex_resolution_and_line_mapping(tmp_path: Path):
         encoding="utf-8",
     )
     (sec_dir / "method.tex").write_text(
-        "\\section{System Model}\n"
-        "Here $\\mathbf{P}$ is the matrix and \\cite{missing2026key} is cited.\n",
+        "\\section{System Model}\nHere $\\mathbf{P}$ is the matrix and \\cite{missing2026key} is cited.\n",
         encoding="utf-8",
     )
     (tmp_path / "references.bib").write_text(
@@ -68,7 +66,7 @@ def test_multifile_latex_resolution_and_line_mapping(tmp_path: Path):
 
     # Verify line provenance mapping back to sections/method.tex
     merged_lines = proj.merged_text.splitlines()
-    target_idx = next(i for i, l in enumerate(merged_lines, start=1) if "missing2026key" in l)
+    target_idx = next(i for i, line in enumerate(merged_lines, start=1) if "missing2026key" in line)
     src_file, src_line = proj.map_merged_line(target_idx)
     assert src_file == "sections/method.tex"
     assert src_line == 2
@@ -80,14 +78,11 @@ def test_circular_include_and_missing_subfile_safety(tmp_path: Path):
     b_tex = tmp_path / "sub.tex"
 
     a_tex.write_text(
-        "\\documentclass{article}\n"
-        "\\input{sub}\n"
-        "\\input{nonexistent_section}\n",
+        "\\documentclass{article}\n\\input{sub}\n\\input{nonexistent_section}\n",
         encoding="utf-8",
     )
     b_tex.write_text(
-        "\\section{Sub}\n"
-        "\\input{main}\n",
+        "\\section{Sub}\n\\input{main}\n",
         encoding="utf-8",
     )
 

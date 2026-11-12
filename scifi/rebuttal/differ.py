@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import difflib
-from pathlib import Path
 import re
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from scifi.latex.compiler import compile_latex
 from scifi.rebuttal.models import ManuscriptDiffSummary
-
 
 RE_SECTION = re.compile(r"\\section\*?\{([^}]+?)\}")
 
@@ -80,17 +79,19 @@ def diff_manuscript(
             sec_del = len(o_lines)
         else:
             s_diff = list(difflib.unified_diff(o_lines, n_lines, lineterm=""))
-            sec_add = sum(1 for l in s_diff if l.startswith("+") and not l.startswith("+++"))
-            sec_del = sum(1 for l in s_diff if l.startswith("-") and not l.startswith("---"))
+            sec_add = sum(1 for line in s_diff if line.startswith("+") and not line.startswith("+++"))
+            sec_del = sum(1 for line in s_diff if line.startswith("-") and not line.startswith("---"))
             status = "MODIFIED" if (sec_add > 0 or sec_del > 0) else "UNCHANGED"
 
         if status != "UNCHANGED":
-            modified_sections.append({
-                "section": sec,
-                "added": sec_add,
-                "deleted": sec_del,
-                "status": status,
-            })
+            modified_sections.append(
+                {
+                    "section": sec,
+                    "added": sec_add,
+                    "deleted": sec_del,
+                    "status": status,
+                }
+            )
             ledger_rows.append(f"| **{sec}** | +{sec_add} | -{sec_del} | `{status}` |")
 
     diff_ledger_md = "\n".join(ledger_rows)

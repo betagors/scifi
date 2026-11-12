@@ -1,13 +1,11 @@
 """Unit tests for DomainRateLimiter in scifi.network.rate_limiter."""
 
-import os
 import threading
-import time
 from unittest.mock import patch
 
 import pytest
 
-from scifi.network.rate_limiter import DEFAULT_DOMAIN_LIMITS, DomainRateLimiter
+from scifi.network.rate_limiter import DomainRateLimiter
 
 
 def test_default_domain_rates() -> None:

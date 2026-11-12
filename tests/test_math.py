@@ -4,20 +4,20 @@ Unit tests for Turing Mathematical and Physics verification engines (scifi.math)
 
 import sys
 import tempfile
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 # Ensure scifi package is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scifi.math import (
-    verify_derivative,
-    verify_derivation_step,
-    check_limits,
-    check_units,
-    check_matrix_shapes,
     check_convexity,
+    check_limits,
+    check_matrix_shapes,
     check_notation,
+    check_units,
+    verify_derivation_step,
+    verify_derivative,
 )
 
 

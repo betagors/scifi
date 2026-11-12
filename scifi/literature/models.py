@@ -7,16 +7,16 @@ from __future__ import annotations
 import dataclasses
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
 class AuthorRecord:
     id: str
     name: str
-    orcid: Optional[str] = None
-    email: Optional[str] = None
-    institution: Optional[str] = None
+    orcid: str | None = None
+    email: str | None = None
+    institution: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -50,9 +50,9 @@ class PaperVersionRecord:
     id: str
     paper_id: str
     version_type: str
-    version_label: Optional[str] = None
-    doi: Optional[str] = None
-    release_date: Optional[str] = None
+    version_label: str | None = None
+    doi: str | None = None
+    release_date: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -71,9 +71,9 @@ class PaperLocationRecord:
     location_type: str
     is_oa: bool = False
     oa_status: str = "closed"
-    landing_page_url: Optional[str] = None
-    pdf_url: Optional[str] = None
-    local_pdf_path: Optional[str] = None
+    landing_page_url: str | None = None
+    pdf_url: str | None = None
+    local_pdf_path: str | None = None
     is_accessible: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,7 +91,7 @@ class CitationRecord:
     source_paper_id: str
     target_paper_id: str
     is_influential: bool = False
-    context: Optional[str] = None
+    context: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -109,8 +109,8 @@ class CitationContextRecord:
     source_paper_id: str
     target_paper_id: str
     context_text: str
-    section_name: Optional[str] = None
-    intent: Optional[str] = None
+    section_name: str | None = None
+    intent: str | None = None
     is_influential: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -130,11 +130,11 @@ class EvidenceRecord:
     evidence_type: str
     extracted_text: str
     extraction_method: str
-    reporting_paper_id: Optional[str] = None
-    source_section: Optional[str] = None
-    source_location: Optional[str] = None
-    confidence: Optional[float] = None
-    retrieved_at: Optional[str] = None
+    reporting_paper_id: str | None = None
+    source_section: str | None = None
+    source_location: str | None = None
+    confidence: float | None = None
+    retrieved_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -171,8 +171,8 @@ class PaperGapRecord:
 class GraphSessionRecord:
     id: str
     title: str
-    seed_paper_id: Optional[str] = None
-    created_at: Optional[str] = None
+    seed_paper_id: str | None = None
+    created_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -188,8 +188,8 @@ class GraphSessionRecord:
 class PaperRecord:
     id: str
     title: str
-    year: Optional[int] = None
-    publication_date: Optional[str] = None
+    year: int | None = None
+    publication_date: str | None = None
     citation_count: int = 0
     influential_citation_count: int = 0
     recent_citation_growth: float = 0.0
@@ -198,9 +198,9 @@ class PaperRecord:
     identifiers: list[PaperIdentifierRecord] = field(default_factory=list)
     versions: list[PaperVersionRecord] = field(default_factory=list)
     locations: list[PaperLocationRecord] = field(default_factory=list)
-    abstract: Optional[str] = None
-    venue_name: Optional[str] = None
-    venue_tier: Optional[str] = None
+    abstract: str | None = None
+    venue_name: str | None = None
+    venue_tier: str | None = None
 
     def generate_cite_key(self) -> str:
         """
@@ -254,11 +254,48 @@ class PaperRecord:
         if self.title:
             words = re.findall(r"[A-Za-z0-9]+", self.title)
             stop_words = {
-                "a", "an", "the", "and", "or", "but", "if", "then", "else", "when",
-                "at", "from", "by", "on", "off", "for", "in", "out", "over", "to",
-                "into", "with", "about", "against", "between", "through", "during",
-                "before", "after", "above", "below", "up", "down", "is", "are", "was",
-                "were", "be", "been", "being", "of", "pdf",
+                "a",
+                "an",
+                "the",
+                "and",
+                "or",
+                "but",
+                "if",
+                "then",
+                "else",
+                "when",
+                "at",
+                "from",
+                "by",
+                "on",
+                "off",
+                "for",
+                "in",
+                "out",
+                "over",
+                "to",
+                "into",
+                "with",
+                "about",
+                "against",
+                "between",
+                "through",
+                "during",
+                "before",
+                "after",
+                "above",
+                "below",
+                "up",
+                "down",
+                "is",
+                "are",
+                "was",
+                "were",
+                "be",
+                "been",
+                "being",
+                "of",
+                "pdf",
             }
             for w in words:
                 if w.lower() not in stop_words:
@@ -292,24 +329,16 @@ class PaperRecord:
     def from_dict(cls, data: dict[str, Any]) -> PaperRecord:
         data = data.copy()
         if "authors" in data and isinstance(data["authors"], list):
-            data["authors"] = [
-                AuthorRecord.from_dict(a) if isinstance(a, dict) else a
-                for a in data["authors"]
-            ]
+            data["authors"] = [AuthorRecord.from_dict(a) if isinstance(a, dict) else a for a in data["authors"]]
         if "identifiers" in data and isinstance(data["identifiers"], list):
             data["identifiers"] = [
-                PaperIdentifierRecord.from_dict(i) if isinstance(i, dict) else i
-                for i in data["identifiers"]
+                PaperIdentifierRecord.from_dict(i) if isinstance(i, dict) else i for i in data["identifiers"]
             ]
         if "versions" in data and isinstance(data["versions"], list):
-            data["versions"] = [
-                PaperVersionRecord.from_dict(v) if isinstance(v, dict) else v
-                for v in data["versions"]
-            ]
+            data["versions"] = [PaperVersionRecord.from_dict(v) if isinstance(v, dict) else v for v in data["versions"]]
         if "locations" in data and isinstance(data["locations"], list):
             data["locations"] = [
-                PaperLocationRecord.from_dict(loc) if isinstance(loc, dict) else loc
-                for loc in data["locations"]
+                PaperLocationRecord.from_dict(loc) if isinstance(loc, dict) else loc for loc in data["locations"]
             ]
 
         known = {f.name for f in dataclasses.fields(cls)}
@@ -322,8 +351,8 @@ class BenchmarkRecord:
     id: str
     name: str
     domain: str = ""
-    canonical_url: Optional[str] = None
-    description: Optional[str] = None
+    canonical_url: str | None = None
+    description: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -340,8 +369,8 @@ class EvaluationMetricRecord:
     id: str
     name: str
     goal: str = "maximize"
-    unit: Optional[str] = None
-    description: Optional[str] = None
+    unit: str | None = None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.goal, str) or self.goal.lower() not in ("maximize", "minimize"):
@@ -362,9 +391,9 @@ class EvaluationMetricRecord:
 class EvaluationConditionRecord:
     id: str
     name: str
-    dataset_split: Optional[str] = "test"
-    hardware: Optional[str] = None
-    notes: Optional[str] = None
+    dataset_split: str | None = "test"
+    hardware: str | None = None
+    notes: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -382,13 +411,13 @@ class BenchmarkResultRecord:
     paper_id: str
     benchmark_id: str
     metric_id: str
-    condition_id: Optional[str] = None
+    condition_id: str | None = None
     metric_value: float = 0.0
     is_sota: bool = False
-    rank: Optional[int] = None
-    evidence_id: Optional[str] = None
-    table_or_figure: Optional[str] = None
-    result_date: Optional[str] = None
+    rank: int | None = None
+    evidence_id: str | None = None
+    table_or_figure: str | None = None
+    result_date: str | None = None
     provenance_source: str = "author_reported"
 
     def __post_init__(self) -> None:
@@ -405,16 +434,14 @@ class BenchmarkResultRecord:
         return cls(**filtered)
 
 
-
-
 @dataclass
 class ProjectRecord:
     id: str
     name: str
     workspace_path: str
-    description: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    description: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -442,17 +469,17 @@ class ProjectRecord:
 @dataclass
 class ReprintRequestRecord:
     id: str
-    project_id: Optional[str]
+    project_id: str | None
     paper_id: str
     author_name: str
-    author_email: Optional[str] = None
-    author_affiliation: Optional[str] = None
+    author_email: str | None = None
+    author_affiliation: str | None = None
     status: str = "DRAFT_READY"
     subject: str = ""
     body: str = ""
-    mailto_url: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    mailto_url: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -481,6 +508,7 @@ class ReprintRequestRecord:
             created_at=str(row[10]) if len(row) > 10 and row[10] is not None else None,
             updated_at=str(row[11]) if len(row) > 11 and row[11] is not None else None,
         )
+
 
 __all__ = [
     "AuthorRecord",

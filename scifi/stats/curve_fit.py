@@ -127,7 +127,7 @@ def verify_curve(
 
             suffix = path.suffix.lower()
             if suffix == ".csv":
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     if reader.fieldnames is None or x_col not in reader.fieldnames or y_col not in reader.fieldnames:
                         return {
@@ -140,7 +140,7 @@ def verify_curve(
                         y_list.append(float(row[y_col]))
 
             elif suffix == ".json":
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     raw_json = json.load(f)
 
                 if isinstance(raw_json, dict):
@@ -203,7 +203,7 @@ def verify_curve(
             warnings.simplefilter("ignore", category=RuntimeWarning)
             y_theo_raw = f_num(x_arr)
         if np.isscalar(y_theo_raw) or (isinstance(y_theo_raw, np.ndarray) and y_theo_raw.shape == ()):
-            y_theo = np.full_like(x_arr, float(y_theo_raw), dtype=np.float64)
+            y_theo = np.full_like(x_arr, float(np.asarray(y_theo_raw).item()), dtype=np.float64)
         else:
             y_theo = np.asarray(y_theo_raw, dtype=np.float64)
 

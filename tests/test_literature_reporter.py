@@ -5,7 +5,6 @@ baseline summary table formatting, standardized BibTeX key generation,
 special character sanitization, and file export operations.
 """
 
-from pathlib import Path
 import pytest
 
 from scifi.literature.models import (
@@ -20,12 +19,10 @@ from scifi.literature.models import (
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
-    PaperVersionRecord,
 )
 from scifi.literature.reporter import (
     escape_bibtex,
     export_bibtex_entries,
-    format_benchmark_leaderboard,
     generate_markdown_report,
     save_bibtex_file,
     save_markdown_report,
@@ -350,8 +347,8 @@ def test_empty_and_edge_cases():
 
 def test_report_includes_delta_novelty_matrix_and_evidence(lineage_dataset):
     papers, citations, depths = lineage_dataset
-    root_paper = papers[0]     # p0-a
-    frontier_paper = papers[3] # p2-a
+    root_paper = papers[0]  # p0-a
+    frontier_paper = papers[3]  # p2-a
 
     ev1 = EvidenceRecord(
         id="ev-1",
@@ -572,7 +569,10 @@ def test_report_includes_sota_benchmark_leaderboard_section():
 
     # Section 5 header & intro
     assert "## 5. Empirical Benchmark Evaluation & SOTA Leaderboard" in report
-    assert "| Benchmark | Domain | Metric | SOTA Leader [Ref] | Baseline Frontier [Ref] | Performance Delta (Δ) | Evaluation Conditions | Evidence Source |" in report
+    assert (
+        "| Benchmark | Domain | Metric | SOTA Leader [Ref] | Baseline Frontier [Ref] | Performance Delta (Δ) | Evaluation Conditions | Evidence Source |"
+        in report
+    )
     assert "|---|---|---|---|---|---|---|---|" in report
 
     # Row contents
@@ -701,9 +701,7 @@ def test_save_markdown_report_forwards_benchmark_results(tmp_path):
     bm = BenchmarkRecord(id="bm-code", name="HumanEval", domain="Code Generation")
     metric = EvaluationMetricRecord(id="m-p1", name="pass@1", goal="maximize", unit="%")
 
-    res_b = BenchmarkResultRecord(
-        id="rb", paper_id="p-b", benchmark_id="bm-code", metric_id="m-p1", metric_value=65.0
-    )
+    res_b = BenchmarkResultRecord(id="rb", paper_id="p-b", benchmark_id="bm-code", metric_id="m-p1", metric_value=65.0)
     res_s = BenchmarkResultRecord(
         id="rs", paper_id="p-s", benchmark_id="bm-code", metric_id="m-p1", metric_value=82.0, is_sota=True
     )

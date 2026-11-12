@@ -9,16 +9,15 @@ mcp configuration files.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import importlib.resources
 import json
 import os
-from pathlib import Path
 import shutil
 import sys
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
-
 
 SCIFI_RULE_MARKER_START = "<!-- SCIFI-RULES:START -->"
 SCIFI_RULE_MARKER_END = "<!-- SCIFI-RULES:END -->"
@@ -375,7 +374,10 @@ def detect_environments(
     if sys.platform == "win32" or appdata_dir is not None:
         claude_candidates.append((appdata / "Claude" / "claude_desktop_config.json", appdata / "Claude"))
     claude_candidates.append(
-        (home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json", home / "Library" / "Application Support" / "Claude")
+        (
+            home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
+            home / "Library" / "Application Support" / "Claude",
+        )
     )
     claude_candidates.append((home / ".config" / "Claude" / "claude_desktop_config.json", home / ".config" / "Claude"))
     claude_candidates.append((home / ".claude" / "claude_desktop_config.json", home / ".claude"))
@@ -451,8 +453,23 @@ def detect_environments(
     # 6. VS Code Cline: cline_mcp_settings.json
     cline_candidates = [
         appdata / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings" / "cline_mcp_settings.json",
-        home / "Library" / "Application Support" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings" / "cline_mcp_settings.json",
-        home / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings" / "cline_mcp_settings.json",
+        home
+        / "Library"
+        / "Application Support"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "saoudrizwan.claude-dev"
+        / "settings"
+        / "cline_mcp_settings.json",
+        home
+        / ".config"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "saoudrizwan.claude-dev"
+        / "settings"
+        / "cline_mcp_settings.json",
     ]
     cline_path = cline_candidates[0]
     cline_detected = False
@@ -473,9 +490,30 @@ def detect_environments(
 
     # 7. VS Code Roo Code: cline_mcp_settings.json
     roo_candidates = [
-        appdata / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings" / "cline_mcp_settings.json",
-        home / "Library" / "Application Support" / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings" / "cline_mcp_settings.json",
-        home / ".config" / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings" / "cline_mcp_settings.json",
+        appdata
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "rooveterinaryinc.roo-cline"
+        / "settings"
+        / "cline_mcp_settings.json",
+        home
+        / "Library"
+        / "Application Support"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "rooveterinaryinc.roo-cline"
+        / "settings"
+        / "cline_mcp_settings.json",
+        home
+        / ".config"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "rooveterinaryinc.roo-cline"
+        / "settings"
+        / "cline_mcp_settings.json",
     ]
     roo_path = roo_candidates[0]
     roo_detected = False
@@ -735,7 +773,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
         return 0
 
     if not detected:
-        print("No installed AI environments (OpenCode, Claude Code, VS Code Cline/Roo, Cursor, Windsurf, Antigravity, Claude Desktop) were automatically detected.")
+        print(
+            "No installed AI environments (OpenCode, Claude Code, VS Code Cline/Roo, Cursor, Windsurf, Antigravity, Claude Desktop) were automatically detected."
+        )
         if auto:
             print("Auto-setup exiting: no environments detected to configure.")
             return 0
@@ -801,4 +841,3 @@ def cmd_sync(args: argparse.Namespace) -> int:
         rel = p.relative_to(project) if p.is_relative_to(project) else p
         print(f"  - {rel}")
     return 0
-

@@ -1,17 +1,22 @@
 """Tests for scifi.layout page budget and trimming assistant (scribe/layout)."""
 
 from pathlib import Path
-import pytest
 
-from scifi.layout.abbreviations import abbreviate_venue, abbreviate_bib_string
+from scifi.layout.abbreviations import abbreviate_bib_string, abbreviate_venue
 from scifi.layout.models import TrimSuggestionType
 from scifi.layout.trim import audit_trim_budget, detect_paragraph_slack
 
 
 def test_abbreviate_venue_known_venues():
     assert abbreviate_venue("Advances in Neural Information Processing Systems") == "Proc. NeurIPS"
-    assert abbreviate_venue("Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition") == "Proc. IEEE/CVF CVPR"
-    assert abbreviate_venue("IEEE Transactions on Pattern Analysis and Machine Intelligence") == "IEEE Trans. Pattern Anal. Mach. Intell."
+    assert (
+        abbreviate_venue("Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition")
+        == "Proc. IEEE/CVF CVPR"
+    )
+    assert (
+        abbreviate_venue("IEEE Transactions on Pattern Analysis and Machine Intelligence")
+        == "IEEE Trans. Pattern Anal. Mach. Intell."
+    )
     assert abbreviate_venue("International Conference on Machine Learning") == "Proc. ICML"
     assert abbreviate_venue("Random Obscure Workshop on AI") == "Random Obscure Workshop on AI"  # Unchanged fallback
 

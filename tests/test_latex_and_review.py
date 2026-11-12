@@ -2,7 +2,6 @@
 Unit tests for LaTeX Compiler (scifi.latex) and Adversarial Claims Scanner (scifi.review).
 """
 
-import os
 import sys
 import tempfile
 import unittest
@@ -103,10 +102,7 @@ class TestParseLog(unittest.TestCase):
         self.assertGreaterEqual(res["warnings_count"], 3)
 
     def test_parse_log_missing_packages(self):
-        sample_log = (
-            "! LaTeX Error: File `amsmath.sty' not found.\n"
-            "! LaTeX Error: File 'custom_cls.cls' not found.\n"
-        )
+        sample_log = "! LaTeX Error: File `amsmath.sty' not found.\n! LaTeX Error: File 'custom_cls.cls' not found.\n"
         res = parse_log(sample_log)
         self.assertIn("amsmath.sty", res["missing_packages"])
         self.assertIn("custom_cls.cls", res["missing_packages"])
@@ -194,7 +190,9 @@ class TestCompileLatex(unittest.TestCase):
     def test_compile_latex_mock_compilation_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tex_file = Path(tmpdir) / "doc.tex"
-            tex_file.write_text(r"\documentclass{article}\begin{document}\undefinedmacro\end{document}", encoding="utf-8")
+            tex_file.write_text(
+                r"\documentclass{article}\begin{document}\undefinedmacro\end{document}", encoding="utf-8"
+            )
 
             def fake_run(cmd, *args, **kwargs):
                 mock_res = MagicMock()

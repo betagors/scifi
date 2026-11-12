@@ -7,6 +7,7 @@ paper/author/location/version/citation persistence, and read-only query protecti
 import threading
 import time
 from pathlib import Path
+
 import pytest
 
 from scifi.literature.models import (
@@ -105,7 +106,9 @@ def test_save_and_retrieve_paper_with_full_metadata(tmp_path: Path):
         AuthorRecord(id="a-2", name="Noam Shazeer", orcid="0000-0001-0000-0002", institution="Google Brain"),
     ]
     identifiers = [
-        PaperIdentifierRecord(paper_id="p-vaswani", provider="doi", external_id="10.48550/arXiv.1706.03762", is_canonical=True),
+        PaperIdentifierRecord(
+            paper_id="p-vaswani", provider="doi", external_id="10.48550/arXiv.1706.03762", is_canonical=True
+        ),
         PaperIdentifierRecord(paper_id="p-vaswani", provider="arxiv", external_id="1706.03762", is_canonical=False),
     ]
     versions = [
@@ -366,7 +369,6 @@ def test_read_only_query_multi_statement_and_empty(tmp_path: Path):
         # Multi-statement injection attempt is blocked
         with pytest.raises(PermissionError):
             store.execute_read_query("SELECT 1; DROP TABLE papers;")
-
 
 
 def test_store_evidence_and_gap_persistence(tmp_path: Path):
@@ -726,4 +728,3 @@ def test_store_saves_and_retrieves_benchmarks_and_results(tmp_path: Path):
         assert store.get_graph_benchmarks("g-other") == {}
         assert store.get_graph_metrics("g-other") == {}
         assert store.get_graph_conditions("g-other") == {}
-

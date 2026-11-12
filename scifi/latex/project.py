@@ -15,34 +15,25 @@ This module resolves single-file or multi-file LaTeX projects into:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
 from typing import Any
-
 
 # Regex for stripping unescaped LaTeX comments on a line
 RE_COMMENT = re.compile(r"(?<!\\)%.*$")
 
 # Regex for matching \input{...}, \include{...}, \subfile{...}
-RE_INCLUDE = re.compile(
-    r"\\(?:input|include|subfile)\s*\{\s*([^}]+?)\s*\}"
-)
+RE_INCLUDE = re.compile(r"\\(?:input|include|subfile)\s*\{\s*([^}]+?)\s*\}")
 
 # Regex for matching \import{dir}{file} or \subimport{dir}{file}
-RE_IMPORT = re.compile(
-    r"\\(?:sub)?import\s*\{\s*([^}]*?)\s*\}\s*\{\s*([^}]+?)\s*\}"
-)
+RE_IMPORT = re.compile(r"\\(?:sub)?import\s*\{\s*([^}]*?)\s*\}\s*\{\s*([^}]+?)\s*\}")
 
 # Regex for \bibliography{a,b} and \addbibresource{a.bib}
-RE_BIBLIOGRAPHY = re.compile(
-    r"\\(?:bibliography|addbibresource)\s*\{\s*([^}]+?)\s*\}"
-)
+RE_BIBLIOGRAPHY = re.compile(r"\\(?:bibliography|addbibresource)\s*\{\s*([^}]+?)\s*\}")
 
 # Regex for citations (\cite, \citep, \citet, \citeauthor, \citeyear, \parencite, \textcite, \autocite)
-RE_CITE = re.compile(
-    r"\\(?:[a-zA-Z]*cite[a-zA-Z]*)\*?(?:\[[^\]]*\])*\{\s*([^}]+?)\s*\}"
-)
+RE_CITE = re.compile(r"\\(?:[a-zA-Z]*cite[a-zA-Z]*)\*?(?:\[[^\]]*\])*\{\s*([^}]+?)\s*\}")
 
 CANDIDATE_ROOT_NAMES = (
     "main.tex",
@@ -188,7 +179,9 @@ def resolve_latex_project(
     while recording exact `(relative_path, line_number)` provenance for every line in `merged_text`.
     """
     # Case 1: Raw LaTeX string passed directly
-    if isinstance(path_or_content, str) and ("\n" in path_or_content or "\\" in path_or_content and not Path(path_or_content).exists()):
+    if isinstance(path_or_content, str) and (
+        "\n" in path_or_content or "\\" in path_or_content and not Path(path_or_content).exists()
+    ):
         # Check if it looks like a missing file path vs raw LaTeX
         looks_like_path = (
             "\n" not in path_or_content

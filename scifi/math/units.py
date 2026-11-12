@@ -5,6 +5,7 @@ Dimensional consistency and physical unit verification engine (scifi.math.units)
 from __future__ import annotations
 
 from typing import Any
+
 import pint
 
 _ureg = pint.UnitRegistry()
@@ -67,12 +68,8 @@ def check_units(
             dims = [q.dimensionality for q in quantities]
             ref_dim = dims[0]
 
-            mismatches = [
-                {"term": terms[i], "dimensionality": str(d)}
-                for i, d in enumerate(dims)
-                if d != ref_dim
-            ]
-            is_compatible = (len(mismatches) == 0)
+            mismatches = [{"term": terms[i], "dimensionality": str(d)} for i, d in enumerate(dims) if d != ref_dim]
+            is_compatible = len(mismatches) == 0
 
             res = {
                 "status": "VALID" if is_compatible else "DIMENSION_MISMATCH",

@@ -4,13 +4,11 @@ Tests for Author Reprint Outreach Engine (scifi.literature.reprint).
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import urllib.parse
+
 import pytest
 
 from scifi.literature.models import AuthorRecord, PaperLocationRecord, PaperRecord
-from scifi.literature.store import LiteratureStore
 from scifi.literature.reprint import (
-    DEFAULT_STORAGE_DIR,
     build_mailto_url,
     create_reprint_record,
     generate_reprint_draft,
@@ -18,6 +16,7 @@ from scifi.literature.reprint import (
     prepare_reprint_for_paper,
     resolve_author_contact,
 )
+from scifi.literature.store import LiteratureStore
 
 
 def test_generate_reprint_draft_and_mailto():
@@ -373,8 +372,8 @@ def test_ingest_paper_copy_distinct_location_ids_for_shared_pdf(tmp_path: Path):
     shared_pdf.write_bytes(b"%PDF-1.4 conference proceedings volume")
 
     # Ingest same PDF for two distinct papers
-    result1 = ingest_paper_copy(store, proj.id, "10.1000/paper_a", shared_pdf, storage_dir=tmp_path / "storage")
-    result2 = ingest_paper_copy(store, proj.id, "10.1000/paper_b", shared_pdf, storage_dir=tmp_path / "storage")
+    ingest_paper_copy(store, proj.id, "10.1000/paper_a", shared_pdf, storage_dir=tmp_path / "storage")
+    ingest_paper_copy(store, proj.id, "10.1000/paper_b", shared_pdf, storage_dir=tmp_path / "storage")
 
     locs_a = store.get_paper_locations("10.1000/paper_a")
     locs_b = store.get_paper_locations("10.1000/paper_b")

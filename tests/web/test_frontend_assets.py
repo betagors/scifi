@@ -1,6 +1,6 @@
-from pathlib import Path
 import threading
 import urllib.request
+from pathlib import Path
 
 from scifi.literature.store import LiteratureStore
 from scifi.web.server import (

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 import re
-from typing import Sequence
 import zipfile
+from collections.abc import Sequence
+from pathlib import Path
 
 from scifi.submission.models import CodePackagerResult
 
@@ -38,15 +38,42 @@ EXCLUDED_FILE_PATTERNS = [
     re.compile(r"^.*\.(?:pdf|pyc|pyo|synctex\.gz|aux|bbl|blg|log|out|toc)$", re.IGNORECASE),
 ]
 
-RE_WIN_USER_PATH = re.compile(r"[a-zA-Z]:(?:\\{1,2}|/)(?:Users|home)(?:\\{1,2}|/)[^\\/\"'\r\n]+(?:(?:\\{1,2}|/)[^\\/\"'\r\n]+)*", re.IGNORECASE)
+RE_WIN_USER_PATH = re.compile(
+    r"[a-zA-Z]:(?:\\{1,2}|/)(?:Users|home)(?:\\{1,2}|/)[^\\/\"'\r\n]+(?:(?:\\{1,2}|/)[^\\/\"'\r\n]+)*", re.IGNORECASE
+)
 RE_UNIX_USER_PATH = re.compile(r"/(?:home|Users)/[^/\"'\r\n]+(?:/[^/\"'\r\n]+)*", re.IGNORECASE)
-RE_AUTHOR_HEADER = re.compile(r"^[ \t]*[#%/*;]+\s*(?:Author|Created by|Maintainer|Copyright)\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE)
-RE_NON_ANON_REPO = re.compile(r"https?://(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)/(?!anonymous)[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", re.IGNORECASE)
+RE_AUTHOR_HEADER = re.compile(
+    r"^[ \t]*[#%/*;]+\s*(?:Author|Created by|Maintainer|Copyright)\s*:[^\n]*\n?", re.IGNORECASE | re.MULTILINE
+)
+RE_NON_ANON_REPO = re.compile(
+    r"https?://(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)/(?!anonymous)[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+",
+    re.IGNORECASE,
+)
 
 TEXT_EXTENSIONS = {
-    ".py", ".sh", ".bash", ".r", ".m", ".c", ".cpp", ".h", ".hpp", ".java",
-    ".jl", ".json", ".yaml", ".yml", ".toml", ".txt", ".md", ".csv", ".tsv",
-    ".tex", ".bib", ".cfg", ".ini",
+    ".py",
+    ".sh",
+    ".bash",
+    ".r",
+    ".m",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".java",
+    ".jl",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".txt",
+    ".md",
+    ".csv",
+    ".tsv",
+    ".tex",
+    ".bib",
+    ".cfg",
+    ".ini",
 }
 
 
@@ -281,5 +308,5 @@ if __name__ == "__main__":
 def _compat_walk(path: Path):
     """Fallback os.walk generator for Path objects."""
     import os
-    for root, dirs, files in os.walk(path):
-        yield root, dirs, files
+
+    yield from os.walk(path)

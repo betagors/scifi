@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
 from scifi.network import get_session
+
 from .models import Author, CitationMetadata, VerificationStatus
 
 DEFAULT_USER_AGENT = "SciFi-CitationVerifier/1.0 (https://github.com/scifi-toolkit; mailto:scifi-toolkit@gmail.com)"
@@ -20,7 +21,7 @@ class CrossRefFetcher:
     BASE_URL = "https://api.crossref.org/works/"
 
     @classmethod
-    def fetch(cls, doi: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
+    def fetch(cls, doi: str, timeout: int = 10) -> dict[str, Any] | None:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
         url = f"{cls.BASE_URL}{requests.utils.quote(doi)}"
         try:
@@ -33,12 +34,12 @@ class CrossRefFetcher:
         return None
 
     @classmethod
-    def parse_metadata(cls, msg: Dict[str, Any], doi: str) -> CitationMetadata:
+    def parse_metadata(cls, msg: dict[str, Any], doi: str) -> CitationMetadata:
         title = "Unknown"
         if msg.get("title") and len(msg["title"]) > 0:
             title = msg["title"][0].strip()
 
-        authors: List[Author] = []
+        authors: list[Author] = []
         for a in msg.get("author", []):
             family = a.get("family", "")
             given = a.get("given", "")
@@ -92,7 +93,9 @@ class CrossRefFetcher:
             u_label = u.get("label", "")
             if "retract" in u_type or "retract" in u_label.lower():
                 is_retracted = True
-                retraction_details = f"Crossmark retraction recorded: {u.get('updated', {}).get('timestamp', '')} {u.get('doi', '')}"
+                retraction_details = (
+                    f"Crossmark retraction recorded: {u.get('updated', {}).get('timestamp', '')} {u.get('doi', '')}"
+                )
             elif any(k in u_type or k in u_label.lower() for k in ("errat", "correct", "concern")):
                 has_errata = True
                 errata_details = f"Crossmark update recorded: {u_type} {u.get('doi', '')}"
@@ -100,9 +103,9 @@ class CrossRefFetcher:
         return CitationMetadata(
             identifier_type="doi",
             identifier_value=doi,
-            status=VerificationStatus.RETRACTED if is_retracted else (
-                VerificationStatus.ERRATA_EXISTS if has_errata else VerificationStatus.VERIFIED
-            ),
+            status=VerificationStatus.RETRACTED
+            if is_retracted
+            else (VerificationStatus.ERRATA_EXISTS if has_errata else VerificationStatus.VERIFIED),
             canonical_doi=doi,
             canonical_url=f"https://doi.org/{doi}",
             title=title,
@@ -127,7 +130,7 @@ class OpenAlexFetcher:
     BASE_URL = "https://api.openalex.org/works/"
 
     @classmethod
-    def fetch(cls, identifier: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
+    def fetch(cls, identifier: str, timeout: int = 10) -> dict[str, Any] | None:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
         # identifier can be: DOI, OpenAlex ID (W...), PMID, etc.
         if identifier.startswith("10."):
@@ -148,12 +151,12 @@ class OpenAlexFetcher:
         return None
 
     @classmethod
-    def parse_metadata(cls, data: Dict[str, Any]) -> CitationMetadata:
+    def parse_metadata(cls, data: dict[str, Any]) -> CitationMetadata:
         title = data.get("title") or "Unknown"
         doi_url = data.get("doi")
         canonical_doi = doi_url.replace("https://doi.org/", "") if doi_url else None
 
-        authors: List[Author] = []
+        authors: list[Author] = []
         for auth_entry in data.get("authorships", []):
             raw_author = auth_entry.get("author", {})
             name = raw_author.get("display_name", "")
@@ -222,7 +225,7 @@ class ArXivFetcher:
     BASE_URL = "http://export.arxiv.org/api/query?id_list="
 
     @classmethod
-    def fetch(cls, arxiv_id: str, timeout: int = 10) -> Optional[CitationMetadata]:
+    def fetch(cls, arxiv_id: str, timeout: int = 10) -> CitationMetadata | None:
         clean_id = re.sub(r"^arxiv:", "", arxiv_id, flags=re.IGNORECASE).strip()
         url = f"{cls.BASE_URL}{clean_id}"
         try:
@@ -240,9 +243,11 @@ class ArXivFetcher:
                 return None
 
             raw_title = entry.find("atom:title", ns)
-            title = re.sub(r"\s+", " ", raw_title.text.strip()) if raw_title is not None and raw_title.text else "Unknown"
+            title = (
+                re.sub(r"\s+", " ", raw_title.text.strip()) if raw_title is not None and raw_title.text else "Unknown"
+            )
 
-            authors: List[Author] = []
+            authors: list[Author] = []
             for author_node in entry.findall("atom:author", ns):
                 name_node = author_node.find("atom:name", ns)
                 if name_node is not None and name_node.text:
@@ -268,7 +273,11 @@ class ArXivFetcher:
             published_doi = doi_node.text.strip() if doi_node is not None and doi_node.text else None
 
             journal_ref_node = entry.find("arxiv:journal_ref", ns)
-            venue = journal_ref_node.text.strip() if journal_ref_node is not None and journal_ref_node.text else f"arXiv:{clean_id}"
+            venue = (
+                journal_ref_node.text.strip()
+                if journal_ref_node is not None and journal_ref_node.text
+                else f"arXiv:{clean_id}"
+            )
 
             return CitationMetadata(
                 identifier_type="arxiv",
@@ -293,7 +302,7 @@ class DataCiteFetcher:
     BASE_URL = "https://api.datacite.org/dois/"
 
     @classmethod
-    def fetch(cls, doi: str, timeout: int = 10) -> Optional[CitationMetadata]:
+    def fetch(cls, doi: str, timeout: int = 10) -> CitationMetadata | None:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/vnd.api+json"}
         url = f"{cls.BASE_URL}{requests.utils.quote(doi)}"
         try:
@@ -307,7 +316,7 @@ class DataCiteFetcher:
             title = titles[0].get("title") if titles else "Unknown"
 
             creators = attrs.get("creators", [])
-            authors: List[Author] = []
+            authors: list[Author] = []
             for c in creators:
                 family = c.get("familyName")
                 given = c.get("givenName")
@@ -341,7 +350,7 @@ class DataCiteFetcher:
 def resolve_citation(
     identifier_type: str,
     identifier_value: str,
-    extra_info: Optional[Dict[str, Any]] = None,
+    extra_info: dict[str, Any] | None = None,
     timeout: int = 10,
 ) -> CitationMetadata:
     """
@@ -350,7 +359,7 @@ def resolve_citation(
     2. Cross-checks OpenAlex for retraction status and citation counts.
     3. Returns unified CitationMetadata.
     """
-    meta: Optional[CitationMetadata] = None
+    meta: CitationMetadata | None = None
 
     if identifier_type == "doi":
         # 1. Query Crossref first

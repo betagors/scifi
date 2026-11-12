@@ -5,6 +5,7 @@ Unit tests for centralized configuration manager (scifi.config).
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 from scifi.config import (

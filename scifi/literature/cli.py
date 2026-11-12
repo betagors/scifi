@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
 import webbrowser
-from typing import Optional
+from pathlib import Path
 
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.reporter import save_bibtex_file, save_markdown_report
@@ -27,8 +26,8 @@ DEFAULT_DB_PATH = Path(".scifi/literature_store.db")
 
 def _resolve_project_id(
     store: LiteratureStore,
-    project_name_or_path: Optional[str | Path] = None,
-) -> Optional[str]:
+    project_name_or_path: str | Path | None = None,
+) -> str | None:
     """
     Resolve a project ID from an ID, name, or workspace path.
     If project_name_or_path is omitted, auto-discovers from current working directory.
@@ -475,7 +474,9 @@ def cmd_map(args: argparse.Namespace) -> int:
     n_benchmarks = len(benchmarks_map)
     n_sota_leaders = sum(1 for rlist in benchmark_results.values() for r in rlist if r.is_sota)
 
-    print(f"[SUCCESS] Literature map generated: {html_path} ({len(papers)} papers, {len(citations)} citations, Session: {graph_id})")
+    print(
+        f"[SUCCESS] Literature map generated: {html_path} ({len(papers)} papers, {len(citations)} citations, Session: {graph_id})"
+    )
     print(f"  Evidence: {total_gaps} extracted technical limitations ({corroborated_gaps} corroborated)")
     print(f"  Benchmarks: {total_results} results across {n_benchmarks} benchmarks ({n_sota_leaders} SOTA leaders)")
 
@@ -638,7 +639,7 @@ def cmd_literature_ingest_pdf(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_literature(args: argparse.Namespace, parser: Optional[argparse.ArgumentParser] = None) -> int:
+def cmd_literature(args: argparse.Namespace, parser: argparse.ArgumentParser | None = None) -> int:
     """Dispatch literature subcommands."""
     lit_cmd = getattr(args, "lit_command", None)
     if not lit_cmd:

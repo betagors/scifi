@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from scifi.submission.models import AuthorInfo, CoverLetterResult, normalize_authors
 from scifi.submission.profiles import get_publisher_profile
@@ -65,7 +66,7 @@ def generate_cover_letter(
         f"**To:** {editor}",
         f"**Journal:** *{journal_name}*{issn_str}\n",
         f"**Dear {editor},**\n",
-        f"We are pleased to submit our original research manuscript entitled **\"{title}\"** for publication in *{journal_name}* as a regular research article.\n",
+        f'We are pleased to submit our original research manuscript entitled **"{title}"** for publication in *{journal_name}* as a regular research article.\n',
     ]
 
     # Scope & Significance
@@ -87,62 +88,80 @@ def generate_cover_letter(
     # Prior conference extension (IEEE / general)
     if prior_doi or profile.require_conference_extension_clause:
         prior_ref = prior_doi or "[Prior Conference Paper DOI / Citation]"
-        md.extend([
-            "### Prior Publication & Significant Extension",
-            f"This manuscript extends our preliminary work published at {prior_ref}. "
-            "In accordance with publication ethics and venue guidelines, this journal version incorporates "
-            "substantially new technical contributions (> 30–50% new material), including complete mathematical "
-            "formulations, expanded experimental validation across realistic baselines, and ablation analyses not present in the conference version.\n",
-        ])
+        md.extend(
+            [
+                "### Prior Publication & Significant Extension",
+                f"This manuscript extends our preliminary work published at {prior_ref}. "
+                "In accordance with publication ethics and venue guidelines, this journal version incorporates "
+                "substantially new technical contributions (> 30–50% new material), including complete mathematical "
+                "formulations, expanded experimental validation across realistic baselines, and ablation analyses not present in the conference version.\n",
+            ]
+        )
 
     # Visual / Teaser asset
     if figure_path:
-        md.extend([
-            "### Graphical Abstract / Visual Summary",
-            f"A teaser figure and graphical summary representing our primary architecture is enclosed (`{figure_path}`).\n",
-        ])
+        md.extend(
+            [
+                "### Graphical Abstract / Visual Summary",
+                f"A teaser figure and graphical summary representing our primary architecture is enclosed (`{figure_path}`).\n",
+            ]
+        )
 
     # Springer Ethics
     if profile.require_ethics_declaration:
-        md.extend([
-            "### Ethics & Integrity Declarations",
-            "- **Research Involving Human and/or Animal Participants:** This research did not involve human participants or animal experiments.",
-            "- **Informed Consent:** Not applicable.",
-            "- **Ethics Approval:** The study protocol complies with institutional and publisher research integrity standards.",
-            "",
-        ])
+        md.extend(
+            [
+                "### Ethics & Integrity Declarations",
+                "- **Research Involving Human and/or Animal Participants:** This research did not involve human participants or animal experiments.",
+                "- **Informed Consent:** Not applicable.",
+                "- **Ethics Approval:** The study protocol complies with institutional and publisher research integrity standards.",
+                "",
+            ]
+        )
 
     # Declarations
-    md.extend([
-        "### Mandatory Declarations",
-        "- **Originality:** This manuscript represents original work and is not currently under consideration for publication elsewhere.",
-        "- **Authorship:** All named authors have reviewed and approved the manuscript and agree with its submission.",
-        "- **Competing Interests:** The authors declare that they have no competing financial or non-financial interests.",
-    ])
+    md.extend(
+        [
+            "### Mandatory Declarations",
+            "- **Originality:** This manuscript represents original work and is not currently under consideration for publication elsewhere.",
+            "- **Authorship:** All named authors have reviewed and approved the manuscript and agree with its submission.",
+            "- **Competing Interests:** The authors declare that they have no competing financial or non-financial interests.",
+        ]
+    )
 
     if code_link:
-        md.append(f"- **Data & Code Availability:** Source code, simulation scripts, and evaluation benchmarks are openly accessible at: {code_link}")
+        md.append(
+            f"- **Data & Code Availability:** Source code, simulation scripts, and evaluation benchmarks are openly accessible at: {code_link}"
+        )
     else:
-        md.append("- **Data & Code Availability:** Complete code, evaluation datasets, and environment setup scripts are packaged and available to reviewers upon request.")
+        md.append(
+            "- **Data & Code Availability:** Complete code, evaluation datasets, and environment setup scripts are packaged and available to reviewers upon request."
+        )
 
     # Suggested & Opposed Reviewers
     if suggested_reviewers:
         md.append("\n### Suggested Reviewers")
         for r in suggested_reviewers:
-            md.append(f"- **{r.get('name', 'Expert Reviewer')}** ({r.get('institution', 'Institution')}): `{r.get('email', '')}` — *{r.get('reason', 'Domain expertise in the core methodology')}*")
+            md.append(
+                f"- **{r.get('name', 'Expert Reviewer')}** ({r.get('institution', 'Institution')}): `{r.get('email', '')}` — *{r.get('reason', 'Domain expertise in the core methodology')}*"
+            )
 
     if opposed_reviewers:
         md.append("\n### Opposed Reviewers (Conflict of Interest)")
         for r in opposed_reviewers:
-            md.append(f"- **{r.get('name', 'Reviewer')}** ({r.get('institution', 'Institution')}): *{r.get('reason', 'Direct competing interest')}*")
+            md.append(
+                f"- **{r.get('name', 'Reviewer')}** ({r.get('institution', 'Institution')}): *{r.get('reason', 'Direct competing interest')}*"
+            )
 
-    md.extend([
-        "\nThank you for considering our manuscript for review in your prestigious journal. We look forward to receiving the reviewers' constructive feedback.\n",
-        "Sincerely,",
-        f"**{corr.name}**",
-        f"{corr.affiliation}",
-        f"Email: `{corr.email}`",
-    ])
+    md.extend(
+        [
+            "\nThank you for considering our manuscript for review in your prestigious journal. We look forward to receiving the reviewers' constructive feedback.\n",
+            "Sincerely,",
+            f"**{corr.name}**",
+            f"{corr.affiliation}",
+            f"Email: `{corr.email}`",
+        ]
+    )
 
     md_text = "\n".join(md)
 
@@ -166,56 +185,72 @@ def generate_cover_letter(
     ]
 
     if contributions:
-        tex.extend([
-            r"\noindent The primary technical contributions of our work include:",
-            r"\begin{itemize}",
-        ])
+        tex.extend(
+            [
+                r"\noindent The primary technical contributions of our work include:",
+                r"\begin{itemize}",
+            ]
+        )
         for c in contributions:
             tex.append(f"  \\item {c}")
         tex.append(r"\end{itemize}")
 
     if prior_doi or profile.require_conference_extension_clause:
         prior_ref = prior_doi or "our previous conference article"
-        tex.extend([
-            r"\par\vspace{0.5em}",
-            f"\\noindent \\textbf{{Prior Conference Extension:}} This submission extends {prior_ref} with substantial new technical contributions ($>30\\%$ new material), including complete proofs and comprehensive baseline evaluations.",
-        ])
+        tex.extend(
+            [
+                r"\par\vspace{0.5em}",
+                f"\\noindent \\textbf{{Prior Conference Extension:}} This submission extends {prior_ref} with substantial new technical contributions ($>30\\%$ new material), including complete proofs and comprehensive baseline evaluations.",
+            ]
+        )
 
     if figure_path:
-        tex.extend([
-            r"\par\vspace{0.5em}",
-            f"\\noindent \\textbf{{Graphical Abstract:}} A representative teaser figure is enclosed (\\texttt{{{figure_path}}}).",
-        ])
+        tex.extend(
+            [
+                r"\par\vspace{0.5em}",
+                f"\\noindent \\textbf{{Graphical Abstract:}} A representative teaser figure is enclosed (\\texttt{{{figure_path}}}).",
+            ]
+        )
 
     if profile.require_ethics_declaration:
-        tex.extend([
-            r"\par\vspace{0.5em}",
-            r"\noindent \textbf{Ethics Declarations:} The study protocol satisfies all institutional research integrity requirements and involved no human or animal experiments.",
-        ])
+        tex.extend(
+            [
+                r"\par\vspace{0.5em}",
+                r"\noindent \textbf{Ethics Declarations:} The study protocol satisfies all institutional research integrity requirements and involved no human or animal experiments.",
+            ]
+        )
 
     if suggested_reviewers:
-        tex.extend([
-            r"\par\vspace{0.5em}",
-            r"\noindent \textbf{Suggested Reviewers:}",
-            r"\begin{itemize}",
-        ])
+        tex.extend(
+            [
+                r"\par\vspace{0.5em}",
+                r"\noindent \textbf{Suggested Reviewers:}",
+                r"\begin{itemize}",
+            ]
+        )
         for r in suggested_reviewers:
-            tex.append(f"  \\item \\textbf{{{r.get('name', 'Reviewer')}}} ({r.get('institution', '')}) --- \\url{{{r.get('email', '')}}}")
+            tex.append(
+                f"  \\item \\textbf{{{r.get('name', 'Reviewer')}}} ({r.get('institution', '')}) --- \\url{{{r.get('email', '')}}}"
+            )
         tex.append(r"\end{itemize}")
 
     if code_link:
-        tex.extend([
-            r"\par\vspace{0.5em}",
-            f"\\noindent \\textbf{{Data & Code Availability:}} Artifacts are openly available at \\url{{{code_link}}}.",
-        ])
+        tex.extend(
+            [
+                r"\par\vspace{0.5em}",
+                f"\\noindent \\textbf{{Data & Code Availability:}} Artifacts are openly available at \\url{{{code_link}}}.",
+            ]
+        )
 
-    tex.extend([
-        r"\par\vspace{0.5em}",
-        r"\noindent This manuscript is original, has not been published previously, and is not currently under consideration elsewhere. All authors have approved the submission.",
-        r"\closing{Sincerely,}",
-        r"\end{letter}",
-        r"\end{document}",
-    ])
+    tex.extend(
+        [
+            r"\par\vspace{0.5em}",
+            r"\noindent This manuscript is original, has not been published previously, and is not currently under consideration elsewhere. All authors have approved the submission.",
+            r"\closing{Sincerely,}",
+            r"\end{letter}",
+            r"\end{document}",
+        ]
+    )
 
     tex_text = "\n".join(tex)
 

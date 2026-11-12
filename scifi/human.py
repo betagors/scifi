@@ -38,12 +38,11 @@ human-authored scientific source code from synthetic (LLM-generated) markup:
 from __future__ import annotations
 
 import math
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 from scifi.latex.project import resolve_latex_project, strip_tex_comments
-
 
 # ---------------------------------------------------------------------------
 # Constants & Forensic Dictionaries
@@ -234,19 +233,14 @@ def evaluate_list_fingerprints(
         if len(items) < 2:
             continue
 
-        bold_prefix_count = sum(
-            1
-            for it in items
-            if re.match(r"^\\textbf\{[^}]+\}\s*[:.]|^\\textbf\{[^}]+:\}", it)
-        )
+        bold_prefix_count = sum(1 for it in items if re.match(r"^\\textbf\{[^}]+\}\s*[:.]|^\\textbf\{[^}]+:\}", it))
         lengths = [float(len(re.sub(r"\s+", " ", it))) for it in items]
         _, _, cv = _mean_std_cv(lengths)
         bold_ratio = bold_prefix_count / len(items)
         is_clustered_cardinality = len(items) in (3, 5)
 
         is_anomalous = len(items) >= 3 and (
-            (bold_ratio >= 0.80 and cv < 0.18)
-            or (bold_ratio >= 0.80 and is_clustered_cardinality and cv < 0.25)
+            (bold_ratio >= 0.80 and cv < 0.18) or (bold_ratio >= 0.80 and is_clustered_cardinality and cv < 0.25)
         )
 
         block_info: dict[str, Any] = {
@@ -704,7 +698,11 @@ def _extract_clean_prose_paragraphs(clean_tex: str) -> list[str]:
     body = RE_LIST_ENV.sub("\n\n", body)
 
     # Remove section headers and standalone declaration lines
-    body = re.sub(r"\\(?:section|subsection|subsubsection|paragraph|title|author|date|maketitle|label|bibliography|bibliographystyle)\*?\{[^}]*\}", "\n\n", body)
+    body = re.sub(
+        r"\\(?:section|subsection|subsubsection|paragraph|title|author|date|maketitle|label|bibliography|bibliographystyle)\*?\{[^}]*\}",
+        "\n\n",
+        body,
+    )
     body = re.sub(r"\\cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{[^}]*\}", "", body)
     body = re.sub(r"\$(?:[^$]|\\\$)+\$", "MATHTOKEN", body)
     body = re.sub(r"\\[a-zA-Z]+\*?\{([^}]*)\}", r"\1", body)
@@ -948,10 +946,7 @@ def audit_human_prose(
     if isinstance(tex_or_dir_path, Path) or (
         isinstance(tex_or_dir_path, str)
         and "\n" not in tex_or_dir_path
-        and (
-            Path(tex_or_dir_path).exists()
-            or tex_or_dir_path.strip().endswith((".tex", ".md", ".txt"))
-        )
+        and (Path(tex_or_dir_path).exists() or tex_or_dir_path.strip().endswith((".tex", ".md", ".txt")))
     ):
         p = Path(tex_or_dir_path)
         if not p.exists():
@@ -992,14 +987,7 @@ def audit_human_prose(
     math_metrics, math_flags = evaluate_math_syntax_quirks(merged_text, line_map, default_file)
     stylo_metrics, stylo_flags = evaluate_stylometric_profile(merged_text, line_map, default_file)
 
-    all_flags = (
-        list_flags
-        + preamble_flags
-        + tabular_flags
-        + macro_flags
-        + math_flags
-        + stylo_flags
-    )
+    all_flags = list_flags + preamble_flags + tabular_flags + macro_flags + math_flags + stylo_flags
 
     # Compute 100-point Human Authenticity Score
     score = 100
@@ -1013,14 +1001,18 @@ def audit_human_prose(
         )
 
     if preamble_metrics["unused_packages"] or preamble_metrics["stereotypical_hyperref"]:
-        pen = min(10, len(preamble_metrics["unused_packages"]) * 4 + (5 if preamble_metrics["stereotypical_hyperref"] else 0))
+        pen = min(
+            10, len(preamble_metrics["unused_packages"]) * 4 + (5 if preamble_metrics["stereotypical_hyperref"] else 0)
+        )
         score -= pen
         deductions.append(f"-{pen} pts: Preamble exhibits uncurated packages or stereotypical hyperref configuration")
 
     if tabular_metrics["rigid_tables_count"] > 0:
         pen = min(10, tabular_metrics["rigid_tables_count"] * 5)
         score -= pen
-        deductions.append(f"-{pen} pts: {tabular_metrics['rigid_tables_count']} table(s) use unweighted single-character column specifiers without layout tuning")
+        deductions.append(
+            f"-{pen} pts: {tabular_metrics['rigid_tables_count']} table(s) use unweighted single-character column specifiers without layout tuning"
+        )
 
     if macro_metrics["canonical_expansion_count"] >= 8 and macro_metrics["custom_macro_count"] == 0:
         score -= 12
@@ -1122,7 +1114,9 @@ def format_human_report_markdown(data: dict[str, Any]) -> str:
     if data.get("file"):
         lines.append(f"**Target:** `{data['file']}`")
     if data.get("files_scanned"):
-        lines.append(f"**Files Scanned ({len(data['files_scanned'])}):** {', '.join(f'`{f}`' for f in data['files_scanned'])}")
+        lines.append(
+            f"**Files Scanned ({len(data['files_scanned'])}):** {', '.join(f'`{f}`' for f in data['files_scanned'])}"
+        )
     lines.append("")
 
     if data.get("deductions"):
@@ -1131,19 +1125,21 @@ def format_human_report_markdown(data: dict[str, Any]) -> str:
             lines.append(f"- {d}")
         lines.append("")
 
-    lines.extend([
-        "## 📊 6-Dimension Source-Code & Stylometric Profile",
-        "",
-        "| Forensic Dimension | Measured Metrics | Diagnostic Status |",
-        "| :--- | :--- | :--- |",
-        f"| **1. List Environments** | Total: {lst['total_lists']}, Anomalous (`R_IB >= 0.80`, low `CV`): {lst['anomalous_lists_count']} | {'⚠️ Synthetic Template' if lst['anomalous_lists_count'] else '✅ Human Baseline'} |",
-        f"| **2. Document Preamble** | Kitchen-sink overlap: {len(pre['kitchen_sink_overlap'])}/8, Unused: {', '.join(pre['unused_packages']) or 'None'}, Stereotypical `hyperref`: {pre['stereotypical_hyperref']} | {'⚠️ Boilerplate Stack' if (pre['unused_packages'] or pre['stereotypical_hyperref']) else '✅ Curated'} |",
-        f"| **3. Tabular Markup** | Total tables: {tab['total_tables']}, Unweighted rigid specs: {tab['rigid_tables_count']} | {'⚠️ Rigid Columns' if tab['rigid_tables_count'] else '✅ Tuned Layout'} |",
-        f"| **4. Macro Abstraction** | Custom macros: {mac['custom_macro_count']}, Canonical calls: {mac['canonical_expansion_count']} ($\\mu_{{\\mathrm{{macro}}}} = {mac['macro_abstraction_ratio']:.2f}$) | {'⚠️ Raw Expansions' if (mac['canonical_expansion_count'] >= 8 and mac['custom_macro_count'] == 0) else '✅ Modular'} |",
-        f"| **5. Mathematical Syntax** | Display eqs: {mth['display_math_environments']}, In-math text ($\\rho = {mth['rho_math_text']:.2f}$), Un-scoped subscripts: {mth['unscoped_subscript_count']}, Trapped punct: {mth['trapped_punctuation_count']} | {'⚠️ Math Artifacts' if (mth['in_math_commentary_count'] or mth['unscoped_subscript_count'] or mth['trapped_punctuation_count']) else '✅ Clean Typesetting'} |",
-        f"| **6. Prose Stylometry** | Excess AI words: {sty['excess_style_word_count']}, Em-dashes: {sty['em_dash_count']}, Sentence Burstiness $B_{{\\mathrm{{length}}}} = {sty['burstiness_length_cv']:.2f}$ ($\\mu={sty['sentence_length_mean']:.1f}$w) | {'⚠️ Synthetic Cadence' if (sty['excess_style_word_count'] or sty['em_dash_count'] or sty['is_low_burstiness']) else '✅ Natural Cadence'} |",
-        "",
-    ])
+    lines.extend(
+        [
+            "## 📊 6-Dimension Source-Code & Stylometric Profile",
+            "",
+            "| Forensic Dimension | Measured Metrics | Diagnostic Status |",
+            "| :--- | :--- | :--- |",
+            f"| **1. List Environments** | Total: {lst['total_lists']}, Anomalous (`R_IB >= 0.80`, low `CV`): {lst['anomalous_lists_count']} | {'⚠️ Synthetic Template' if lst['anomalous_lists_count'] else '✅ Human Baseline'} |",
+            f"| **2. Document Preamble** | Kitchen-sink overlap: {len(pre['kitchen_sink_overlap'])}/8, Unused: {', '.join(pre['unused_packages']) or 'None'}, Stereotypical `hyperref`: {pre['stereotypical_hyperref']} | {'⚠️ Boilerplate Stack' if (pre['unused_packages'] or pre['stereotypical_hyperref']) else '✅ Curated'} |",
+            f"| **3. Tabular Markup** | Total tables: {tab['total_tables']}, Unweighted rigid specs: {tab['rigid_tables_count']} | {'⚠️ Rigid Columns' if tab['rigid_tables_count'] else '✅ Tuned Layout'} |",
+            f"| **4. Macro Abstraction** | Custom macros: {mac['custom_macro_count']}, Canonical calls: {mac['canonical_expansion_count']} ($\\mu_{{\\mathrm{{macro}}}} = {mac['macro_abstraction_ratio']:.2f}$) | {'⚠️ Raw Expansions' if (mac['canonical_expansion_count'] >= 8 and mac['custom_macro_count'] == 0) else '✅ Modular'} |",
+            f"| **5. Mathematical Syntax** | Display eqs: {mth['display_math_environments']}, In-math text ($\\rho = {mth['rho_math_text']:.2f}$), Un-scoped subscripts: {mth['unscoped_subscript_count']}, Trapped punct: {mth['trapped_punctuation_count']} | {'⚠️ Math Artifacts' if (mth['in_math_commentary_count'] or mth['unscoped_subscript_count'] or mth['trapped_punctuation_count']) else '✅ Clean Typesetting'} |",
+            f"| **6. Prose Stylometry** | Excess AI words: {sty['excess_style_word_count']}, Em-dashes: {sty['em_dash_count']}, Sentence Burstiness $B_{{\\mathrm{{length}}}} = {sty['burstiness_length_cv']:.2f}$ ($\\mu={sty['sentence_length_mean']:.1f}$w) | {'⚠️ Synthetic Cadence' if (sty['excess_style_word_count'] or sty['em_dash_count'] or sty['is_low_burstiness']) else '✅ Natural Cadence'} |",
+            "",
+        ]
+    )
 
     flags = data.get("flags", [])
     if flags:

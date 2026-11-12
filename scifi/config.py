@@ -18,13 +18,12 @@ Supports:
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import json
 import os
-from pathlib import Path
 import tomllib
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
-
 
 DEFAULT_USER_AGENT_BASE = "SciFi-Toolkit/1.0 (https://github.com/Betagors/scifi"
 DEFAULT_FALLBACK_EMAIL = "scifi-toolkit@gmail.com"
@@ -132,16 +131,8 @@ def resolve_config(
     manuscript_sec = toml_data.get("manuscript", {}) if isinstance(toml_data.get("manuscript"), dict) else {}
     api_sec = toml_data.get("api", {}) if isinstance(toml_data.get("api"), dict) else {}
 
-    email = (
-        api_sec.get("email")
-        or os.environ.get("SCIFI_EMAIL")
-        or global_data.get("email")
-    )
-    s2_api_key = (
-        api_sec.get("s2_api_key")
-        or os.environ.get("S2_API_KEY")
-        or global_data.get("s2_api_key")
-    )
+    email = api_sec.get("email") or os.environ.get("SCIFI_EMAIL") or global_data.get("email")
+    s2_api_key = api_sec.get("s2_api_key") or os.environ.get("S2_API_KEY") or global_data.get("s2_api_key")
     default_venue = global_data.get("default_venue")
     target_venue = manuscript_sec.get("target_venue") or default_venue
 

@@ -53,7 +53,9 @@ def _load_table_rows(data_input: str | Path | list[dict[str, Any]]) -> tuple[lis
         cols = list(data_input[0].keys())
         return cols, data_input
 
-    if isinstance(data_input, Path) or (isinstance(data_input, str) and "\n" not in data_input and Path(data_input).is_file()):
+    if isinstance(data_input, Path) or (
+        isinstance(data_input, str) and "\n" not in data_input and Path(data_input).is_file()
+    ):
         p = Path(data_input)
         content = p.read_text(encoding="utf-8", errors="replace")
         if p.suffix.lower() == ".json":
@@ -156,7 +158,9 @@ def generate_latex_table(
             second_vals[col] = None
 
     # Alignment spec: 'l' for first/text columns, 'c' for numeric metric columns
-    align_spec = "".join("c" if (idx > 0 and numeric_cols.get(c, False)) else "l" for idx, c in enumerate(display_columns))
+    align_spec = "".join(
+        "c" if (idx > 0 and numeric_cols.get(c, False)) else "l" for idx, c in enumerate(display_columns)
+    )
 
     # Format header row
     header_cells: list[str] = []

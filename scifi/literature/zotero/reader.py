@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
 
 from scifi.env import auto_detect_zotero_dir
 from scifi.literature.zotero.models import (
@@ -24,7 +23,7 @@ class ZoteroLocalReader:
     Direct zero-copy reader for local Zotero SQLite databases.
     """
 
-    def __init__(self, data_dir: Optional[Union[str, Path]] = None) -> None:
+    def __init__(self, data_dir: str | Path | None = None) -> None:
         if data_dir is not None:
             self.data_dir = Path(data_dir).resolve()
         else:
@@ -49,7 +48,7 @@ class ZoteroLocalReader:
         uri = f"{self.sqlite_path.as_uri()}?immutable=1"
         return sqlite3.connect(uri, uri=True, timeout=10.0)
 
-    def get_collections(self) -> List[ZoteroCollection]:
+    def get_collections(self) -> list[ZoteroCollection]:
         """Retrieve all collections in the local Zotero library."""
         conn = self._get_connection()
         try:
@@ -68,7 +67,7 @@ class ZoteroLocalReader:
         finally:
             conn.close()
 
-    def get_collection_by_name(self, name: str) -> Optional[ZoteroCollection]:
+    def get_collection_by_name(self, name: str) -> ZoteroCollection | None:
         """Find a collection by name (case-insensitive)."""
         clean_name = name.strip().lower()
         for col in self.get_collections():
@@ -76,7 +75,7 @@ class ZoteroLocalReader:
                 return col
         return None
 
-    def find_best_matching_collection(self, citations: List[Dict[str, str]]) -> tuple[Optional[str], int]:
+    def find_best_matching_collection(self, citations: list[dict[str, str]]) -> tuple[str | None, int]:
         """
         Check which existing collection has the highest citation overlap with the given list of citations.
         Returns (best_collection_name, match_count).
@@ -91,14 +90,16 @@ class ZoteroLocalReader:
         # Build lookup set of clean DOIs and normalized titles
         cited_dois = {
             re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", c["doi"], flags=re.IGNORECASE).strip().lower()
-            for c in citations if c.get("doi")
+            for c in citations
+            if c.get("doi")
         }
         cited_titles = {
             re.sub(r"[^a-zA-Z0-9]", "", c["title"].lower())
-            for c in citations if c.get("title") and len(c["title"]) >= 8
+            for c in citations
+            if c.get("title") and len(c["title"]) >= 8
         }
 
-        best_col: Optional[str] = None
+        best_col: str | None = None
         best_count = 0
 
         for col in collections:
@@ -117,7 +118,7 @@ class ZoteroLocalReader:
 
         return best_col, best_count
 
-    def _extract_item_fields(self, cur: sqlite3.Cursor, item_id: int) -> Dict[str, str]:
+    def _extract_item_fields(self, cur: sqlite3.Cursor, item_id: int) -> dict[str, str]:
         """Extract metadata key-value pairs for an item."""
         rows = cur.execute(
             """
@@ -131,7 +132,7 @@ class ZoteroLocalReader:
         ).fetchall()
         return {r[0]: r[1] for r in rows}
 
-    def _extract_tags(self, cur: sqlite3.Cursor, item_id: int) -> List[str]:
+    def _extract_tags(self, cur: sqlite3.Cursor, item_id: int) -> list[str]:
         """Extract tag names for an item."""
         try:
             rows = cur.execute(
@@ -147,7 +148,7 @@ class ZoteroLocalReader:
         except Exception:
             return []
 
-    def _resolve_attachment_pdf(self, cur: sqlite3.Cursor, parent_item_id: int) -> Optional[Path]:
+    def _resolve_attachment_pdf(self, cur: sqlite3.Cursor, parent_item_id: int) -> Path | None:
         """Find the local PDF path for an item in Zotero storage."""
         rows = cur.execute(
             """
@@ -163,7 +164,7 @@ class ZoteroLocalReader:
             if not raw_path:
                 continue
             if raw_path.startswith("storage:"):
-                fname = raw_path[len("storage:"):]
+                fname = raw_path[len("storage:") :]
                 cand = self.storage_dir / att_key / fname
                 if cand.is_file():
                     return cand
@@ -173,7 +174,7 @@ class ZoteroLocalReader:
                     return p
         return None
 
-    def get_collection_items(self, collection_name_or_id: Union[str, int]) -> List[ZoteroItem]:
+    def get_collection_items(self, collection_name_or_id: str | int) -> list[ZoteroItem]:
         """Retrieve all paper items belonging to a collection."""
         if isinstance(collection_name_or_id, int):
             col_id = collection_name_or_id
@@ -184,7 +185,7 @@ class ZoteroLocalReader:
             col_id = col.collection_id
 
         conn = self._get_connection()
-        items: List[ZoteroItem] = []
+        items: list[ZoteroItem] = []
         try:
             cur = conn.cursor()
             has_deleted = cur.execute(
@@ -242,7 +243,7 @@ class ZoteroLocalReader:
         finally:
             conn.close()
 
-    def get_item_by_doi(self, doi: str) -> Optional[ZoteroItem]:
+    def get_item_by_doi(self, doi: str) -> ZoteroItem | None:
         """Find an item in Zotero by DOI."""
         clean_doi = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", doi.strip(), flags=re.IGNORECASE)
         conn = self._get_connection()
@@ -279,7 +280,7 @@ class ZoteroLocalReader:
         finally:
             conn.close()
 
-    def get_item_by_arxiv(self, arxiv_id: str) -> Optional[ZoteroItem]:
+    def get_item_by_arxiv(self, arxiv_id: str) -> ZoteroItem | None:
         """Find an item in Zotero by arXiv ID (in extra or url field)."""
         clean_arx = re.sub(r"^arxiv:\s*", "", arxiv_id.strip(), flags=re.IGNORECASE)
         conn = self._get_connection()
@@ -316,7 +317,7 @@ class ZoteroLocalReader:
         finally:
             conn.close()
 
-    def get_pdf_path(self, item_key: str) -> Optional[Path]:
+    def get_pdf_path(self, item_key: str) -> Path | None:
         """Retrieve the local PDF file path for a given item key."""
         conn = self._get_connection()
         try:
@@ -328,7 +329,7 @@ class ZoteroLocalReader:
         finally:
             conn.close()
 
-    def get_user_annotations(self, item_key: str) -> List[ZoteroAnnotation]:
+    def get_user_annotations(self, item_key: str) -> list[ZoteroAnnotation]:
         """Retrieve user PDF annotations (highlights, notes) for a given item key."""
         conn = self._get_connection()
         try:

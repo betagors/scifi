@@ -8,7 +8,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import requests
 
@@ -24,7 +24,7 @@ def _http_get(url: str, **kwargs: Any) -> requests.Response:
     return get_session().get(url, **kwargs)
 
 
-def _is_arxiv_identifier(identifier: str) -> Optional[str]:
+def _is_arxiv_identifier(identifier: str) -> str | None:
     """
     Check if the identifier is an arXiv ID or URL, and return the cleaned arXiv ID if so.
     """
@@ -53,7 +53,7 @@ def _is_arxiv_identifier(identifier: str) -> Optional[str]:
     return None
 
 
-def _resolve_target_path(identifier_slug: str, output_dir: Union[str, Path]) -> Path:
+def _resolve_target_path(identifier_slug: str, output_dir: str | Path) -> Path:
     """
     Resolve the destination file path given a target directory or file path.
     """
@@ -67,7 +67,7 @@ def _resolve_target_path(identifier_slug: str, output_dir: Union[str, Path]) -> 
     return target
 
 
-def _fetch_arxiv(arxiv_id: str, target_path: Path) -> Dict[str, Any]:
+def _fetch_arxiv(arxiv_id: str, target_path: Path) -> dict[str, Any]:
     """
     Download PDF directly from arXiv.
     """
@@ -128,13 +128,11 @@ def _download_pdf_stream(pdf_url: str, target_path: Path) -> bool:
     return False
 
 
-def _fetch_doi(doi: str, email: str, target_path: Path) -> Dict[str, Any]:
+def _fetch_doi(doi: str, email: str, target_path: Path) -> dict[str, Any]:
     """
     Query Unpaywall and OpenAlex for an open access PDF.
     """
-    clean_doi = re.sub(
-        r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", doi, flags=re.IGNORECASE
-    ).strip()
+    clean_doi = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", doi, flags=re.IGNORECASE).strip()
     headers = {"User-Agent": "scifi-literature/1.0 (academic-researcher)"}
 
     unpaywall_url = f"https://api.unpaywall.org/v2/{clean_doi}?email={email}"
@@ -244,9 +242,9 @@ def _fetch_doi(doi: str, email: str, target_path: Path) -> Dict[str, Any]:
 
 def fetch_paper_pdf(
     identifier: str,
-    output_dir: Union[str, Path] = "workspace",
+    output_dir: str | Path = "workspace",
     email: str = "researcher@scifi.org",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Fetch an open access academic paper PDF given an arXiv ID or DOI.
 
@@ -270,18 +268,16 @@ def fetch_paper_pdf(
         target_path = _resolve_target_path(arxiv_id, output_dir)
         return _fetch_arxiv(arxiv_id, target_path)
     else:
-        clean_doi = re.sub(
-            r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", identifier, flags=re.IGNORECASE
-        ).strip()
+        clean_doi = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", identifier, flags=re.IGNORECASE).strip()
         target_path = _resolve_target_path(clean_doi, output_dir)
         return _fetch_doi(clean_doi, email, target_path)
 
 
 def find_local_pdf(
     paper: Any,
-    search_dirs: Optional[list[Union[str, Path]]] = None,
-    zotero_reader: Optional[Any] = None,
-) -> Optional[Path]:
+    search_dirs: list[str | Path] | None = None,
+    zotero_reader: Any | None = None,
+) -> Path | None:
     """
     Search local directories for a PDF file corresponding to a PaperRecord.
 
@@ -314,6 +310,7 @@ def find_local_pdf(
             z_reader = zotero_reader
         else:
             from scifi.literature.zotero.reader import ZoteroLocalReader
+
             z_reader = ZoteroLocalReader()
 
         # Check explicit zotero identifier
@@ -425,12 +422,12 @@ def find_local_pdf(
 
 def resolve_paper_pdf(
     paper: Any,
-    local_dirs: Optional[list[Union[str, Path]]] = None,
+    local_dirs: list[str | Path] | None = None,
     auto_fetch: bool = False,
-    output_dir: Union[str, Path] = "workspace/papers",
+    output_dir: str | Path = "workspace/papers",
     email: str = "researcher@scifi.org",
-    zotero_reader: Optional[Any] = None,
-) -> Optional[Path]:
+    zotero_reader: Any | None = None,
+) -> Path | None:
     """
     Resolve local PDF path for a paper record, with optional open-access auto-fetching.
 
@@ -499,17 +496,13 @@ def resolve_paper_pdf(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Fetch open access paper PDF via DOI or arXiv ID"
-    )
+    parser = argparse.ArgumentParser(description="Fetch open access paper PDF via DOI or arXiv ID")
     parser.add_argument(
         "--id",
         required=True,
         help="DOI (e.g. 10.1007/...) or arXiv ID (e.g. 2301.12345)",
     )
-    parser.add_argument(
-        "--out", default="workspace", help="Target path or directory to save PDF"
-    )
+    parser.add_argument("--out", default="workspace", help="Target path or directory to save PDF")
     parser.add_argument(
         "--email",
         default="researcher@scifi.org",

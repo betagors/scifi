@@ -2,19 +2,14 @@
 Unit tests for Full-Text PDF Extraction, Local PDF Ingestion, and Full-Text Gap Mining.
 """
 
-from pathlib import Path
-import tempfile
 from unittest.mock import MagicMock, patch
-import pytest
-from pypdf import PdfWriter
 
 from scifi.literature.extractor import extract_sections_from_text
-from scifi.literature.fetcher import find_local_pdf, resolve_paper_pdf
+from scifi.literature.fetcher import find_local_pdf
 from scifi.literature.gaps import GapExtractor
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import (
     CitationContextRecord,
-    PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
     PaperRecord,
@@ -29,24 +24,24 @@ def test_extract_sections_from_text():
 
     Abstract:
     We present an optimization framework for multi-UAV path planning under uncertain dynamics.
-    
+
     1. Introduction
     Unmanned Aerial Vehicles (UAVs) have received significant attention.
-    
+
     II. SYSTEM MODEL AND PROBLEM FORMULATION
     We consider a network of N UAVs operating in a 3D coordinate space.
     We assume perfect channel state information between all nodes and the ground station.
     The communication topology is assumed static during each allocation epoch.
     The worst-case computational complexity scales as O(N^3) per scheduling iteration.
-    
+
     III. SIMULATION RESULTS
     We evaluate the scheme using 100 Monte Carlo runs.
-    
+
     IV. LIMITATIONS AND CONCLUSION
     A limitation of our approach is that performance degrades significantly under non-Gaussian noise.
     Moreover, the proposed algorithm was evaluated only on synthetic benchmarks with N <= 20.
     In conclusion, we showed resilience guarantees. Future work will investigate decentralized consensus.
-    
+
     REFERENCES
     [1] A. Vaswani et al.
     """
@@ -182,7 +177,9 @@ def test_find_local_pdf(tmp_path):
     p_loc = PaperRecord(
         id="paper-4",
         title="Custom Local File",
-        locations=[PaperLocationRecord(id="loc-1", paper_id="paper-4", location_type="local", local_pdf_path=str(arxiv_file))],
+        locations=[
+            PaperLocationRecord(id="loc-1", paper_id="paper-4", location_type="local", local_pdf_path=str(arxiv_file))
+        ],
     )
     found_loc = find_local_pdf(p_loc, search_dirs=[tmp_path / "empty"])
     assert found_loc is not None

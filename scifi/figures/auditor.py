@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import math
-from pathlib import Path
 import re
 import struct
+from pathlib import Path
 from typing import Any
 
 from scifi.figures.models import (
@@ -17,15 +16,10 @@ from scifi.figures.models import (
 )
 from scifi.latex.project import resolve_latex_project
 
-
-RE_INCLUDEGRAPHICS = re.compile(
-    r"\\includegraphics\*?(?:\[([^\]]*)\])?\s*\{\s*([^}]+?)\s*\}"
-)
+RE_INCLUDEGRAPHICS = re.compile(r"\\includegraphics\*?(?:\[([^\]]*)\])?\s*\{\s*([^}]+?)\s*\}")
 RE_CAPTION = re.compile(r"\\caption\*?(?:\[[^\]]*\])?\s*\{((?:[^{}]|\{[^{}]*\})*)\}")
 RE_LABEL = re.compile(r"\\label\s*\{\s*([^}]+?)\s*\}")
-RE_FIGURE_ENV = re.compile(
-    r"\\begin\{(figure\*?)\}(.*?)\\end\{\1\}", re.DOTALL
-)
+RE_FIGURE_ENV = re.compile(r"\\begin\{(figure\*?)\}(.*?)\\end\{\1\}", re.DOTALL)
 RE_SUBFIGURE_TAG = re.compile(r"\(([a-z])\)")
 RE_TIKZ_RED_GREEN = re.compile(
     r"\\draw\[[^\]]*?(?:red)[^\]]*?\].*?;.*?\\draw\[[^\]]*?(?:green)[^\]]*?\]",
@@ -70,9 +64,7 @@ def parse_image_dimensions_and_dpi(path: Path) -> ImageFileInfo:
             chunk_len = struct.unpack(">I", data[pos : pos + 4])[0]
             chunk_type = data[pos + 4 : pos + 8]
             if chunk_type == b"pHYs" and chunk_len >= 9:
-                ppux, ppuy, unit = struct.unpack(
-                    ">IIB", data[pos + 8 : pos + 8 + 9]
-                )
+                ppux, ppuy, unit = struct.unpack(">IIB", data[pos + 8 : pos + 8 + 9])
                 if unit == 1:  # 1 meter
                     dpi = round(ppux * 0.0254)
                 break
@@ -126,7 +118,9 @@ def parse_image_dimensions_and_dpi(path: Path) -> ImageFileInfo:
     return ImageFileInfo(path=path, format_name=suffix.lstrip("."))
 
 
-def audit_figure_accessibility(tex_path: Path | str, base_dir: Path | str | None = None, min_dpi: int = 300) -> dict[str, Any]:
+def audit_figure_accessibility(
+    tex_path: Path | str, base_dir: Path | str | None = None, min_dpi: int = 300
+) -> dict[str, Any]:
     """MCP entrypoint returning dict."""
     res = audit_latex_figures(tex_path, base_dir=base_dir, min_dpi=min_dpi)
     return res.to_dict()
@@ -214,7 +208,7 @@ def audit_latex_figures(
 
         # Inspect \includegraphics
         for img_m in RE_INCLUDEGRAPHICS.finditer(f_body):
-            img_opts = img_m.group(1) or ""
+            img_m.group(1) or ""
             img_target = img_m.group(2).strip()
 
             # Locate file on disk

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 
 @dataclass
 class AuthorInfo:
     """Author metadata for unblinded title pages and cover letters."""
+
     name: str
     affiliation: str
     email: str
@@ -69,6 +69,7 @@ def normalize_authors(authors: Sequence[AuthorInfo | dict[str, Any] | str] | str
 @dataclass
 class PublisherProfile:
     """Venue-specific rules and requirements."""
+
     venue_id: str
     name: str
     max_highlight_chars: int = 100
@@ -94,6 +95,7 @@ class PublisherProfile:
 @dataclass
 class HighlightItem:
     """Single bullet point highlight evaluation."""
+
     text: str
     char_count: int
     max_allowed: int
@@ -113,6 +115,7 @@ class HighlightItem:
 @dataclass
 class HighlightsResult:
     """Result of highlights generation and auditing."""
+
     status: str
     venue: str
     max_chars: int
@@ -136,6 +139,7 @@ class HighlightsResult:
 @dataclass
 class TitlePageResult:
     """Result of standalone unblinded title page generation."""
+
     status: str
     title: str
     venue: str
@@ -159,6 +163,7 @@ class TitlePageResult:
 @dataclass
 class CoverLetterResult:
     """Result of editorial cover letter generation."""
+
     status: str
     journal_name: str
     venue: str
@@ -180,6 +185,7 @@ class CoverLetterResult:
 @dataclass
 class CodePackagerResult:
     """Result of anonymous code packaging."""
+
     status: str
     zip_path: str | None
     files_included: int
@@ -203,6 +209,7 @@ class CodePackagerResult:
 @dataclass
 class SubmissionBundleResult:
     """Result of preparing a complete submission package."""
+
     status: str
     output_dir: str
     venue: str

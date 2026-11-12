@@ -7,10 +7,9 @@ with pre-configured LaTeX structures and Zotero collection binding.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from scifi.env import auto_detect_zotero_dir
-
 
 MAIN_TEX_TEMPLATE = r"""\documentclass[conference]{IEEEtran}
 \usepackage{cite}
@@ -87,12 +86,12 @@ build-backend = "setuptools.build_meta"
 
 
 def scaffold_project(
-    target_dir: Union[str, Path],
+    target_dir: str | Path,
     title: str = "Research Manuscript",
     venue: str = "ieee",
-    collection: Optional[str] = None,
-    authors: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    collection: str | None = None,
+    authors: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """
     Scaffold a standardized 2-pillar research repository.
     """
@@ -145,10 +144,19 @@ def scaffold_project(
     sections = [
         ("01_abstract.tex", ABSTRACT_TEX_TEMPLATE),
         ("02_introduction.tex", SECTION_STUB.replace("__SECTION_NAME__", "Introduction").replace("__LABEL__", "intro")),
-        ("03_related_work.tex", SECTION_STUB.replace("__SECTION_NAME__", "Related Work").replace("__LABEL__", "related")),
+        (
+            "03_related_work.tex",
+            SECTION_STUB.replace("__SECTION_NAME__", "Related Work").replace("__LABEL__", "related"),
+        ),
         ("04_methodology.tex", SECTION_STUB.replace("__SECTION_NAME__", "Methodology").replace("__LABEL__", "method")),
-        ("05_experiments.tex", SECTION_STUB.replace("__SECTION_NAME__", "Experiments and Results").replace("__LABEL__", "experiments")),
-        ("06_conclusion.tex", SECTION_STUB.replace("__SECTION_NAME__", "Conclusion and Limitations").replace("__LABEL__", "conclusion")),
+        (
+            "05_experiments.tex",
+            SECTION_STUB.replace("__SECTION_NAME__", "Experiments and Results").replace("__LABEL__", "experiments"),
+        ),
+        (
+            "06_conclusion.tex",
+            SECTION_STUB.replace("__SECTION_NAME__", "Conclusion and Limitations").replace("__LABEL__", "conclusion"),
+        ),
     ]
     for s_name, s_content in sections:
         f = sections_dir / s_name
@@ -189,7 +197,7 @@ def scaffold_project(
         'code_dir = "code"',
         "",
         "[zotero]",
-        f'enabled = {"true" if zotero_dir else "false"}',
+        f"enabled = {'true' if zotero_dir else 'false'}",
         f'data_dir = "{zotero_dir_str}"',
         f'collection = "{col_str}"',
         "port = 23119",

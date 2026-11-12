@@ -6,7 +6,7 @@ Queries OpenAlex and Crossref for canonical works and matches author whitelists.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import requests
 
@@ -23,6 +23,7 @@ def _http_get(url: str, **kwargs: Any) -> requests.Response:
         return requests.get(url, **kwargs)
     return get_session().get(url, **kwargs)
 
+
 DEFAULT_USER_AGENT = "SciFi-Argus/1.0 (https://github.com/scifi-toolkit; mailto:scifi-toolkit@gmail.com)"
 
 
@@ -30,11 +31,11 @@ class ArgusSearcher:
     OPENALEX_BASE = "https://api.openalex.org/works"
     CROSSREF_BASE = "https://api.crossref.org/works"
 
-    def __init__(self, author_whitelist: Optional[List[str]] = None, preprint_doi: Optional[str] = None):
-        self.author_whitelist: Set[str] = {a.lower().strip() for a in (author_whitelist or []) if a.strip()}
-        self.preprint_doi: Optional[str] = preprint_doi.lower().strip() if preprint_doi else None
+    def __init__(self, author_whitelist: list[str] | None = None, preprint_doi: str | None = None):
+        self.author_whitelist: set[str] = {a.lower().strip() for a in (author_whitelist or []) if a.strip()}
+        self.preprint_doi: str | None = preprint_doi.lower().strip() if preprint_doi else None
 
-    def search_canonical_work(self, query: str, timeout: int = 10) -> Optional[Tuple[CitationMetadata, float, bool]]:
+    def search_canonical_work(self, query: str, timeout: int = 10) -> tuple[CitationMetadata, float, bool] | None:
         """
         Search OpenAlex and Crossref for the seminal or canonical paper for a method or title query.
         Returns: (CitationMetadata, confidence_score, is_self_alignment).
@@ -72,7 +73,7 @@ class ArgusSearcher:
                         return True
         return False
 
-    def _search_openalex(self, query: str, timeout: int = 10) -> Optional[Tuple[CitationMetadata, float]]:
+    def _search_openalex(self, query: str, timeout: int = 10) -> tuple[CitationMetadata, float] | None:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
         # Quote exact query if short, else free text
         encoded_query = f'"{query}"' if len(query.split()) <= 4 else query
@@ -101,7 +102,7 @@ class ArgusSearcher:
             doi_raw = best.get("doi")
             canonical_doi = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", doi_raw) if doi_raw else None
 
-            authors: List[Author] = []
+            authors: list[Author] = []
             for authorship in best.get("authorships", []):
                 a_obj = authorship.get("author", {})
                 display_name = a_obj.get("display_name", "")
@@ -140,7 +141,7 @@ class ArgusSearcher:
         except Exception:
             return None
 
-    def _search_crossref(self, query: str, timeout: int = 10) -> Optional[Tuple[CitationMetadata, float]]:
+    def _search_crossref(self, query: str, timeout: int = 10) -> tuple[CitationMetadata, float] | None:
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
         params = {"query.bibliographic": query, "rows": 1}
         try:
@@ -155,7 +156,7 @@ class ArgusSearcher:
             title = best.get("title", [""])[0] if best.get("title") else ""
             doi = best.get("DOI")
 
-            authors: List[Author] = []
+            authors: list[Author] = []
             for a in best.get("author", []):
                 family = a.get("family", "")
                 given = a.get("given", "")

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
-from typing import Any
+from pathlib import Path
 
 from scifi.latex.project import resolve_latex_project
 from scifi.reproducibility.models import (
@@ -126,7 +125,9 @@ def audit_reproducibility(
     elif double_blind and anon_links:
         checklist["code_link_anonymized"] = True
     else:
-        checklist["code_link_anonymized"] = bool(github_links or anon_links or "code will be made available" in clean_text.lower())
+        checklist["code_link_anonymized"] = bool(
+            github_links or anon_links or "code will be made available" in clean_text.lower()
+        )
 
     # Compute reproducibility score
     pass_count = sum(1 for v in checklist.values() if v)

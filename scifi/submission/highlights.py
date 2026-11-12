@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
-from typing import Sequence
+from collections.abc import Sequence
+from pathlib import Path
 
 from scifi.submission.models import HighlightItem, HighlightsResult
 from scifi.submission.profiles import get_publisher_profile
@@ -129,7 +129,7 @@ def generate_highlights(
     elif len(items) > profile.max_highlights:
         all_valid = False
         count_msg = f"{profile.name} permits at most {profile.max_highlights} highlights (found {len(items)})."
-        for it in items[profile.max_highlights:]:
+        for it in items[profile.max_highlights :]:
             it.is_valid = False
             it.issue = f"{it.issue}; {count_msg}" if it.issue else count_msg
 

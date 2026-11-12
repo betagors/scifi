@@ -18,12 +18,11 @@ Audits single-file or multi-file LaTeX projects (`main.tex` + `sections/*.tex`) 
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 from scifi.latex.project import RE_COMMENT, resolve_latex_project
-
 
 RE_NEG_VSPACE = re.compile(r"\\vspace\*?\s*\{\s*-[0-9.]+")
 RE_LINE_SPREAD = re.compile(r"\\(?:renewcommand\s*\{\s*\\baselinestretch\s*\}|linespread\s*\{)")
@@ -89,36 +88,42 @@ def check_venue_compliance(
 
             # 1. Negative \vspace hacks
             if RE_NEG_VSPACE.search(clean_line):
-                issues.append({
-                    "category": "LAYOUT_HACK",
-                    "severity": "WARNING",
-                    "file": rel,
-                    "line": line_idx,
-                    "message": "Negative \\vspace detected; often Desk-Rejected by IEEE/NeurIPS/ACM formatting checks.",
-                    "snippet": clean_line.strip()[:120],
-                })
+                issues.append(
+                    {
+                        "category": "LAYOUT_HACK",
+                        "severity": "WARNING",
+                        "file": rel,
+                        "line": line_idx,
+                        "message": "Negative \\vspace detected; often Desk-Rejected by IEEE/NeurIPS/ACM formatting checks.",
+                        "snippet": clean_line.strip()[:120],
+                    }
+                )
 
             # 2. Baselinestretch / linespread tampering
             if RE_LINE_SPREAD.search(clean_line):
-                issues.append({
-                    "category": "LAYOUT_HACK",
-                    "severity": "ERROR",
-                    "file": rel,
-                    "line": line_idx,
-                    "message": "Line spacing override (\\baselinestretch or \\linespread) violates standard venue style guides.",
-                    "snippet": clean_line.strip()[:120],
-                })
+                issues.append(
+                    {
+                        "category": "LAYOUT_HACK",
+                        "severity": "ERROR",
+                        "file": rel,
+                        "line": line_idx,
+                        "message": "Line spacing override (\\baselinestretch or \\linespread) violates standard venue style guides.",
+                        "snippet": clean_line.strip()[:120],
+                    }
+                )
 
             # 3. Margin tampering
             if RE_MARGIN_HACK.search(clean_line):
-                issues.append({
-                    "category": "LAYOUT_HACK",
-                    "severity": "WARNING",
-                    "file": rel,
-                    "line": line_idx,
-                    "message": "Explicit page geometry/margin modification detected; verify compliance with venue template.",
-                    "snippet": clean_line.strip()[:120],
-                })
+                issues.append(
+                    {
+                        "category": "LAYOUT_HACK",
+                        "severity": "WARNING",
+                        "file": rel,
+                        "line": line_idx,
+                        "message": "Explicit page geometry/margin modification detected; verify compliance with venue template.",
+                        "snippet": clean_line.strip()[:120],
+                    }
+                )
 
             # 4. Double-blind anonymization checks
             if double_blind:
@@ -126,67 +131,79 @@ def check_venue_compliance(
                 if m_auth:
                     auth_body = m_auth.group(1).strip().lower()
                     if auth_body and not any(m in auth_body for m in ANONYMOUS_MARKERS):
-                        issues.append({
+                        issues.append(
+                            {
+                                "category": "ANONYMIZATION_LEAK",
+                                "severity": "ERROR",
+                                "file": rel,
+                                "line": line_idx,
+                                "message": f"Non-anonymized \\author{{{m_auth.group(1).strip()[:50]}}} block in double-blind mode.",
+                                "snippet": clean_line.strip()[:120],
+                            }
+                        )
+
+                if RE_THANKS_CMD.search(clean_line):
+                    issues.append(
+                        {
                             "category": "ANONYMIZATION_LEAK",
                             "severity": "ERROR",
                             "file": rel,
                             "line": line_idx,
-                            "message": f"Non-anonymized \\author{{{m_auth.group(1).strip()[:50]}}} block in double-blind mode.",
+                            "message": "\\thanks{...} footnote detected in double-blind mode (may leak institution or grant IDs).",
                             "snippet": clean_line.strip()[:120],
-                        })
-
-                if RE_THANKS_CMD.search(clean_line):
-                    issues.append({
-                        "category": "ANONYMIZATION_LEAK",
-                        "severity": "ERROR",
-                        "file": rel,
-                        "line": line_idx,
-                        "message": "\\thanks{...} footnote detected in double-blind mode (may leak institution or grant IDs).",
-                        "snippet": clean_line.strip()[:120],
-                    })
+                        }
+                    )
 
                 if RE_ACK_SECTION.search(clean_line):
-                    issues.append({
-                        "category": "ANONYMIZATION_LEAK",
-                        "severity": "ERROR",
-                        "file": rel,
-                        "line": line_idx,
-                        "message": "Acknowledgments section present in double-blind submission.",
-                        "snippet": clean_line.strip()[:120],
-                    })
+                    issues.append(
+                        {
+                            "category": "ANONYMIZATION_LEAK",
+                            "severity": "ERROR",
+                            "file": rel,
+                            "line": line_idx,
+                            "message": "Acknowledgments section present in double-blind submission.",
+                            "snippet": clean_line.strip()[:120],
+                        }
+                    )
 
                 m_repo = RE_NON_ANON_REPO.search(clean_line)
                 if m_repo:
-                    issues.append({
-                        "category": "ANONYMIZATION_LEAK",
-                        "severity": "WARNING",
-                        "file": rel,
-                        "line": line_idx,
-                        "message": f"Potential non-anonymized repository URL '{m_repo.group(0)}' in double-blind mode (use anonymous.4open.science).",
-                        "snippet": clean_line.strip()[:120],
-                    })
+                    issues.append(
+                        {
+                            "category": "ANONYMIZATION_LEAK",
+                            "severity": "WARNING",
+                            "file": rel,
+                            "line": line_idx,
+                            "message": f"Potential non-anonymized repository URL '{m_repo.group(0)}' in double-blind mode (use anonymous.4open.science).",
+                            "snippet": clean_line.strip()[:120],
+                        }
+                    )
 
                 for a_name in author_list:
                     if re.search(r"\b" + re.escape(a_name) + r"\b", clean_line, re.IGNORECASE):
-                        issues.append({
-                            "category": "ANONYMIZATION_LEAK",
-                            "severity": "ERROR",
-                            "file": rel,
-                            "line": line_idx,
-                            "message": f"Author name '{a_name}' appears in manuscript text during double-blind audit.",
-                            "snippet": clean_line.strip()[:120],
-                        })
+                        issues.append(
+                            {
+                                "category": "ANONYMIZATION_LEAK",
+                                "severity": "ERROR",
+                                "file": rel,
+                                "line": line_idx,
+                                "message": f"Author name '{a_name}' appears in manuscript text during double-blind audit.",
+                                "snippet": clean_line.strip()[:120],
+                            }
+                        )
 
             # 5. Conversational em-dashes in prose (outside math/tables)
             if RE_EM_DASH.search(clean_line) and not clean_line.strip().startswith("\\"):
-                issues.append({
-                    "category": "STYLE_HYGIENE",
-                    "severity": "INFO",
-                    "file": rel,
-                    "line": line_idx,
-                    "message": "Em-dash (--- or —) detected; academic rules recommend parentheses, commas, or discrete clauses.",
-                    "snippet": clean_line.strip()[:120],
-                })
+                issues.append(
+                    {
+                        "category": "STYLE_HYGIENE",
+                        "severity": "INFO",
+                        "file": rel,
+                        "line": line_idx,
+                        "message": "Em-dash (--- or —) detected; academic rules recommend parentheses, commas, or discrete clauses.",
+                        "snippet": clean_line.strip()[:120],
+                    }
+                )
 
             # 6. Collect labels & references across all project files
             for lm in RE_LABEL.finditer(clean_line):
@@ -204,31 +221,37 @@ def check_venue_compliance(
     for lbl, (rel_file, l_no) in defined_labels.items():
         if lbl.startswith(("fig:", "tab:", "alg:")) and lbl not in referenced_labels:
             unreferenced_floats.append({"label": lbl, "file": rel_file, "line": l_no})
-            issues.append({
-                "category": "UNREFERENCED_FLOAT",
-                "severity": "WARNING",
-                "file": rel_file,
-                "line": l_no,
-                "message": f"Float label '\\label{{{lbl}}}' is defined in {rel_file}:{l_no} but never referenced via \\ref/\\cref in any section.",
-                "snippet": f"\\label{{{lbl}}}",
-            })
+            issues.append(
+                {
+                    "category": "UNREFERENCED_FLOAT",
+                    "severity": "WARNING",
+                    "file": rel_file,
+                    "line": l_no,
+                    "message": f"Float label '\\label{{{lbl}}}' is defined in {rel_file}:{l_no} but never referenced via \\ref/\\cref in any section.",
+                    "snippet": f"\\label{{{lbl}}}",
+                }
+            )
 
     # Check for missing includes
     for missing_inc in proj.missing_includes:
-        issues.append({
-            "category": "MISSING_INCLUDE",
-            "severity": "ERROR",
-            "file": proj.entrypoint.name,
-            "line": 1,
-            "message": f"Included LaTeX file '{missing_inc}' could not be found on disk.",
-            "snippet": f"\\input{{{missing_inc}}}",
-        })
+        issues.append(
+            {
+                "category": "MISSING_INCLUDE",
+                "severity": "ERROR",
+                "file": proj.entrypoint.name,
+                "line": 1,
+                "message": f"Included LaTeX file '{missing_inc}' could not be found on disk.",
+                "snippet": f"\\input{{{missing_inc}}}",
+            }
+        )
 
     errors_count = sum(1 for i in issues if i["severity"] == "ERROR")
     warnings_count = sum(1 for i in issues if i["severity"] == "WARNING")
 
     return {
-        "status": "COMPLIANT" if errors_count == 0 and warnings_count == 0 else ("VIOLATIONS_FOUND" if errors_count > 0 else "WARNINGS_FOUND"),
+        "status": "COMPLIANT"
+        if errors_count == 0 and warnings_count == 0
+        else ("VIOLATIONS_FOUND" if errors_count > 0 else "WARNINGS_FOUND"),
         "is_compliant": errors_count == 0,
         "venue": venue_norm,
         "double_blind": double_blind,

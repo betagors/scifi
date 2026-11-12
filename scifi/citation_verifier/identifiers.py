@@ -4,13 +4,9 @@ Extraction, parsing, and normalization for academic identifiers (DOI, arXiv, Pub
 
 from __future__ import annotations
 
-import html
 import re
 import urllib.parse
 from html.parser import HTMLParser
-from typing import Dict, Optional, Tuple
-
-import requests
 
 from scifi.network import get_session
 
@@ -27,12 +23,12 @@ class HeadMetaParser(HTMLParser):
 
     def __init__(self) -> None:
         super().__init__()
-        self.meta_tags: Dict[str, str] = {}
+        self.meta_tags: dict[str, str] = {}
         self.authors: list[str] = []
         self._in_head = False
         self._stop_parsing = False
 
-    def handle_starttag(self, tag: str, attrs: list[Tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if self._stop_parsing:
             return
         tag_lower = tag.lower()
@@ -101,7 +97,7 @@ def clean_doi(raw: str) -> str:
     return doi.strip()
 
 
-def extract_identifier(query: str, follow_links: bool = True) -> Tuple[str, str, Dict[str, str]]:
+def extract_identifier(query: str, follow_links: bool = True) -> tuple[str, str, dict[str, str]]:
     """
     Given a user input (DOI, URL, arXiv ID, PMID, etc.), detect the identifier type
     and return (identifier_type, identifier_value, extra_metadata).

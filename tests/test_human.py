@@ -17,7 +17,6 @@ from scifi.human import (
 )
 from scifi.server import scifi_audit_human
 
-
 SYNTHETIC_LATEX_SAMPLE = r"""
 \documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}

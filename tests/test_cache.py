@@ -4,7 +4,6 @@ Unit tests for SciFi Registry & Query Caching (scifi.cache).
 
 import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -127,9 +126,7 @@ class TestRegistryCache(unittest.TestCase):
 
             # Query database directly to confirm old_key row was deleted
             with self.cache._connection() as conn:
-                cursor = conn.execute(
-                    "SELECT count(*) FROM registry_cache WHERE key = 'old_key'"
-                )
+                cursor = conn.execute("SELECT count(*) FROM registry_cache WHERE key = 'old_key'")
                 count = cursor.fetchone()[0]
                 self.assertEqual(count, 0)
 
@@ -138,9 +135,7 @@ class TestRegistryCache(unittest.TestCase):
         # Manually corrupt the JSON in DB
         with self.cache._connection() as conn:
             with conn:
-                conn.execute(
-                    "UPDATE registry_cache SET value_json = 'INVALID_JSON{' WHERE key = 'valid_key'"
-                )
+                conn.execute("UPDATE registry_cache SET value_json = 'INVALID_JSON{' WHERE key = 'valid_key'")
         self.assertIsNone(self.cache.get("valid_key"))
 
 

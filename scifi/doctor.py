@@ -21,28 +21,29 @@ Executes a cohesive 6-stage peer-review readiness pipeline across single-file
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 import bibtexparser
-from scifi.logging import get_logger
 
-logger = get_logger(__name__)
 from scifi.argus.engine import ArgusEngine
 from scifi.citation_verifier import audit_bib_file
 from scifi.config import resolve_config
+from scifi.figures import audit_figure_accessibility
 from scifi.human import audit_human_prose
 from scifi.latex.compiler import compile_latex
 from scifi.latex.project import resolve_latex_project
 from scifi.latex.venue import check_venue_compliance
-from scifi.math.notation import check_notation
-from scifi.review.claims import audit_claims
-from scifi.shannon import evaluate_manuscript_metadata
-from scifi.figures import audit_figure_accessibility
 from scifi.layout import audit_trim_budget
+from scifi.logging import get_logger
+from scifi.math.notation import check_notation
 from scifi.proofs import audit_latex_proofs
 from scifi.reproducibility import audit_reproducibility
+from scifi.review.claims import audit_claims
+from scifi.shannon import evaluate_manuscript_metadata
+
+logger = get_logger(__name__)
 
 
 def _extract_bib_keys_offline(bib_paths: list[Path]) -> set[str]:
@@ -113,13 +114,15 @@ def audit_manuscript(
                 rep = audit_bib_file(bf, search_missing=True)
                 retracted_count += rep.retracted_count
                 mismatch_count += rep.mismatch_count
-                live_bib_reports.append({
-                    "bib_file": str(bf),
-                    "total_entries": rep.total_entries,
-                    "verified_count": rep.verified_count,
-                    "retracted_count": rep.retracted_count,
-                    "mismatch_count": rep.mismatch_count,
-                })
+                live_bib_reports.append(
+                    {
+                        "bib_file": str(bf),
+                        "total_entries": rep.total_entries,
+                        "verified_count": rep.verified_count,
+                        "retracted_count": rep.retracted_count,
+                        "mismatch_count": rep.mismatch_count,
+                    }
+                )
             except Exception as e:
                 logger.warning("Live bibliography audit failed for %s: %s", bf, e)
 
@@ -195,7 +198,9 @@ def audit_manuscript(
     if missing_bib_keys:
         pen = min(15, len(missing_bib_keys) * 5)
         score -= pen
-        deductions.append(f"-{pen} pts: {len(missing_bib_keys)} cited key(s) missing from .bib ({', '.join(missing_bib_keys[:4])})")
+        deductions.append(
+            f"-{pen} pts: {len(missing_bib_keys)} cited key(s) missing from .bib ({', '.join(missing_bib_keys[:4])})"
+        )
     if retracted_count > 0:
         score -= 20
         deductions.append(f"-20 pts: {retracted_count} RETRACTED paper(s) cited in bibliography")
@@ -211,17 +216,23 @@ def audit_manuscript(
     if multi_vars:
         pen = min(15, len(multi_vars) * 5)
         score -= pen
-        deductions.append(f"-{pen} pts: {len(multi_vars)} mathematical symbol(s) have inconsistent font/case across sections")
+        deductions.append(
+            f"-{pen} pts: {len(multi_vars)} mathematical symbol(s) have inconsistent font/case across sections"
+        )
 
     # Popper overclaim deductions (up to 15 pts)
     popper_flags = stage_popper.get("total_flags", 0)
     if popper_flags > 0:
         pen = min(15, popper_flags * 5)
         score -= pen
-        deductions.append(f"-{pen} pts: {popper_flags} unhedged overclaim(s) or fragile assumption(s) flagged by Popper")
+        deductions.append(
+            f"-{pen} pts: {popper_flags} unhedged overclaim(s) or fragile assumption(s) flagged by Popper"
+        )
 
     # Shannon triage score contribution (up to 15 pts deduction if triage < 70)
-    shannon_total = stage_shannon.get("triage_score", {}).get("total_score", 75) if stage_shannon.get("status") == "SUCCESS" else 60
+    shannon_total = (
+        stage_shannon.get("triage_score", {}).get("total_score", 75) if stage_shannon.get("status") == "SUCCESS" else 60
+    )
     if shannon_total < 70:
         pen = min(15, max(5, (70 - shannon_total) // 2))
         score -= pen
@@ -244,7 +255,9 @@ def audit_manuscript(
     if human_score < 70:
         pen = min(15, max(5, (70 - human_score) // 2))
         score -= pen
-        deductions.append(f"-{pen} pts: Human Authenticity Score is {human_score}/100 ({stage_human.get('classification')})")
+        deductions.append(
+            f"-{pen} pts: Human Authenticity Score is {human_score}/100 ({stage_human.get('classification')})"
+        )
 
     # Figure & visual accessibility deductions
     fig_crit = [i for i in stage_figures.get("issues", []) if i.get("severity") == "CRITICAL"]
@@ -257,10 +270,14 @@ def audit_manuscript(
     if stage_proofs.orphan_theorems > 0:
         pen = min(15, stage_proofs.orphan_theorems * 5)
         score -= pen
-        deductions.append(f"-{pen} pts: {stage_proofs.orphan_theorems} orphan theorem(s) lacking inline proof or appendix reference")
+        deductions.append(
+            f"-{pen} pts: {stage_proofs.orphan_theorems} orphan theorem(s) lacking inline proof or appendix reference"
+        )
 
     score = max(0, score)
-    readiness_tier = "READY_FOR_SUBMISSION" if score >= 85 else ("NEEDS_MINOR_REVISION" if score >= 65 else "MAJOR_ISSUES_DETECTED")
+    readiness_tier = (
+        "READY_FOR_SUBMISSION" if score >= 85 else ("NEEDS_MINOR_REVISION" if score >= 65 else "MAJOR_ISSUES_DETECTED")
+    )
 
     result: dict[str, Any] = {
         "status": "SUCCESS",
@@ -339,31 +356,35 @@ def format_doctor_report_markdown(data: dict[str, Any]) -> str:
             lines.append(f"- {d}")
         lines.append("")
 
-    lines.extend([
-        "---",
-        "",
-        "## 1. Bibliography & Citation Cross-Check (Alex)",
-        f"- **Cited Keys in Manuscript:** {alex['total_cited_keys']}",
-        f"- **Entries in `.bib`:** {alex['total_bib_entries']}",
-        f"- **Missing `.bib` Definitions:** {len(alex['missing_bib_keys'])} "
-        + (f"(`{', '.join(alex['missing_bib_keys'][:8])}`)" if alex["missing_bib_keys"] else "✅ None"),
-        f"- **Uncited `.bib` Entries:** {len(alex['uncited_bib_keys'])} "
-        + (f"(`{', '.join(alex['uncited_bib_keys'][:8])}`)" if alex["uncited_bib_keys"] else "✅ None"),
-        "",
-        "## 2. Attribution & AI-Prose Sentinel (Argus)",
-        f"- **Total Flags:** {argus['total_findings']} (Uncredited methods: {argus['academic_count']}, Informal/AI tropes: {argus['web_count']})",
-    ])
+    lines.extend(
+        [
+            "---",
+            "",
+            "## 1. Bibliography & Citation Cross-Check (Alex)",
+            f"- **Cited Keys in Manuscript:** {alex['total_cited_keys']}",
+            f"- **Entries in `.bib`:** {alex['total_bib_entries']}",
+            f"- **Missing `.bib` Definitions:** {len(alex['missing_bib_keys'])} "
+            + (f"(`{', '.join(alex['missing_bib_keys'][:8])}`)" if alex["missing_bib_keys"] else "✅ None"),
+            f"- **Uncited `.bib` Entries:** {len(alex['uncited_bib_keys'])} "
+            + (f"(`{', '.join(alex['uncited_bib_keys'][:8])}`)" if alex["uncited_bib_keys"] else "✅ None"),
+            "",
+            "## 2. Attribution & AI-Prose Sentinel (Argus)",
+            f"- **Total Flags:** {argus['total_findings']} (Uncredited methods: {argus['academic_count']}, Informal/AI tropes: {argus['web_count']})",
+        ]
+    )
     for f in argus.get("findings", [])[:5]:
         loc = f"{f.get('source_file', '')}:{f.get('line_number', '')}".strip(":")
         lines.append(f"  - `[{f['id']}]` ({loc}): **{f['matched_entity']}** -> `{f['suggested_action']}`")
     lines.append("")
 
     multi_syms = turing.get("multi_variant_symbols", [])
-    lines.extend([
-        "## 3. Cross-Section Mathematical Notation (Turing)",
-        f"- **Sections Scanned:** {len(turing.get('sections_scanned', []))}",
-        f"- **Inconsistent Symbol Variants:** {len(multi_syms)}",
-    ])
+    lines.extend(
+        [
+            "## 3. Cross-Section Mathematical Notation (Turing)",
+            f"- **Sections Scanned:** {len(turing.get('sections_scanned', []))}",
+            f"- **Inconsistent Symbol Variants:** {len(multi_syms)}",
+        ]
+    )
     for ms in multi_syms[:5]:
         lines.append(
             f"  - Base symbol `{ms['base_symbol']}` appears as {', '.join(f'`{v}`' for v in ms['variants_seen'])} "
@@ -371,82 +392,98 @@ def format_doctor_report_markdown(data: dict[str, Any]) -> str:
         )
     lines.append("")
 
-    lines.extend([
-        "## 4. Adversarial Claims & Assumptions (Popper)",
-        f"- **Overclaims / Fragile Assumptions Flagged:** {popper.get('total_flags', 0)}",
-    ])
+    lines.extend(
+        [
+            "## 4. Adversarial Claims & Assumptions (Popper)",
+            f"- **Overclaims / Fragile Assumptions Flagged:** {popper.get('total_flags', 0)}",
+        ]
+    )
     for fl in popper.get("flags", [])[:5]:
         loc = f"{fl.get('file', '')}:{fl.get('line', '')}".strip(":")
-        lines.append(f"  - Line `{loc}`: *\"{fl['matched_text']}\"* — {fl['critique']}")
+        lines.append(f'  - Line `{loc}`: *"{fl["matched_text"]}"* — {fl["critique"]}')
     lines.append("")
 
-    lines.extend([
-        "## 5. Title, 5-Beat Abstract & SEO Scorecard (Shannon)",
-        f"- **Detected Title:** *{shannon.get('title') or 'Not detected'}*",
-        f"- **Reviewer Triage Score:** **{shannon.get('triage_score', 'N/A')} / 100** (`{shannon.get('triage_status', 'N/A')}`)",
-        f"- **Title/Keyword Overlap:** {(shannon.get('overlap_ratio') or 0) * 100:.1f}% (target < 35%)",
-        "",
-        "## 6. Venue Compliance & Double-Blind Anonymization",
-        f"- **Venue Profile:** `{venue['venue']}` (Double-Blind: `{venue['double_blind']}`)",
-        f"- **Errors:** {venue['errors_count']} | **Warnings:** {venue['warnings_count']}",
-    ])
+    lines.extend(
+        [
+            "## 5. Title, 5-Beat Abstract & SEO Scorecard (Shannon)",
+            f"- **Detected Title:** *{shannon.get('title') or 'Not detected'}*",
+            f"- **Reviewer Triage Score:** **{shannon.get('triage_score', 'N/A')} / 100** (`{shannon.get('triage_status', 'N/A')}`)",
+            f"- **Title/Keyword Overlap:** {(shannon.get('overlap_ratio') or 0) * 100:.1f}% (target < 35%)",
+            "",
+            "## 6. Venue Compliance & Double-Blind Anonymization",
+            f"- **Venue Profile:** `{venue['venue']}` (Double-Blind: `{venue['double_blind']}`)",
+            f"- **Errors:** {venue['errors_count']} | **Warnings:** {venue['warnings_count']}",
+        ]
+    )
     for iss in venue.get("issues", [])[:8]:
         lines.append(f"  - **[{iss['severity']}]** `{iss['file']}:{iss['line']}` ({iss['category']}): {iss['message']}")
 
     human = stages.get("human_stylometry", {})
     if human:
-        lines.extend([
-            "",
-            "## 7. Humanizer & LaTeX Forensic Stylometry (Human)",
-            f"- **Human Authenticity Score:** **{human.get('human_score', 'N/A')} / 100** (`{human.get('classification', 'N/A')}`)",
-            f"- **Forensic & Stylometric Flags:** {human.get('total_flags', 0)}",
-        ])
+        lines.extend(
+            [
+                "",
+                "## 7. Humanizer & LaTeX Forensic Stylometry (Human)",
+                f"- **Human Authenticity Score:** **{human.get('human_score', 'N/A')} / 100** (`{human.get('classification', 'N/A')}`)",
+                f"- **Forensic & Stylometric Flags:** {human.get('total_flags', 0)}",
+            ]
+        )
         for hf in human.get("flags", [])[:5]:
             loc = f"{hf.get('file', '')}:{hf.get('line', '')}".strip(":")
-            lines.append(f"  - **[{hf['severity']}]** `{loc}` ({hf['dimension']}): `{hf['matched_text']}` — {hf['explanation']}")
+            lines.append(
+                f"  - **[{hf['severity']}]** `{loc}` ({hf['dimension']}): `{hf['matched_text']}` — {hf['explanation']}"
+            )
 
     # 8. Figure & Visual Accessibility
     fig_stage = stages.get("figures_visual", {})
     if fig_stage:
-        lines.extend([
-            "",
-            "## 8. Figure & Visual Accessibility (Da Vinci)",
-            f"- **Figures Inspected:** {fig_stage.get('total_figures_inspected', 0)} | **Issues:** {fig_stage.get('total_issues', 0)} | **Visual Clean Score:** **{fig_stage.get('clean_score', 100)} / 100**",
-        ])
+        lines.extend(
+            [
+                "",
+                "## 8. Figure & Visual Accessibility (Da Vinci)",
+                f"- **Figures Inspected:** {fig_stage.get('total_figures_inspected', 0)} | **Issues:** {fig_stage.get('total_issues', 0)} | **Visual Clean Score:** **{fig_stage.get('clean_score', 100)} / 100**",
+            ]
+        )
         for fi in fig_stage.get("issues", [])[:5]:
             lines.append(f"  - **[{fi['severity']}]** `{fi['figure_ref']}` ({fi['category']}): {fi['message']}")
 
     # 9. Theorem-Proof Completeness
     proof_stage = stages.get("proofs_completeness", {})
     if proof_stage and proof_stage.get("total_theorems", 0) > 0:
-        lines.extend([
-            "",
-            "## 9. Theorem–Proof Completeness (Euclid)",
-            f"- **Theorems/Lemmas Stated:** {proof_stage.get('total_theorems', 0)} | **Orphan Claims:** {proof_stage.get('orphan_theorems', 0)}",
-        ])
+        lines.extend(
+            [
+                "",
+                "## 9. Theorem–Proof Completeness (Euclid)",
+                f"- **Theorems/Lemmas Stated:** {proof_stage.get('total_theorems', 0)} | **Orphan Claims:** {proof_stage.get('orphan_theorems', 0)}",
+            ]
+        )
         for pi in proof_stage.get("issues", [])[:5]:
             lines.append(f"  - **[{pi.get('severity', 'WARNING')}]** `{pi.get('theorem')}`: {pi.get('message')}")
 
     # 10. Conference Reproducibility Checklist
     repro_stage = stages.get("reproducibility", {})
     if repro_stage:
-        lines.extend([
-            "",
-            f"## 10. Conference Reproducibility Checklist ({repro_stage.get('venue', 'neurips').upper()})",
-            f"- **Reproducibility Score:** **{repro_stage.get('score', 100)} / 100**",
-        ])
+        lines.extend(
+            [
+                "",
+                f"## 10. Conference Reproducibility Checklist ({repro_stage.get('venue', 'neurips').upper()})",
+                f"- **Reproducibility Score:** **{repro_stage.get('score', 100)} / 100**",
+            ]
+        )
         for k, v in repro_stage.get("checklist_items", {}).items():
             lines.append(f"  - [{'x' if v else ' '}] `{k}`")
 
     # 11. Page Budget & Micro-Trimming
     trim_stage = stages.get("trim_budget", {})
     if trim_stage and trim_stage.get("total_potential_lines_saved", 0) > 0:
-        lines.extend([
-            "",
-            "## 11. Page Budget & Micro-Trimming Opportunities (Layout)",
-            f"- **Estimated Recoverable Lines:** **{trim_stage.get('total_potential_lines_saved', 0)} lines**",
-            f"- **Abbreviated BibTeX Entries Available:** {trim_stage.get('bibtex_condensed_entries', 0)}",
-        ])
+        lines.extend(
+            [
+                "",
+                "## 11. Page Budget & Micro-Trimming Opportunities (Layout)",
+                f"- **Estimated Recoverable Lines:** **{trim_stage.get('total_potential_lines_saved', 0)} lines**",
+                f"- **Abbreviated BibTeX Entries Available:** {trim_stage.get('bibtex_condensed_entries', 0)}",
+            ]
+        )
 
     lines.append("")
     return "\n".join(lines)

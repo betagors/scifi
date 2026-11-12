@@ -125,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     actual_argv = sys.argv[1:] if argv is None else argv
     if actual_argv and actual_argv[0] == "argus":
         from scifi.argus.cli import main as argus_main
+
         return argus_main(actual_argv[1:])
 
     parser = argparse.ArgumentParser(

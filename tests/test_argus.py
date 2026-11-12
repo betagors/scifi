@@ -161,6 +161,5 @@ class TestArgusSearcherResilientSessionIntegration(unittest.TestCase):
         self.assertIn("api.openalex.org", args[0])
 
 
-
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from pypdf import PdfReader
 
@@ -16,7 +16,7 @@ from pypdf import PdfReader
 def extract_sections_from_text(
     raw_content: str,
     max_section_length: int = 15000,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Parse raw academic paper text into structured section blocks.
 
@@ -110,10 +110,10 @@ def extract_sections_from_text(
 
 
 def extract_pdf_text(
-    pdf_path: Union[str, Path],
+    pdf_path: str | Path,
     max_pages: int = 20,
     max_section_length: int = 15000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Extract structured technical text from an academic paper PDF.
 
@@ -145,11 +145,7 @@ def extract_pdf_text(
     try:
         reader = PdfReader(str(p))
         total_pages = len(reader.pages)
-        pages_to_extract = (
-            reader.pages[:max_pages]
-            if (max_pages is not None and max_pages > 0)
-            else reader.pages
-        )
+        pages_to_extract = reader.pages[:max_pages] if (max_pages is not None and max_pages > 0) else reader.pages
 
         full_text = []
         for page in pages_to_extract:
@@ -188,9 +184,7 @@ def extract_pdf_text(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Extract structured technical text from a PDF paper"
-    )
+    parser = argparse.ArgumentParser(description="Extract structured technical text from a PDF paper")
     parser.add_argument("--pdf", required=True, help="Path to PDF file")
     parser.add_argument(
         "--max-pages",

@@ -5,10 +5,10 @@ Unit tests for FastMCP Server Daemon (scifi.server) and mcp_config.json.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Ensure scifi package is on sys.path
@@ -186,7 +186,9 @@ class TestDirectToolExecution(unittest.TestCase):
             mock_fetch.return_value = {"status": "SUCCESS", "file_path": "workspace/paper.pdf"}
             res = scifi_fetch_paper_pdf("1706.03762")
             self.assertEqual(res["status"], "SUCCESS")
-            mock_fetch.assert_called_once_with(identifier="1706.03762", output_dir="workspace", email="researcher@scifi.org")
+            mock_fetch.assert_called_once_with(
+                identifier="1706.03762", output_dir="workspace", email="researcher@scifi.org"
+            )
 
     def test_extract_pdf_text_mock(self):
         with patch("scifi.server.extract_pdf_text") as mock_extract:
@@ -325,15 +327,12 @@ class TestCitationAndAttributionTools(unittest.TestCase):
             bib_path = Path(tmpdir) / "test.bib"
             out_bib = Path(tmpdir) / "sanitized.bib"
             bib_path.write_text(
-                "@article{Sample2020,\n"
-                "  title = {Sample Title},\n"
-                "  author = {Smith, John},\n"
-                "  year = {2020}\n"
-                "}\n",
+                "@article{Sample2020,\n  title = {Sample Title},\n  author = {Smith, John},\n  year = {2020}\n}\n",
                 encoding="utf-8",
             )
             with patch("scifi.server.audit_bib_file") as mock_audit:
                 from scifi.citation_verifier.models import BibAuditReport
+
                 report = BibAuditReport(file_path=str(bib_path), total_entries=1, verified_count=1)
                 mock_audit.return_value = report
                 with patch("scifi.server.generate_sanitized_bib", return_value="% sanitized bib"):
@@ -363,7 +362,9 @@ class TestCitationAndAttributionTools(unittest.TestCase):
             bib_file.write_text("", encoding="utf-8")
 
             # Run with autofix=False first
-            res_no_fix = scifi_audit_attribution(str(tex_file), bib_path=str(bib_file), autofix=False, enable_search=False)
+            res_no_fix = scifi_audit_attribution(
+                str(tex_file), bib_path=str(bib_file), autofix=False, enable_search=False
+            )
             self.assertEqual(res_no_fix["total_findings"], 1)
             self.assertFalse(res_no_fix["autofix"]["applied"])
 
@@ -387,7 +388,7 @@ class TestMCPConfigFile(unittest.TestCase):
         config_path = repo_root / "mcp_config.json"
         self.assertTrue(config_path.exists(), "mcp_config.json not found in repository root.")
 
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
 
         self.assertIn("mcpServers", data)

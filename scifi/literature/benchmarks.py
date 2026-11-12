@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from scifi.literature.models import (
     BenchmarkRecord,
@@ -451,7 +451,7 @@ class BenchmarkExtractor:
 
     def __init__(
         self,
-        custom_benchmarks: Optional[dict[str, BenchmarkRecord]] = None,
+        custom_benchmarks: dict[str, BenchmarkRecord] | None = None,
     ) -> None:
         self.benchmarks: dict[str, BenchmarkRecord] = dict(CANONICAL_BENCHMARKS)
         self.benchmark_aliases: list[tuple[str, str, bool]] = list(_BENCHMARK_ALIASES)
@@ -466,7 +466,7 @@ class BenchmarkExtractor:
     def extract_reported_results(
         self,
         paper: PaperRecord,
-        evidence_items: Optional[list[EvidenceRecord]] = None,
+        evidence_items: list[EvidenceRecord] | None = None,
     ) -> list[
         tuple[
             BenchmarkRecord,
@@ -535,7 +535,7 @@ class BenchmarkExtractor:
         sentence: str,
         paper: PaperRecord,
         sentence_idx: int,
-        source_ev: Optional[EvidenceRecord] = None,
+        source_ev: EvidenceRecord | None = None,
     ) -> list[
         tuple[
             BenchmarkRecord,
@@ -574,8 +574,10 @@ class BenchmarkExtractor:
         )
         if tf_match:
             table_or_figure = tf_match.group(1)
-        elif source_ev and source_ev.source_location and (
-            "table" in source_ev.source_location.lower() or "fig" in source_ev.source_location.lower()
+        elif (
+            source_ev
+            and source_ev.source_location
+            and ("table" in source_ev.source_location.lower() or "fig" in source_ev.source_location.lower())
         ):
             table_or_figure = source_ev.source_location
 
@@ -617,7 +619,9 @@ class BenchmarkExtractor:
                     extraction_method="benchmark_pattern_mining",
                     reporting_paper_id=source_ev.reporting_paper_id if source_ev else None,
                     source_section=source_ev.source_section if source_ev and source_ev.source_section else "Abstract",
-                    source_location=source_ev.source_location if source_ev and source_ev.source_location else f"sentence_{sentence_idx}",
+                    source_location=source_ev.source_location
+                    if source_ev and source_ev.source_location
+                    else f"sentence_{sentence_idx}",
                     confidence=0.90,
                     retrieved_at=source_ev.retrieved_at if source_ev else None,
                 )
@@ -663,7 +667,9 @@ class BenchmarkExtractor:
                     extraction_method="benchmark_pattern_mining",
                     reporting_paper_id=source_ev.reporting_paper_id if source_ev else None,
                     source_section=source_ev.source_section if source_ev and source_ev.source_section else "Abstract",
-                    source_location=source_ev.source_location if source_ev and source_ev.source_location else f"sentence_{sentence_idx}",
+                    source_location=source_ev.source_location
+                    if source_ev and source_ev.source_location
+                    else f"sentence_{sentence_idx}",
                     confidence=0.90,
                     retrieved_at=source_ev.retrieved_at if source_ev else None,
                 )
@@ -720,9 +726,7 @@ class BenchmarkExtractor:
 
         return dist
 
-    def _locate_benchmarks(
-        self, text: str
-    ) -> list[tuple[int, int, BenchmarkRecord, str]]:
+    def _locate_benchmarks(self, text: str) -> list[tuple[int, int, BenchmarkRecord, str]]:
         """Find non-overlapping benchmark occurrences in text: (start, end, record, key)."""
         found: list[tuple[int, int, BenchmarkRecord, str]] = []
         occupied_spans: list[tuple[int, int]] = []
@@ -742,9 +746,7 @@ class BenchmarkExtractor:
         found.sort(key=lambda item: item[0])
         return found
 
-    def _locate_conditions(
-        self, text: str
-    ) -> list[tuple[int, int, EvaluationConditionRecord]]:
+    def _locate_conditions(self, text: str) -> list[tuple[int, int, EvaluationConditionRecord]]:
         """Find condition occurrences in text."""
         conditions: list[tuple[int, int, EvaluationConditionRecord]] = []
         for cond_name, pattern in _CONDITION_PATTERNS:
@@ -775,12 +777,14 @@ class BenchmarkExtractor:
                 val = float(val_str)
                 start, end = m.span()
                 metric_name = self._sniff_metric_near(text, start, end)
-                candidates.append({
-                    "val": val,
-                    "start": start,
-                    "end": end,
-                    "metric_name": metric_name,
-                })
+                candidates.append(
+                    {
+                        "val": val,
+                        "start": start,
+                        "end": end,
+                        "metric_name": metric_name,
+                    }
+                )
                 occupied_spans.append((start, end))
             except ValueError:
                 continue
@@ -803,12 +807,14 @@ class BenchmarkExtractor:
                 # Ignore years
                 if self._is_year(val_str, text, start, end):
                     continue
-                candidates.append({
-                    "val": val,
-                    "start": start,
-                    "end": end,
-                    "metric_name": metric_raw,
-                })
+                candidates.append(
+                    {
+                        "val": val,
+                        "start": start,
+                        "end": end,
+                        "metric_name": metric_raw,
+                    }
+                )
                 occupied_spans.append((start, end))
             except ValueError:
                 continue
@@ -828,12 +834,14 @@ class BenchmarkExtractor:
                 val = float(val_str)
                 if self._is_year(val_str, text, start, end):
                     continue
-                candidates.append({
-                    "val": val,
-                    "start": start,
-                    "end": end,
-                    "metric_name": metric_raw,
-                })
+                candidates.append(
+                    {
+                        "val": val,
+                        "start": start,
+                        "end": end,
+                        "metric_name": metric_raw,
+                    }
+                )
                 occupied_spans.append((start, end))
             except ValueError:
                 continue
@@ -848,12 +856,14 @@ class BenchmarkExtractor:
             try:
                 val = float(val_str)
                 metric_name = self._sniff_metric_near(text, start, end)
-                candidates.append({
-                    "val": val,
-                    "start": start,
-                    "end": end,
-                    "metric_name": metric_name,
-                })
+                candidates.append(
+                    {
+                        "val": val,
+                        "start": start,
+                        "end": end,
+                        "metric_name": metric_name,
+                    }
+                )
                 occupied_spans.append((start, end))
             except ValueError:
                 continue
@@ -873,12 +883,14 @@ class BenchmarkExtractor:
             try:
                 val = float(val_str)
                 metric_name = self._sniff_metric_near(text, start, end)
-                candidates.append({
-                    "val": val,
-                    "start": start,
-                    "end": end,
-                    "metric_name": metric_name,
-                })
+                candidates.append(
+                    {
+                        "val": val,
+                        "start": start,
+                        "end": end,
+                        "metric_name": metric_name,
+                    }
+                )
                 occupied_spans.append((start, end))
             except ValueError:
                 continue
@@ -901,7 +913,7 @@ class BenchmarkExtractor:
             return True
         return False
 
-    def _sniff_metric_near(self, text: str, start: int, end: int) -> Optional[str]:
+    def _sniff_metric_near(self, text: str, start: int, end: int) -> str | None:
         """Look for metric keywords in the local window around a number."""
         window_start = max(0, start - 25)
         window_end = min(len(text), end + 25)
@@ -914,7 +926,7 @@ class BenchmarkExtractor:
 
     def _resolve_metric(
         self,
-        metric_hint: Optional[str],
+        metric_hint: str | None,
         benchmark_key: str,
     ) -> EvaluationMetricRecord:
         """Resolve metric record from explicit hint or benchmark default."""

@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 # Ensure scifi package is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -314,7 +314,6 @@ def test_setup_install_opencode_preserves_existing(tmp_path: Path) -> None:
     assert "scifi" in data["mcp"]
 
 
-
 def test_setup_cmd_setup_target_flag(tmp_path: Path) -> None:
     """cmd_setup with --target should configure specific file directly."""
     target_cfg = tmp_path / "custom" / "mcp.json"
@@ -583,7 +582,6 @@ def test_cli_routes_to_sync(tmp_path: Path) -> None:
         mock_sync.assert_called_once()
 
 
-
 def test_cli_figures_subcommand(tmp_path: Path) -> None:
     tex = tmp_path / "paper.tex"
     tex.write_text(r"\documentclass{article}\begin{document}\end{document}", encoding="utf-8")
@@ -622,10 +620,19 @@ def test_cli_rebuttal_subcommand(tmp_path: Path) -> None:
 def test_cli_submission_subcommands(tmp_path: Path) -> None:
     tex = tmp_path / "paper.tex"
     tex.write_text(r"\documentclass{article}\title{Test Paper}\begin{document}\end{document}", encoding="utf-8")
-    
+
     # sf submission highlights
     hl_out = tmp_path / "highlights.md"
-    code = scifi.cli.main(["submission", "highlights", "--bullets", "First major contribution.; Second empirical result.; Third analytical proof.", "--output", str(hl_out)])
+    code = scifi.cli.main(
+        [
+            "submission",
+            "highlights",
+            "--bullets",
+            "First major contribution.; Second empirical result.; Third analytical proof.",
+            "--output",
+            str(hl_out),
+        ]
+    )
     assert code == 0
     assert hl_out.exists()
 
@@ -637,7 +644,9 @@ def test_cli_submission_subcommands(tmp_path: Path) -> None:
 
     # sf submission letter
     let_out = tmp_path / "cover_letter.md"
-    code = scifi.cli.main(["submission", "letter", "--target", str(tex), "--journal", "IEEE TPAMI", "--output", str(let_out)])
+    code = scifi.cli.main(
+        ["submission", "letter", "--target", str(tex), "--journal", "IEEE TPAMI", "--output", str(let_out)]
+    )
     assert code == 0
     assert let_out.exists()
 
@@ -663,4 +672,3 @@ def test_cli_package_subcommand(tmp_path: Path, capsys: pytest.CaptureFixture[st
     assert len(zips) == 1
     assert zips[0].exists()
     assert (out_dir / f"{zips[0].name}.sha256").exists()
-

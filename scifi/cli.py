@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from typing import Sequence
+from collections.abc import Sequence
+from pathlib import Path
 
 from scifi import setup_cli
 from scifi.argus import cli as argus_cli
@@ -80,9 +80,18 @@ def cmd_ui(args: argparse.Namespace) -> int:
 
 def cmd_server(args: argparse.Namespace) -> int:
     """Run the FastMCP server daemon."""
+    from typing import Literal
+
     from scifi.server import mcp
 
-    transport = getattr(args, "transport", "stdio")
+    raw_transport = getattr(args, "transport", "stdio")
+    transport: Literal["stdio", "sse", "streamable-http"]
+    if raw_transport == "sse":
+        transport = "sse"
+    elif raw_transport == "streamable-http":
+        transport = "streamable-http"
+    else:
+        transport = "stdio"
     mcp.run(transport=transport)
     return 0
 
@@ -123,16 +132,21 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     """Run the 6-stage Manuscript Readiness Pipeline or Environment Diagnostics (`sf doctor`)."""
     if getattr(args, "env", False):
         from scifi.env import diagnose_environment
+
         diag = diagnose_environment(auto_fix=getattr(args, "fix", False))
         print("=== SciFi Environment Health Diagnostic ===")
         print(f"Python: {diag['python']['version']} ({diag['python']['executable']})")
-        uv_status = "Available (" + diag['uv'].get('version', '') + ")" if diag['uv']['available'] else "Missing (fallback active)"
+        uv_status = (
+            "Available (" + diag["uv"].get("version", "") + ")"
+            if diag["uv"]["available"]
+            else "Missing (fallback active)"
+        )
         print(f"uv: {uv_status}")
-        z = diag['zotero']
-        port_str = "OPEN" if z['port_23119_open'] else "CLOSED"
+        z = diag["zotero"]
+        port_str = "OPEN" if z["port_23119_open"] else "CLOSED"
         print(f"Zotero: {z['status']} (data_dir: {z['data_dir']}, port 23119: {port_str})")
-        lat = diag['latex']
-        lat_status = "Available" if lat['available'] else "Missing"
+        lat = diag["latex"]
+        lat_status = "Available" if lat["available"] else "Missing"
         print(f"LaTeX Toolchain: {lat_status}")
         return 0
 
@@ -172,7 +186,11 @@ def cmd_config(args: argparse.Namespace) -> int:
     sub = getattr(args, "config_action", None) or "show"
     if sub == "show":
         cfg = resolve_config()
-        print(json.dumps({"global_config_path": str(get_global_config_path()), "effective_config": cfg.to_dict()}, indent=2))
+        print(
+            json.dumps(
+                {"global_config_path": str(get_global_config_path()), "effective_config": cfg.to_dict()}, indent=2
+            )
+        )
         return 0
     elif sub == "set":
         try:
@@ -226,13 +244,18 @@ def cmd_math(args: argparse.Namespace) -> int:
             return 1
         res = check_matrix_shapes(args.expression, shapes_dict)
     elif sub == "limits":
-        res = check_limits(args.expression, args.variable, point=args.tends_to, claimed=args.expected, direction=args.direction)
+        res = check_limits(
+            args.expression, args.variable, point=args.tends_to, claimed=args.expected, direction=args.direction
+        )
     elif sub == "convexity":
         res = check_convexity(args.expression, args.variables)
     elif sub == "notation":
         res = check_notation(args.target)
     else:
-        print("[ERROR] Specify a math subcommand: derivative, step, units, shapes, limits, convexity, notation", file=sys.stderr)
+        print(
+            "[ERROR] Specify a math subcommand: derivative, step, units, shapes, limits, convexity, notation",
+            file=sys.stderr,
+        )
         return 1
 
     print(json.dumps(res, indent=2))
@@ -286,7 +309,7 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(f"# Popper Adversarial Claims Audit ({len(flags)} flags)")
         for f in flags:
             loc = f"{f.get('file', '')}:{f.get('line', '')}".strip(":")
-            print(f"- Line `{loc}`: **\"{f['matched_text']}\"** — {f['critique']}")
+            print(f'- Line `{loc}`: **"{f["matched_text"]}"** — {f["critique"]}')
     return 0
 
 
@@ -387,7 +410,6 @@ def cmd_venue(args: argparse.Namespace) -> int:
     return 0 if res.get("is_compliant", True) else 1
 
 
-
 def cmd_figures(args: argparse.Namespace) -> int:
     """Audit scientific figures & visual accessibility (`sf figures`)."""
     from scifi.figures import audit_latex_figures
@@ -469,7 +491,11 @@ def cmd_rebuttal(args: argparse.Namespace) -> int:
         from scifi.rebuttal import format_rebuttal_scaffold
 
         inp_path = getattr(args, "input", None)
-        raw_text = Path(inp_path).read_text(encoding="utf-8") if inp_path and Path(inp_path).exists() else (getattr(args, "text", "") or "")
+        raw_text = (
+            Path(inp_path).read_text(encoding="utf-8")
+            if inp_path and Path(inp_path).exists()
+            else (getattr(args, "text", "") or "")
+        )
         scaffold = format_rebuttal_scaffold(reviews_text=raw_text, venue=getattr(args, "venue", "openreview"))
         out_p = getattr(args, "output", None)
         if out_p:
@@ -692,7 +718,7 @@ def cmd_zotero(args: argparse.Namespace) -> int:
         annos = reader.get_user_annotations(key)
         print(f"Annotations for item {key} ({len(annos)} found):")
         for a in annos:
-            print(f"  - Page {a.page_label or '?'}: \"{a.text or ''}\" (Comment: {a.comment or 'None'})")
+            print(f'  - Page {a.page_label or "?"}: "{a.text or ""}" (Comment: {a.comment or "None"})')
         return 0
 
     return 0
@@ -743,7 +769,9 @@ def cmd_adapt(args: argparse.Namespace) -> int:
                     print(f"    ℹ️  {res['collection_error']}")
             else:
                 print(f"  Linked Zotero collection: {res['collection']}")
-                print(f"  Populated: {res.get('populated_linked', 0)} existing items linked, {res.get('populated_created', 0)} imported from .bib")
+                print(
+                    f"  Populated: {res.get('populated_linked', 0)} existing items linked, {res.get('populated_created', 0)} imported from .bib"
+                )
     return 0
 
 
@@ -761,7 +789,12 @@ def create_parser() -> argparse.ArgumentParser:
         aliases=["doc", "check-paper"],
         help="Run the 6-stage Manuscript Peer-Review Readiness Pipeline across single or multi-file LaTeX projects",
     )
-    p_doctor.add_argument("target", nargs="?", default=".", help="Path to root .tex file (e.g. main.tex) or project directory (default: .)")
+    p_doctor.add_argument(
+        "target",
+        nargs="?",
+        default=".",
+        help="Path to root .tex file (e.g. main.tex) or project directory (default: .)",
+    )
     p_doctor.add_argument("--bib", help="Optional explicit path to .bib file (auto-discovered if omitted)")
     p_doctor.add_argument("--venue", help="Target venue profile (e.g. ieee, neurips, icml, acm, nature)")
     p_doctor.add_argument("--double-blind", action="store_true", help="Enforce double-blind anonymization rules")
@@ -773,7 +806,9 @@ def create_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--fix", action="store_true", help="Attempt automatic remediation of environment issues")
 
     # verify
-    p_verify = subparsers.add_parser("verify", aliases=["v", "check"], help="Verify a citation (DOI, arXiv link, PubMed URL, or publisher URL)")
+    p_verify = subparsers.add_parser(
+        "verify", aliases=["v", "check"], help="Verify a citation (DOI, arXiv link, PubMed URL, or publisher URL)"
+    )
     p_verify.add_argument("query", help="DOI, arXiv link, PubMed URL, or publisher URL")
     p_verify.add_argument(
         "--format",
@@ -788,7 +823,9 @@ def create_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--timeout", type=int, default=10, help="HTTP request timeout in seconds")
 
     # audit
-    p_audit = subparsers.add_parser("audit", aliases=["a"], help="Audit an entire BibTeX (.bib) file for retracts, errata, and missing DOIs")
+    p_audit = subparsers.add_parser(
+        "audit", aliases=["a"], help="Audit an entire BibTeX (.bib) file for retracts, errata, and missing DOIs"
+    )
     p_audit.add_argument("bib_file", help="Path to .bib file")
     p_audit.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Report format")
     p_audit.add_argument("--output-report", help="File to write audit report to")
@@ -801,12 +838,20 @@ def create_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--verify", action="store_true", help="Automatically verify after locating identifier")
 
     # argus
-    p_argus = subparsers.add_parser("argus", aliases=["cite", "attribution"], help="Attribution sentinel, uncredited method detection, and plagiarism audit")
-    p_argus.add_argument("file", nargs="?", default=None, help="Path to LaTeX (.tex), directory, or markdown/text file to audit")
+    p_argus = subparsers.add_parser(
+        "argus",
+        aliases=["cite", "attribution"],
+        help="Attribution sentinel, uncredited method detection, and plagiarism audit",
+    )
+    p_argus.add_argument(
+        "file", nargs="?", default=None, help="Path to LaTeX (.tex), directory, or markdown/text file to audit"
+    )
     p_argus.add_argument("--bib", help="Path to target references.bib file")
     p_argus.add_argument("--format", choices=["markdown", "json", "text"], default="markdown", help="Report format")
     p_argus.add_argument("--fix", action="store_true", help="Automatically insert \\cite and append BibTeX")
-    p_argus.add_argument("--author-whitelist", nargs="*", help="Author names to whitelist against self-plagiarism flags")
+    p_argus.add_argument(
+        "--author-whitelist", nargs="*", help="Author names to whitelist against self-plagiarism flags"
+    )
     p_argus.add_argument("--preprint-doi", help="DOI of author's preprint")
     p_argus.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
 
@@ -819,7 +864,11 @@ def create_parser() -> argparse.ArgumentParser:
     register_literature_subparsers(p_literature)
 
     # math (Turing)
-    p_math = subparsers.add_parser("math", aliases=["turing", "m"], help="Symbolic calculus, units, matrix shapes, limits, convexity & notation checks")
+    p_math = subparsers.add_parser(
+        "math",
+        aliases=["turing", "m"],
+        help="Symbolic calculus, units, matrix shapes, limits, convexity & notation checks",
+    )
     math_sub = p_math.add_subparsers(dest="math_command", help="Mathematical verification tool")
 
     pm_deriv = math_sub.add_parser("derivative", help="Verify symbolic derivative d^n/dx^n f(x)")
@@ -856,33 +905,51 @@ def create_parser() -> argparse.ArgumentParser:
     pm_not.add_argument("target", help="Path to .tex file, project directory, or LaTeX string")
 
     # stats (Gauss)
-    p_stats = subparsers.add_parser("stats", aliases=["gauss"], help="Empirical curve verification and statistical significance auditing")
+    p_stats = subparsers.add_parser(
+        "stats", aliases=["gauss"], help="Empirical curve verification and statistical significance auditing"
+    )
     stats_sub = p_stats.add_subparsers(dest="stats_command", help="Statistical audit tool")
 
-    ps_curve = stats_sub.add_parser("curve", help="Compare closed-form theoretical formula against empirical simulation data")
+    ps_curve = stats_sub.add_parser(
+        "curve", help="Compare closed-form theoretical formula against empirical simulation data"
+    )
     ps_curve.add_argument("formula", help="Analytical formula")
     ps_curve.add_argument("data_path", help="Path to CSV/JSON data or inline JSON")
     ps_curve.add_argument("x_col", help="Independent variable column")
     ps_curve.add_argument("y_col", help="Dependent variable column")
     ps_curve.add_argument("--tolerance", type=float, default=0.05, help="Relative RMSE tolerance (default: 0.05)")
 
-    ps_audit = stats_sub.add_parser("audit", help="Audit sample statistics, 95%% CI, and Central Limit Theorem (N >= 30)")
+    ps_audit = stats_sub.add_parser(
+        "audit", help="Audit sample statistics, 95%% CI, and Central Limit Theorem (N >= 30)"
+    )
     ps_audit.add_argument("values", help="Comma-separated numbers, JSON array, or path to CSV/JSON file")
     ps_audit.add_argument("--confidence", type=float, default=0.95, help="Confidence level (default: 0.95)")
 
     # review (Popper)
-    p_review = subparsers.add_parser("review", aliases=["popper", "claims"], help="Adversarial peer-review scanner for overclaims and fragile assumptions")
+    p_review = subparsers.add_parser(
+        "review",
+        aliases=["popper", "claims"],
+        help="Adversarial peer-review scanner for overclaims and fragile assumptions",
+    )
     p_review.add_argument("target", help="Path to .tex file, multi-file LaTeX directory, or raw text")
     p_review.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
 
     # shannon
-    p_shannon = subparsers.add_parser("shannon", aliases=["seo", "abstract"], help="Evaluate title, 5-beat abstract, and keywords on 100-point Reviewer Triage rubric")
-    p_shannon.add_argument("target", nargs="?", default=None, help="Optional path to .tex file or multi-file LaTeX directory")
+    p_shannon = subparsers.add_parser(
+        "shannon",
+        aliases=["seo", "abstract"],
+        help="Evaluate title, 5-beat abstract, and keywords on 100-point Reviewer Triage rubric",
+    )
+    p_shannon.add_argument(
+        "target", nargs="?", default=None, help="Optional path to .tex file or multi-file LaTeX directory"
+    )
     p_shannon.add_argument("--title", help="Draft manuscript title")
     p_shannon.add_argument("--abstract", help="Draft manuscript abstract")
     p_shannon.add_argument("--keywords", help="Comma-separated candidate keywords")
     p_shannon.add_argument("--venue", help="Target publisher or venue")
-    p_shannon.add_argument("--live", action="store_true", help="Perform live title collision check on OpenAlex/Crossref")
+    p_shannon.add_argument(
+        "--live", action="store_true", help="Perform live title collision check on OpenAlex/Crossref"
+    )
     p_shannon.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # human
@@ -891,23 +958,40 @@ def create_parser() -> argparse.ArgumentParser:
         aliases=["humanize", "deai", "stylometry"],
         help="Audit LaTeX source code and academic prose across 6 forensic stylometric and structural AI-detection dimensions",
     )
-    p_human.add_argument("target", nargs="?", default=".", help="Path to .tex file, multi-file LaTeX directory, Markdown/text file, or inline text (default: .)")
+    p_human.add_argument(
+        "target",
+        nargs="?",
+        default=".",
+        help="Path to .tex file, multi-file LaTeX directory, Markdown/text file, or inline text (default: .)",
+    )
     p_human.add_argument("--output", help="Optional path to save the Markdown forensic report")
     p_human.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_human.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # table
-    p_table = subparsers.add_parser("table", aliases=["tab", "booktabs"], help="Generate publication-grade LaTeX booktabs tables with bolded SOTA metrics")
+    p_table = subparsers.add_parser(
+        "table",
+        aliases=["tab", "booktabs"],
+        help="Generate publication-grade LaTeX booktabs tables with bolded SOTA metrics",
+    )
     p_table.add_argument("data_file", help="Path to CSV/JSON file or inline JSON array")
-    p_table.add_argument("--caption", default="Experimental comparison against state-of-the-art baselines.", help="LaTeX table caption")
+    p_table.add_argument(
+        "--caption", default="Experimental comparison against state-of-the-art baselines.", help="LaTeX table caption"
+    )
     p_table.add_argument("--label", default="tab:results", help="LaTeX table label")
-    p_table.add_argument("--lower-better", help="Comma-separated column names where lower is better (e.g. RMSE,Latency)")
+    p_table.add_argument(
+        "--lower-better", help="Comma-separated column names where lower is better (e.g. RMSE,Latency)"
+    )
     p_table.add_argument("--precision", type=int, default=2, help="Decimal places (default: 2)")
     p_table.add_argument("--output", help="Optional path to write generated .tex file")
     p_table.add_argument("--format", choices=["latex", "json"], default="latex", help="Output format")
 
     # venue
-    p_venue = subparsers.add_parser("venue", aliases=["blind"], help="Audit single or multi-file LaTeX manuscript for venue compliance & double-blind leaks")
+    p_venue = subparsers.add_parser(
+        "venue",
+        aliases=["blind"],
+        help="Audit single or multi-file LaTeX manuscript for venue compliance & double-blind leaks",
+    )
     p_venue.add_argument("target", nargs="?", default=".", help="Path to .tex file or project directory (default: .)")
     p_venue.add_argument("--venue", help="Venue profile (e.g. ieee, neurips, icml, cvpr, acm, nature)")
     p_venue.add_argument("--double-blind", action="store_true", help="Enforce double-blind anonymization checks")
@@ -915,32 +999,58 @@ def create_parser() -> argparse.ArgumentParser:
     p_venue.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
 
     # figures (da-vinci)
-    p_figures = subparsers.add_parser("figures", aliases=["fig", "da-vinci"], help="Audit figures for DPI, vector formats, subfigure parity, and colorblind safety")
-    p_figures.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_figures = subparsers.add_parser(
+        "figures",
+        aliases=["fig", "da-vinci"],
+        help="Audit figures for DPI, vector formats, subfigure parity, and colorblind safety",
+    )
+    p_figures.add_argument(
+        "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
+    )
     p_figures.add_argument("--base-dir", help="Base directory containing figure assets")
     p_figures.add_argument("--dpi", type=int, default=300, help="Minimum acceptable DPI (default: 300)")
     p_figures.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # trim (layout)
-    p_trim = subparsers.add_parser("trim", aliases=["budget", "layout"], help="Analyze page budget slack, paragraph widow lines, and BibTeX abbreviation savings")
-    p_trim.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_trim = subparsers.add_parser(
+        "trim",
+        aliases=["budget", "layout"],
+        help="Analyze page budget slack, paragraph widow lines, and BibTeX abbreviation savings",
+    )
+    p_trim.add_argument(
+        "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
+    )
     p_trim.add_argument("--bib", help="Path to BibTeX file (auto-discovered if omitted)")
     p_trim.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # proofs (euclid)
-    p_proofs = subparsers.add_parser("proofs", aliases=["theorems", "euclid"], help="Audit theorem-proof completeness and verify appendix derivation pointers")
-    p_proofs.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_proofs = subparsers.add_parser(
+        "proofs",
+        aliases=["theorems", "euclid"],
+        help="Audit theorem-proof completeness and verify appendix derivation pointers",
+    )
+    p_proofs.add_argument(
+        "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
+    )
     p_proofs.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # repro (bacon)
-    p_repro = subparsers.add_parser("repro", aliases=["bacon", "reproducibility"], help="Audit conference reproducibility checklist (seeds, error bars, compute budget, anonymization)")
-    p_repro.add_argument("target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)")
+    p_repro = subparsers.add_parser(
+        "repro",
+        aliases=["bacon", "reproducibility"],
+        help="Audit conference reproducibility checklist (seeds, error bars, compute budget, anonymization)",
+    )
+    p_repro.add_argument(
+        "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
+    )
     p_repro.add_argument("--venue", default="neurips", help="Target venue checklist (default: neurips)")
     p_repro.add_argument("--double-blind", action="store_true", help="Enforce double-blind anonymization")
     p_repro.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # rebuttal (socrates)
-    p_rebuttal = subparsers.add_parser("rebuttal", aliases=["socrates", "response"], help="Author rebuttal generator and LaTeX revision diff tracker")
+    p_rebuttal = subparsers.add_parser(
+        "rebuttal", aliases=["socrates", "response"], help="Author rebuttal generator and LaTeX revision diff tracker"
+    )
     reb_sub = p_rebuttal.add_subparsers(dest="rebuttal_action", help="Rebuttal action")
     pr_format = reb_sub.add_parser("format", help="Generate 4-beat rebuttal scaffold from review text")
     pr_format.add_argument("--input", help="Path to raw reviews text file")
@@ -966,7 +1076,9 @@ def create_parser() -> argparse.ArgumentParser:
     ps_let = sub_sub.add_parser("letter", help="Generate publication-ready editorial cover letter")
     ps_let.add_argument("--target", help="Path to manuscript LaTeX file or directory")
     ps_let.add_argument("--journal", help="Target journal name")
-    ps_let.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_let.add_argument(
+        "--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)"
+    )
     ps_let.add_argument("--issn", help="Journal ISSN")
     ps_let.add_argument("--editor", help="Editor-in-Chief name")
     ps_let.add_argument("--authors", help="Comma-separated author names")
@@ -975,17 +1087,25 @@ def create_parser() -> argparse.ArgumentParser:
     ps_let.add_argument("--output", help="Output file path (Markdown or LaTeX)")
     ps_let.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
-    ps_hl = sub_sub.add_parser("highlights", help="Generate and validate 3-5 research highlights against venue character limits")
+    ps_hl = sub_sub.add_parser(
+        "highlights", help="Generate and validate 3-5 research highlights against venue character limits"
+    )
     ps_hl.add_argument("--target", help="Path to manuscript LaTeX file to extract candidate highlights from")
     ps_hl.add_argument("--bullets", help="Explicit bullet points (semicolon or newline-separated)")
-    ps_hl.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_hl.add_argument(
+        "--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)"
+    )
     ps_hl.add_argument("--output", help="Output file path (Markdown or LaTeX)")
     ps_hl.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
-    ps_tp = sub_sub.add_parser("title-page", help="Generate unblinded standalone Title Page document for double-blind review fairness")
+    ps_tp = sub_sub.add_parser(
+        "title-page", help="Generate unblinded standalone Title Page document for double-blind review fairness"
+    )
     ps_tp.add_argument("--target", help="Path to manuscript LaTeX file to extract metadata from")
     ps_tp.add_argument("--authors", help="Comma-separated author names or author definitions")
-    ps_tp.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_tp.add_argument(
+        "--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)"
+    )
     ps_tp.add_argument("--funding", help="Funding and grant acknowledgments")
     ps_tp.add_argument("--conflicts", help="Declaration of competing interests")
     ps_tp.add_argument("--output", help="Output file path (LaTeX or Markdown)")
@@ -997,11 +1117,15 @@ def create_parser() -> argparse.ArgumentParser:
     ps_pc.add_argument("--output", help="Output zip file path (default: anonymous_code.zip)")
     ps_pc.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
-    ps_bun = sub_sub.add_parser("bundle", help="Generate all four submission artifacts and packaging manifest in one shot")
+    ps_bun = sub_sub.add_parser(
+        "bundle", help="Generate all four submission artifacts and packaging manifest in one shot"
+    )
     ps_bun.add_argument("--target", default=".", help="Path to manuscript LaTeX file or directory (default: .)")
     ps_bun.add_argument("--journal", help="Target journal name")
     ps_bun.add_argument("--authors", help="Comma-separated author names or author definitions")
-    ps_bun.add_argument("--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)")
+    ps_bun.add_argument(
+        "--venue", default="general", help="Target publisher profile (elsevier, ieee, springer, acm, general)"
+    )
     ps_bun.add_argument("--issn", help="Journal ISSN")
     ps_bun.add_argument("--code-dir", help="Explicit path to code directory")
     ps_bun.add_argument("--no-code", action="store_true", help="Skip code packaging (e.g. theoretical paper)")
@@ -1014,10 +1138,14 @@ def create_parser() -> argparse.ArgumentParser:
     ps_bun.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # config
-    p_config = subparsers.add_parser("config", aliases=["cfg"], help="Manage global (~/.scifi/config.json) and project (scifi.toml) configuration")
+    p_config = subparsers.add_parser(
+        "config", aliases=["cfg"], help="Manage global (~/.scifi/config.json) and project (scifi.toml) configuration"
+    )
     cfg_sub = p_config.add_subparsers(dest="config_action", help="Config action")
     cfg_sub.add_parser("show", help="Show resolved global and workspace configuration")
-    pc_set = cfg_sub.add_parser("set", help="Set a global config value (email, s2_api_key, default_venue, author_whitelist)")
+    pc_set = cfg_sub.add_parser(
+        "set", help="Set a global config value (email, s2_api_key, default_venue, author_whitelist)"
+    )
     pc_set.add_argument("key", help="Config key (email, s2_api_key, default_venue, author_whitelist)")
     pc_set.add_argument("value", help="Config value")
     pc_init = cfg_sub.add_parser("init", help="Create a template scifi.toml in the current workspace")
@@ -1025,11 +1153,15 @@ def create_parser() -> argparse.ArgumentParser:
     pc_init.add_argument("--main-tex", default="main.tex", help="Main LaTeX file name")
     pc_init.add_argument("--bib-file", default="references.bib", help="BibTeX file name")
     pc_init.add_argument("--venue", default="ieee", help="Target venue name")
-    pc_init.add_argument("--double-blind", action="store_true", default=False, help="Enable double-blind mode by default")
+    pc_init.add_argument(
+        "--double-blind", action="store_true", default=False, help="Enable double-blind mode by default"
+    )
     pc_init.add_argument("--force", action="store_true", help="Overwrite existing scifi.toml")
 
     # zotero
-    p_zotero = subparsers.add_parser("zotero", aliases=["zot"], help="Manage local Zotero library, synchronization, and audit notes")
+    p_zotero = subparsers.add_parser(
+        "zotero", aliases=["zot"], help="Manage local Zotero library, synchronization, and audit notes"
+    )
     zot_sub = p_zotero.add_subparsers(dest="zotero_action", help="Zotero action")
     zot_sub.add_parser("status", help="Check local Zotero status, collections, and port 23119")
     pz_sync = zot_sub.add_parser("sync", help="Sync collection papers, references.bib, and flush staged writes")
@@ -1039,47 +1171,93 @@ def create_parser() -> argparse.ArgumentParser:
     pz_ann.add_argument("--key", required=True, help="Zotero item key")
 
     # scaffold
-    p_scaffold = subparsers.add_parser("scaffold", aliases=["new", "bootstrap"], help="Scaffold a standard 2-pillar academic project (paper/ + code/ + .scifi/)")
+    p_scaffold = subparsers.add_parser(
+        "scaffold",
+        aliases=["new", "bootstrap"],
+        help="Scaffold a standard 2-pillar academic project (paper/ + code/ + .scifi/)",
+    )
     p_scaffold.add_argument("target", nargs="?", default=".", help="Target directory for project")
     p_scaffold.add_argument("--title", default="Research Manuscript", help="Manuscript title")
     p_scaffold.add_argument("--venue", default="ieee", help="Target venue profile (ieee, neurips, acm)")
     p_scaffold.add_argument("--collection", help="Link to Zotero collection")
 
     # adapt
-    p_adapt = subparsers.add_parser("adapt", aliases=["migrate"], help="Migrate legacy codebase into standard 2-pillar SciFi structure")
+    p_adapt = subparsers.add_parser(
+        "adapt", aliases=["migrate"], help="Migrate legacy codebase into standard 2-pillar SciFi structure"
+    )
     p_adapt.add_argument("target", nargs="?", default=".", help="Target legacy codebase directory")
     p_adapt.add_argument("--venue", default="ieee", help="Target venue profile")
     p_adapt.add_argument("--collection", help="Link to Zotero collection")
-    p_adapt.add_argument("--match", "--auto-match", dest="auto_match", action="store_true", help="Auto-match best overlapping existing Zotero collection instead of project name")
-    p_adapt.add_argument("--dry-run", action="store_true", help="Preview planned directory restructuring without moving files")
+    p_adapt.add_argument(
+        "--match",
+        "--auto-match",
+        dest="auto_match",
+        action="store_true",
+        help="Auto-match best overlapping existing Zotero collection instead of project name",
+    )
+    p_adapt.add_argument(
+        "--dry-run", action="store_true", help="Preview planned directory restructuring without moving files"
+    )
 
     # setup
-    p_setup = subparsers.add_parser("setup", aliases=["init", "i"], help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop")
-    p_setup.add_argument("--auto", action="store_true", help="Non-interactive setup; install to all detected environments")
-    p_setup.add_argument("--dry-run", action="store_true", help="Print planned configuration changes without modifying files")
+    p_setup = subparsers.add_parser(
+        "setup",
+        aliases=["init", "i"],
+        help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop",
+    )
+    p_setup.add_argument(
+        "--auto", action="store_true", help="Non-interactive setup; install to all detected environments"
+    )
+    p_setup.add_argument(
+        "--dry-run", action="store_true", help="Print planned configuration changes without modifying files"
+    )
     p_setup.add_argument("--target", type=str, help="Install to a specific configuration file path")
     p_setup.add_argument("--scifi-root", type=str, help="Custom root directory for scifi repository")
     p_setup.add_argument("--list", action="store_true", help="List all supported and detected AI environments")
-    p_setup.add_argument("--rules", action="store_true", help="Synchronize SciFi scientific rules to project instruction files")
-    p_setup.add_argument("--workspace", action="store_true", help="Configure workspace MCP manifests (.cursor, .mcp.json, opencode.json) and sync rules")
-    p_setup.add_argument("--use-uvx", action="store_true", help="Configure MCP client to execute via zero-install 'uvx scifi server'")
+    p_setup.add_argument(
+        "--rules", action="store_true", help="Synchronize SciFi scientific rules to project instruction files"
+    )
+    p_setup.add_argument(
+        "--workspace",
+        action="store_true",
+        help="Configure workspace MCP manifests (.cursor, .mcp.json, opencode.json) and sync rules",
+    )
+    p_setup.add_argument(
+        "--use-uvx", action="store_true", help="Configure MCP client to execute via zero-install 'uvx scifi server'"
+    )
 
     # sync
-    p_sync = subparsers.add_parser("sync", help="Synchronize SciFi scientific rules to CLAUDE.md, .clinerules, .cursorrules, etc.")
-    p_sync.add_argument("--dry-run", action="store_true", help="Print planned rule synchronization without modifying files")
+    p_sync = subparsers.add_parser(
+        "sync", help="Synchronize SciFi scientific rules to CLAUDE.md, .clinerules, .cursorrules, etc."
+    )
+    p_sync.add_argument(
+        "--dry-run", action="store_true", help="Print planned rule synchronization without modifying files"
+    )
 
     # compile
-    p_compile = subparsers.add_parser("compile", aliases=["c", "build"], help="Compile a LaTeX manuscript and diagnose build errors")
-    p_compile.add_argument("tex_file", nargs="?", default="main.tex", help="Path to main LaTeX (.tex) file (default: main.tex)")
-    p_compile.add_argument("--engine", choices=["auto", "latexmk", "pdflatex"], default="auto", help="LaTeX engine to use (default: auto)")
-    p_compile.add_argument("--no-clean", dest="clean", action="store_false", default=True, help="Do not remove auxiliary files")
+    p_compile = subparsers.add_parser(
+        "compile", aliases=["c", "build"], help="Compile a LaTeX manuscript and diagnose build errors"
+    )
+    p_compile.add_argument(
+        "tex_file", nargs="?", default="main.tex", help="Path to main LaTeX (.tex) file (default: main.tex)"
+    )
+    p_compile.add_argument(
+        "--engine", choices=["auto", "latexmk", "pdflatex"], default="auto", help="LaTeX engine to use (default: auto)"
+    )
+    p_compile.add_argument(
+        "--no-clean", dest="clean", action="store_false", default=True, help="Do not remove auxiliary files"
+    )
 
     # server
     p_server = subparsers.add_parser("server", aliases=["mcp", "serve"], help="Run the SciFi FastMCP server daemon")
-    p_server.add_argument("--transport", choices=["stdio", "sse"], default="stdio", help="MCP transport mode (default: stdio)")
+    p_server.add_argument(
+        "--transport", choices=["stdio", "sse"], default="stdio", help="MCP transport mode (default: stdio)"
+    )
 
     # ui (cockpit)
-    p_ui = subparsers.add_parser("ui", aliases=["cockpit", "web"], help="Launch local SciFi Web Research Cockpit dashboard")
+    p_ui = subparsers.add_parser(
+        "ui", aliases=["cockpit", "web"], help="Launch local SciFi Web Research Cockpit dashboard"
+    )
     p_ui.add_argument("--port", type=int, default=8080, help="Port to bind Web Cockpit server (default: 8080)")
     p_ui.add_argument("--host", default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
     p_ui.add_argument("--no-browser", action="store_true", help="Do not automatically open web browser")
@@ -1090,8 +1268,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # package (bundle)
-    p_package = subparsers.add_parser("package", aliases=["bundle"], help="Build release packages (PyPI distributions and AI Agent Plugin bundle)")
-    p_package.add_argument("--output-dir", "-o", default="dist", help="Output directory for generated packages (default: dist)")
+    p_package = subparsers.add_parser(
+        "package", aliases=["bundle"], help="Build release packages (PyPI distributions and AI Agent Plugin bundle)"
+    )
+    p_package.add_argument(
+        "--output-dir", "-o", default="dist", help="Output directory for generated packages (default: dist)"
+    )
     p_package.add_argument("--plugin-only", action="store_true", help="Build only the AI Agent Plugin zip bundle")
     p_package.add_argument("--python-only", action="store_true", help="Build only Python wheel and source distribution")
 
@@ -1121,7 +1303,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     actual_argv = list(sys.argv[1:] if argv is None else argv)
 
     # Support nested Argus subcommands: `scifi argus scan ...` or `scifi argus search ...` or `scifi argus audit ...`
-    if len(actual_argv) > 1 and actual_argv[0] in ("argus", "cite", "attribution") and actual_argv[1] in ("audit", "scan", "search"):
+    if (
+        len(actual_argv) > 1
+        and actual_argv[0] in ("argus", "cite", "attribution")
+        and actual_argv[1] in ("audit", "scan", "search")
+    ):
         from scifi.argus.cli import main as argus_main
 
         return argus_main(actual_argv[1:])

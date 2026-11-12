@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Any
 
 
-class VerificationStatus(str, Enum):
+class VerificationStatus(StrEnum):
     VERIFIED = "VERIFIED"
     RETRACTED = "RETRACTED"
     ERRATA_EXISTS = "ERRATA_EXISTS"
@@ -18,7 +18,7 @@ class VerificationStatus(str, Enum):
     UNRESOLVED = "UNRESOLVED"
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
@@ -27,9 +27,9 @@ class Severity(str, Enum):
 @dataclass
 class Author:
     name: str
-    family: Optional[str] = None
-    given: Optional[str] = None
-    orcid: Optional[str] = None
+    family: str | None = None
+    given: str | None = None
+    orcid: str | None = None
 
     @classmethod
     def from_string(cls, name_str: str) -> Author:
@@ -55,7 +55,7 @@ class Discrepancy:
     severity: Severity
     message: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "field": self.field,
             "claimed": self.claimed,
@@ -67,13 +67,13 @@ class Discrepancy:
 
 @dataclass
 class ClaimedMetadata:
-    title: Optional[str] = None
-    authors: List[str] = field(default_factory=list)
-    year: Optional[int] = None
-    venue: Optional[str] = None
-    doi: Optional[str] = None
-    entry_key: Optional[str] = None
-    raw_entry: Dict[str, Any] = field(default_factory=dict)
+    title: str | None = None
+    authors: list[str] = field(default_factory=list)
+    year: int | None = None
+    venue: str | None = None
+    doi: str | None = None
+    entry_key: str | None = None
+    raw_entry: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -81,25 +81,25 @@ class CitationMetadata:
     identifier_type: str
     identifier_value: str
     status: VerificationStatus = VerificationStatus.UNRESOLVED
-    canonical_doi: Optional[str] = None
-    canonical_url: Optional[str] = None
-    title: Optional[str] = None
-    authors: List[Author] = field(default_factory=list)
-    year: Optional[int] = None
-    venue: Optional[str] = None
-    volume: Optional[str] = None
-    issue: Optional[str] = None
-    pages: Optional[str] = None
-    publisher: Optional[str] = None
+    canonical_doi: str | None = None
+    canonical_url: str | None = None
+    title: str | None = None
+    authors: list[Author] = field(default_factory=list)
+    year: int | None = None
+    venue: str | None = None
+    volume: str | None = None
+    issue: str | None = None
+    pages: str | None = None
+    publisher: str | None = None
     entry_type: str = "article"
-    citation_count: Optional[int] = None
+    citation_count: int | None = None
     is_retracted: bool = False
-    retraction_details: Optional[str] = None
+    retraction_details: str | None = None
     has_errata: bool = False
-    errata_details: Optional[str] = None
+    errata_details: str | None = None
     source_registry: str = "Unknown"
-    discrepancies: List[Discrepancy] = field(default_factory=list)
-    claimed_metadata: Optional[ClaimedMetadata] = None
+    discrepancies: list[Discrepancy] = field(default_factory=list)
+    claimed_metadata: ClaimedMetadata | None = None
 
     def generate_cite_key(self) -> str:
         """Generate a clean BibTeX citation key: [FirstAuthorSurname][Year][FirstWordOfTitle]"""
@@ -123,7 +123,7 @@ class CitationMetadata:
                 title_part = words[0].capitalize()
         return f"{author_part}{year_part}{title_part}"
 
-    def to_bibtex(self, key: Optional[str] = None) -> str:
+    def to_bibtex(self, key: str | None = None) -> str:
         """Format metadata as a clean, standardized BibTeX entry."""
         cite_key = key or self.generate_cite_key()
         entry_type = self.entry_type or "article"
@@ -217,7 +217,7 @@ class CitationMetadata:
 
         return " ".join(parts)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
             "identifier_type": self.identifier_type,
@@ -225,10 +225,7 @@ class CitationMetadata:
             "canonical_doi": self.canonical_doi,
             "canonical_url": self.canonical_url,
             "title": self.title,
-            "authors": [
-                {"name": a.name, "family": a.family, "given": a.given, "orcid": a.orcid}
-                for a in self.authors
-            ],
+            "authors": [{"name": a.name, "family": a.family, "given": a.given, "orcid": a.orcid} for a in self.authors],
             "year": self.year,
             "venue": self.venue,
             "volume": self.volume,
@@ -289,7 +286,9 @@ class CitationMetadata:
             lines.append("\n#### Discrepancies vs Claimed Citation:")
             for d in self.discrepancies:
                 icon = "❌" if d.severity == Severity.ERROR else ("⚠️" if d.severity == Severity.WARNING else "ℹ️")
-                lines.append(f"- {icon} **{d.field}**: {d.message} (Claimed: `{d.claimed}` vs Verified: `{d.verified}`)")
+                lines.append(
+                    f"- {icon} **{d.field}**: {d.message} (Claimed: `{d.claimed}` vs Verified: `{d.verified}`)"
+                )
 
         lines.append("\n#### Formatted Citations:")
         lines.append("**APA (7th edition):**\n")
@@ -304,18 +303,18 @@ class CitationMetadata:
 
 @dataclass
 class BibAuditReport:
-    file_path: Optional[str] = None
+    file_path: str | None = None
     total_entries: int = 0
     verified_count: int = 0
     retracted_count: int = 0
     errata_count: int = 0
     mismatch_count: int = 0
     unresolved_count: int = 0
-    entries: List[CitationMetadata] = field(default_factory=list)
+    entries: list[CitationMetadata] = field(default_factory=list)
 
     def summary_markdown(self) -> str:
         lines = [
-            f"# BibTeX Audit Report",
+            "# BibTeX Audit Report",
             f"**File**: `{self.file_path or 'In-Memory Stream'}`",
             f"- **Total Citations**: {self.total_entries}",
             f"- 🟢 **Verified & Clean**: {self.verified_count}",
@@ -342,7 +341,9 @@ class BibAuditReport:
                 if e.discrepancies:
                     lines.append(f"- **Key**: `{e.generate_cite_key()}` ({e.title})")
                     for d in e.discrepancies:
-                        lines.append(f"  - [{d.severity.value}] **{d.field}**: Claimed `{d.claimed}` vs Verified `{d.verified}`")
+                        lines.append(
+                            f"  - [{d.severity.value}] **{d.field}**: Claimed `{d.claimed}` vs Verified `{d.verified}`"
+                        )
             lines.append("")
 
         if self.unresolved_count > 0:

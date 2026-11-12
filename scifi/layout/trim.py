@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
-from typing import Any
+from pathlib import Path
 
 from scifi.latex.project import resolve_latex_project
 from scifi.layout.abbreviations import abbreviate_bib_string

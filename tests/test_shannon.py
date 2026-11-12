@@ -1,18 +1,19 @@
 import json
-import pytest
 from unittest.mock import patch
+
 from skills.shannon.scripts.test_keywords import (
-    compute_title_keyword_overlap,
-    compute_abstract_keyword_density,
-    compute_title_similarity,
-    check_title_collision,
     check_keyword_relevance,
-    evaluate_accessibility,
+    check_title_collision,
+    compute_abstract_keyword_density,
+    compute_title_keyword_overlap,
+    compute_title_similarity,
     evaluate_academic_seo,
+    evaluate_accessibility,
     evaluate_triage_score,
     run_cli,
     tokenize,
 )
+
 
 def test_tokenize_strips_punctuation_and_lowercases():
     text = "Adaptive Federated-Learning: Under High Latency?"
@@ -24,6 +25,7 @@ def test_tokenize_strips_punctuation_and_lowercases():
     # Stop words like "under" should be stripped
     assert "under" not in tokens
 
+
 def test_title_keyword_overlap_detects_redundancy():
     title = "Adaptive Federated Learning for Edge Computing under Latency Constraints"
     keywords = ["federated learning", "edge computing", "privacy preservation", "stochastic optimization"]
@@ -33,6 +35,7 @@ def test_title_keyword_overlap_detects_redundancy():
     assert "edge" in result["overlapping_words"]
     assert result["distinct_keywords_count"] == 2
 
+
 def test_title_keyword_overlap_zero_when_distinct():
     title = "Adaptive Resource Allocation under Strict Latency Constraints"
     keywords = ["federated learning", "differential privacy", "edge nodes"]
@@ -40,6 +43,7 @@ def test_title_keyword_overlap_zero_when_distinct():
     assert result["overlap_ratio"] == 0.0
     assert len(result["overlapping_words"]) == 0
     assert result["distinct_keywords_count"] == 3
+
 
 def test_abstract_keyword_density_counts_and_flags():
     abstract = (
@@ -54,6 +58,7 @@ def test_abstract_keyword_density_counts_and_flags():
     assert result["densities"]["differential privacy"]["count"] == 0
     assert result["densities"]["differential privacy"]["status"] == "OMITTED"
 
+
 def test_evaluate_accessibility_flags_runon_sentences():
     long_sentence = " ".join(["word"] * 40) + "."
     normal_sentence = "This is a concise opening sentence explaining the practical context."
@@ -64,6 +69,7 @@ def test_evaluate_accessibility_flags_runon_sentences():
     res_normal = evaluate_accessibility(normal_sentence)
     assert res_normal["has_runon_sentences"] is False
     assert res_normal["sentence_count"] == 1
+
 
 def test_evaluate_academic_seo_frontloading_and_anchoring():
     # Good SEO: keyphrase in first 65 chars, 10-14 words, keyphrase in lead, middle, end
@@ -82,6 +88,7 @@ def test_evaluate_academic_seo_frontloading_and_anchoring():
     assert seo["three_beat_anchoring"] is True
     assert len(seo["seo_hacks_applied"]) >= 3
 
+
 def test_triage_score_penalizes_ai_tropes_and_em_dashes():
     title = "Delving into Deep Learning: A Pivotal Paradigm"
     abstract = (
@@ -93,6 +100,7 @@ def test_triage_score_penalizes_ai_tropes_and_em_dashes():
     assert res["scores"]["style_debiasing"]["points"] < 5
     assert "em_dash" in res["scores"]["style_debiasing"]["penalties"]
     assert "delve" in res["scores"]["style_debiasing"]["flagged_words"]
+
 
 def test_triage_score_awards_clean_quantified_abstract():
     title = "Decentralized Beamforming for Distributed Satellite Clusters under Doppler Constraints"
@@ -112,6 +120,7 @@ def test_triage_score_awards_clean_quantified_abstract():
     assert res["scores"]["experimental_quantification"]["points"] >= 18
     assert res["scores"]["style_debiasing"]["points"] == 20
 
+
 def test_title_similarity_computation():
     t1 = "Federated Learning for Edge Computing under Latency Constraints"
     t2 = "Federated Learning for Edge Computing with Latency Constraints"
@@ -119,9 +128,11 @@ def test_title_similarity_computation():
     assert compute_title_similarity(t1, t2) > 0.85
     assert compute_title_similarity(t1, t3) < 0.40
 
+
 def test_title_collision_offline_mode():
     result = check_title_collision("Adaptive Beamforming for Satellites", live=False)
     assert result["status"] == "SKIPPED_OFFLINE"
+
 
 def test_title_collision_mocked_openalex_response():
     mock_payload = {
@@ -130,7 +141,7 @@ def test_title_collision_mocked_openalex_response():
                 "title": "Adaptive Beamforming for Low Earth Orbit Satellites",
                 "cited_by_count": 42,
                 "publication_year": 2023,
-                "primary_location": {"source": {"display_name": "IEEE Transactions on Aerospace"}}
+                "primary_location": {"source": {"display_name": "IEEE Transactions on Aerospace"}},
             }
         ]
     }
@@ -139,12 +150,13 @@ def test_title_collision_mocked_openalex_response():
         assert res["risk_level"] in ("MODERATE OVERLAP", "HIGH COLLISION")
         assert len(res["matches"]) == 1
 
+
 def test_keyword_relevance_mocked_openalex_response():
     mock_payload = {
         "results": [
             {
                 "title": "A Survey on Federated Learning",
-                "primary_location": {"source": {"display_name": "IEEE Communications Surveys & Tutorials"}}
+                "primary_location": {"source": {"display_name": "IEEE Communications Surveys & Tutorials"}},
             }
         ]
     }
@@ -153,12 +165,16 @@ def test_keyword_relevance_mocked_openalex_response():
         assert res["status"] == "LIVE_OK"
         assert "federated learning" in res["keyword_insights"]
 
+
 def test_cli_json_output(capsys):
     args = [
-        "--title", "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints",
-        "--abstract", "Satellite networks require coordination. However, existing schemes fail under high latency. We formulate an algorithm achieving 3.5 dB gain. This enables robust links.",
-        "--keywords", "satellite clusters, beamforming, latency constraints",
-        "--json"
+        "--title",
+        "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints",
+        "--abstract",
+        "Satellite networks require coordination. However, existing schemes fail under high latency. We formulate an algorithm achieving 3.5 dB gain. This enables robust links.",
+        "--keywords",
+        "satellite clusters, beamforming, latency constraints",
+        "--json",
     ]
     exit_code = run_cli(args)
     captured = capsys.readouterr()
@@ -170,11 +186,15 @@ def test_cli_json_output(capsys):
     assert "density" in data
     assert exit_code in (0, 1)
 
+
 def test_cli_human_readable_report(capsys):
     args = [
-        "--title", "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints",
-        "--abstract", "Satellite networks require coordination. However, existing schemes fail under high latency. We formulate an adaptive algorithm achieving 3.5 dB gain and 20% lower loss. This enables robust inter-satellite links.",
-        "--keywords", "constellations, synchronization, orbital networks",
+        "--title",
+        "Decentralized Beamforming for Distributed Satellite Clusters under Severe Doppler Constraints",
+        "--abstract",
+        "Satellite networks require coordination. However, existing schemes fail under high latency. We formulate an adaptive algorithm achieving 3.5 dB gain and 20% lower loss. This enables robust inter-satellite links.",
+        "--keywords",
+        "constellations, synchronization, orbital networks",
     ]
     exit_code = run_cli(args)
     captured = capsys.readouterr()
@@ -182,6 +202,3 @@ def test_cli_human_readable_report(capsys):
     assert "REVIEWER TRIAGE SCORECARD" in captured.out
     assert "ACADEMIC SEO & DISCOVERABILITY" in captured.out
     assert exit_code == 0
-
-
-

@@ -5,7 +5,6 @@ Tests for SciFi CLI commands (`sf ui`, `sf literature sync`, `sf literature repr
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scifi.cli import create_parser, main
-from scifi.literature.models import PaperRecord, ProjectRecord, ReprintRequestRecord
+from scifi.literature.models import PaperRecord
 from scifi.literature.store import LiteratureStore
 from scifi.server import (
     mcp,
@@ -23,7 +22,6 @@ from scifi.server import (
     scifi_list_pending_reprints,
     scifi_list_projects,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. FastMCP Tool Tests
@@ -138,10 +136,9 @@ def test_cli_parser_ui_command():
 def test_cli_cmd_ui_invocation(tmp_path: Path):
     """Verify `sf ui` invokes SciFiWebServer and handles no-browser flag."""
     parser = create_parser()
-    args = parser.parse_args(["ui", "--no-browser", "--port", "8888", "--db", str(tmp_path / "ui.db")])
+    parser.parse_args(["ui", "--no-browser", "--port", "8888", "--db", str(tmp_path / "ui.db")])
 
-    with patch("scifi.cli.SciFiWebServer") as mock_server_cls, \
-         patch("webbrowser.open") as mock_browser_open:
+    with patch("scifi.cli.SciFiWebServer") as mock_server_cls, patch("webbrowser.open") as mock_browser_open:
         mock_instance = MagicMock()
         mock_instance.port = 8888
         mock_instance.serve_forever.side_effect = KeyboardInterrupt()
@@ -189,19 +186,21 @@ def test_cli_literature_reprint_and_reprints(tmp_path: Path, capsys: pytest.Capt
     store.link_paper_to_project(proj.id, p.id)
 
     # 1. Draft reprint request via CLI
-    code_reprint = main([
-        "literature",
-        "reprint",
-        "10.1016/j.paywalled.2024",
-        "--project",
-        str(ws),
-        "--name",
-        "Alice Physicist",
-        "--email",
-        "alice@lab.edu",
-        "--db",
-        str(db_path),
-    ])
+    code_reprint = main(
+        [
+            "literature",
+            "reprint",
+            "10.1016/j.paywalled.2024",
+            "--project",
+            str(ws),
+            "--name",
+            "Alice Physicist",
+            "--email",
+            "alice@lab.edu",
+            "--db",
+            str(db_path),
+        ]
+    )
     assert code_reprint == 0
     cap1 = capsys.readouterr()
     assert "[SUCCESS] Reprint draft ready" in cap1.out
@@ -232,25 +231,27 @@ def test_cli_literature_ingest_pdf(tmp_path: Path, capsys: pytest.CaptureFixture
     db_path = tmp_path / "central.db"
     store = LiteratureStore(db_path)
 
-    proj = store.register_project("repo", ws)
+    store.register_project("repo", ws)
     paper_pdf = tmp_path / "paper.pdf"
     paper_pdf.write_bytes(b"%PDF-1.4 test bytes")
 
     storage_dir = tmp_path / "pdf_storage"
 
     with patch("scifi.literature.reprint.DEFAULT_STORAGE_DIR", storage_dir):
-        code = main([
-            "literature",
-            "ingest-pdf",
-            "--doi",
-            "10.1000/ingested_paper",
-            "--pdf",
-            str(paper_pdf),
-            "--project",
-            str(ws),
-            "--db",
-            str(db_path),
-        ])
+        code = main(
+            [
+                "literature",
+                "ingest-pdf",
+                "--doi",
+                "10.1000/ingested_paper",
+                "--pdf",
+                str(paper_pdf),
+                "--project",
+                str(ws),
+                "--db",
+                str(db_path),
+            ]
+        )
         assert code == 0
 
         cap = capsys.readouterr()

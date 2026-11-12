@@ -7,7 +7,6 @@ from __future__ import annotations
 import pytest
 
 from scifi.literature.models import (
-    BenchmarkRecord,
     BenchmarkResultRecord,
     EvaluationConditionRecord,
     EvaluationMetricRecord,
@@ -16,7 +15,6 @@ from scifi.literature.models import (
 from scifi.literature.sota import (
     PerformanceDelta,
     SotaEvaluationReport,
-    SotaEvaluationResults,
     SotaEvaluator,
 )
 
@@ -77,8 +75,12 @@ def test_two_paper_sota_leader_vs_high_citation_baseline():
 
     metric = EvaluationMetricRecord(id="m-acc", name="Accuracy", goal="maximize", unit="%")
     results = [
-        BenchmarkResultRecord(id="r-base", paper_id="p-base", benchmark_id="bm-glue", metric_id="m-acc", metric_value=78.0),
-        BenchmarkResultRecord(id="r-sota", paper_id="p-sota", benchmark_id="bm-glue", metric_id="m-acc", metric_value=91.2),
+        BenchmarkResultRecord(
+            id="r-base", paper_id="p-base", benchmark_id="bm-glue", metric_id="m-acc", metric_value=78.0
+        ),
+        BenchmarkResultRecord(
+            id="r-sota", paper_id="p-sota", benchmark_id="bm-glue", metric_id="m-acc", metric_value=91.2
+        ),
     ]
 
     evaluator = SotaEvaluator()
@@ -106,9 +108,15 @@ def test_sota_evaluator_minimization_goal():
 
     metric = EvaluationMetricRecord(id="m-lat", name="Latency", goal="minimize", unit="ms")
     results = [
-        BenchmarkResultRecord(id="r-slow", paper_id="p-slow", benchmark_id="bm-lat", metric_id="m-lat", metric_value=45.0),
-        BenchmarkResultRecord(id="r-fast", paper_id="p-fast", benchmark_id="bm-lat", metric_id="m-lat", metric_value=15.0),
-        BenchmarkResultRecord(id="r-mid", paper_id="p-mid", benchmark_id="bm-lat", metric_id="m-lat", metric_value=30.0),
+        BenchmarkResultRecord(
+            id="r-slow", paper_id="p-slow", benchmark_id="bm-lat", metric_id="m-lat", metric_value=45.0
+        ),
+        BenchmarkResultRecord(
+            id="r-fast", paper_id="p-fast", benchmark_id="bm-lat", metric_id="m-lat", metric_value=15.0
+        ),
+        BenchmarkResultRecord(
+            id="r-mid", paper_id="p-mid", benchmark_id="bm-lat", metric_id="m-lat", metric_value=30.0
+        ),
     ]
 
     evaluator = SotaEvaluator()
@@ -140,22 +148,34 @@ def test_performance_delta_and_condition_mismatch():
     p_base1 = PaperRecord(id="p-base1", title="Zero-Shot Baseline", year=2023, citation_count=100)
     p_base2 = PaperRecord(id="p-base2", title="Few-Shot Baseline", year=2023, citation_count=90)
 
-    cond_0shot = EvaluationConditionRecord(id="c-0shot", name="0-shot")
-    cond_5shot = EvaluationConditionRecord(id="c-5shot", name="5-shot")
+    EvaluationConditionRecord(id="c-0shot", name="0-shot")
+    EvaluationConditionRecord(id="c-5shot", name="5-shot")
     metric = EvaluationMetricRecord(id="m-f1", name="F1", goal="maximize", unit="pts")
 
     results = [
         BenchmarkResultRecord(
-            id="r-sota", paper_id="p-sota", benchmark_id="bm-qa", metric_id="m-f1",
-            condition_id="c-5shot", metric_value=88.0,
+            id="r-sota",
+            paper_id="p-sota",
+            benchmark_id="bm-qa",
+            metric_id="m-f1",
+            condition_id="c-5shot",
+            metric_value=88.0,
         ),
         BenchmarkResultRecord(
-            id="r-b1", paper_id="p-base1", benchmark_id="bm-qa", metric_id="m-f1",
-            condition_id="c-0shot", metric_value=75.0,
+            id="r-b1",
+            paper_id="p-base1",
+            benchmark_id="bm-qa",
+            metric_id="m-f1",
+            condition_id="c-0shot",
+            metric_value=75.0,
         ),
         BenchmarkResultRecord(
-            id="r-b2", paper_id="p-base2", benchmark_id="bm-qa", metric_id="m-f1",
-            condition_id="c-5shot", metric_value=80.0,
+            id="r-b2",
+            paper_id="p-base2",
+            benchmark_id="bm-qa",
+            metric_id="m-f1",
+            condition_id="c-5shot",
+            metric_value=80.0,
         ),
     ]
 
@@ -186,8 +206,12 @@ def test_zero_baseline_relative_improvement():
 
     metric = EvaluationMetricRecord(id="m-pass", name="pass@1", goal="maximize", unit="%")
     results = [
-        BenchmarkResultRecord(id="r-sota", paper_id="p-sota", benchmark_id="bm-code", metric_id="m-pass", metric_value=42.0),
-        BenchmarkResultRecord(id="r-fail", paper_id="p-fail", benchmark_id="bm-code", metric_id="m-pass", metric_value=0.0),
+        BenchmarkResultRecord(
+            id="r-sota", paper_id="p-sota", benchmark_id="bm-code", metric_id="m-pass", metric_value=42.0
+        ),
+        BenchmarkResultRecord(
+            id="r-fail", paper_id="p-fail", benchmark_id="bm-code", metric_id="m-pass", metric_value=0.0
+        ),
     ]
 
     evaluator = SotaEvaluator()
@@ -303,8 +327,12 @@ def test_tie_breaking_behavior():
 
     metric = EvaluationMetricRecord(id="m-acc", name="Accuracy", goal="maximize", unit="%")
     results = [
-        BenchmarkResultRecord(id="r-old", paper_id="p-old", benchmark_id="bm-tie", metric_id="m-acc", metric_value=90.0),
-        BenchmarkResultRecord(id="r-new", paper_id="p-new", benchmark_id="bm-tie", metric_id="m-acc", metric_value=90.0),
+        BenchmarkResultRecord(
+            id="r-old", paper_id="p-old", benchmark_id="bm-tie", metric_id="m-acc", metric_value=90.0
+        ),
+        BenchmarkResultRecord(
+            id="r-new", paper_id="p-new", benchmark_id="bm-tie", metric_id="m-acc", metric_value=90.0
+        ),
     ]
 
     evaluator = SotaEvaluator()
@@ -363,7 +391,9 @@ def test_empty_results_and_missing_metrics():
 
     # Metric not found in metrics dict falls back to default maximize
     p = PaperRecord(id="p-1", title="Model One", year=2024)
-    r = BenchmarkResultRecord(id="r-1", paper_id="p-1", benchmark_id="bm-custom", metric_id="custom-metric", metric_value=99.0)
+    r = BenchmarkResultRecord(
+        id="r-1", paper_id="p-1", benchmark_id="bm-custom", metric_id="custom-metric", metric_value=99.0
+    )
     reports2 = evaluator.evaluate_sota_frontier([p], [r], {})
     assert "bm-custom:custom-metric" in reports2
     assert reports2["bm-custom:custom-metric"].sota_leader_paper_id == "p-1"
@@ -430,4 +460,3 @@ def test_get_delta_single_argument_and_missing():
     assert report.get_delta("p-base") == delta
     # Missing paper
     assert report.get_delta("p-nonexistent") is None
-

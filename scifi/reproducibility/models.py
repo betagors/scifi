@@ -1,11 +1,11 @@
 """Data models for reproducibility and open-science checklist auditor."""
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ReproducibilityCategory(str, Enum):
+class ReproducibilityCategory(StrEnum):
     RANDOM_SEEDS = "RANDOM_SEEDS"
     ERROR_BARS = "ERROR_BARS"
     COMPUTE_RESOURCES = "COMPUTE_RESOURCES"

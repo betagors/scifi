@@ -11,22 +11,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import pytest
 
+import scifi.cli
+from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import (
-    AuthorRecord,
-    BenchmarkRecord,
-    BenchmarkResultRecord,
-    EvaluationMetricRecord,
-    EvidenceRecord,
-    PaperGapRecord,
-    PaperIdentifierRecord,
     PaperRecord,
 )
 from scifi.literature.resolver import classify_venue_tier
-from scifi.literature.lineage import LineageCrawler
 from scifi.literature.store import LiteratureStore
-import scifi.cli
 
 
 def test_paper_record_venue_fields_and_serialization():
@@ -261,15 +253,24 @@ def test_cli_report_with_filter_flags(tmp_path: Path):
         instance.crawl_lineage.return_value = ("graph-123", [sample_seed], [])
         instance.compute_topological_depths.return_value = {"S1": 0}
 
-        ret = scifi.cli.main([
-            "literature", "report", "test query",
-            "--min-year", "2020",
-            "--max-year", "2025",
-            "--venue-tier", "top",
-            "--require-evidence",
-            "--output-dir", str(out_dir),
-            "--db", str(db_file),
-        ])
+        ret = scifi.cli.main(
+            [
+                "literature",
+                "report",
+                "test query",
+                "--min-year",
+                "2020",
+                "--max-year",
+                "2025",
+                "--venue-tier",
+                "top",
+                "--require-evidence",
+                "--output-dir",
+                str(out_dir),
+                "--db",
+                str(db_file),
+            ]
+        )
         assert ret == 0
 
         # Verify crawl_lineage called with filter parameters

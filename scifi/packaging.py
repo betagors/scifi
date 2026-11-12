@@ -11,14 +11,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
-import os
-from pathlib import Path
-import shutil
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
 import zipfile
+from pathlib import Path
+from typing import Any
 
 import scifi
 
@@ -120,7 +117,7 @@ def build_plugin_bundle(repo_root: Path, output_dir: Path) -> Path:
     return bundle_path
 
 
-def verify_plugin_bundle(bundle_path: Path) -> Dict[str, Any]:
+def verify_plugin_bundle(bundle_path: Path) -> dict[str, Any]:
     """
     Verify the integrity and contents of an AI Agent Plugin zip bundle.
 
@@ -133,10 +130,10 @@ def verify_plugin_bundle(bundle_path: Path) -> Dict[str, Any]:
     if not bundle_path.exists():
         return {"valid": False, "error": f"Bundle file does not exist: {bundle_path}"}
 
-    errors: List[str] = []
-    files: List[str] = []
-    skills: List[str] = []
-    agents: List[str] = []
+    errors: list[str] = []
+    files: list[str] = []
+    skills: list[str] = []
+    agents: list[str] = []
 
     try:
         with zipfile.ZipFile(bundle_path, "r") as zf:
@@ -171,7 +168,7 @@ def verify_plugin_bundle(bundle_path: Path) -> Dict[str, Any]:
     }
 
 
-def build_python_distributions(repo_root: Path, output_dir: Path) -> List[Path]:
+def build_python_distributions(repo_root: Path, output_dir: Path) -> list[Path]:
     """
     Build wheel and sdist distributions using uv or the build package.
 
@@ -194,7 +191,7 @@ def build_python_distributions(repo_root: Path, output_dir: Path) -> List[Path]:
         cmd = [sys.executable, "-m", "build", "--outdir", str(output_dir)]
         subprocess.run(cmd, cwd=repo_root, check=True, capture_output=True, text=True)
 
-    generated: List[Path] = []
+    generated: list[Path] = []
     for pattern in ("*.whl", "*.tar.gz"):
         for p in output_dir.glob(pattern):
             write_sha256_file(p)
@@ -208,7 +205,7 @@ def build_all(
     output_dir: Path,
     plugin_only: bool = False,
     python_only: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build release artifacts according to configuration flags.
 
@@ -221,7 +218,7 @@ def build_all(
     Returns:
         Summary dict of created artifacts.
     """
-    results: Dict[str, Any] = {
+    results: dict[str, Any] = {
         "output_dir": str(output_dir),
         "artifacts": [],
     }
@@ -272,7 +269,7 @@ def cmd_package(args: argparse.Namespace) -> int:
 
         pv = results.get("plugin_verification")
         if pv:
-            print(f"\n🧩 Plugin Bundle Metrics:")
+            print("\n🧩 Plugin Bundle Metrics:")
             print(f"   Skills packaged: {pv.get('skills_count')}")
             print(f"   Agents packaged: {pv.get('agents_count')}")
             print(f"   Total bundle entries: {pv.get('total_files')}")

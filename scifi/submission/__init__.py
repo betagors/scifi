@@ -6,7 +6,6 @@ from scifi.submission.bundler import prepare_submission_bundle
 from scifi.submission.code_packager import package_anonymous_code
 from scifi.submission.cover_letter import generate_cover_letter
 from scifi.submission.highlights import generate_highlights
-from scifi.submission.title_page import generate_title_page
 from scifi.submission.models import (
     AuthorInfo,
     CodePackagerResult,
@@ -18,6 +17,7 @@ from scifi.submission.models import (
     TitlePageResult,
 )
 from scifi.submission.profiles import get_publisher_profile
+from scifi.submission.title_page import generate_title_page
 
 __all__ = [
     "AuthorInfo",

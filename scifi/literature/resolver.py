@@ -7,11 +7,10 @@ reconstructs abstracts from inverted indices, and models access and authorship r
 
 from __future__ import annotations
 
-import json
 import re
 import urllib.parse
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -32,6 +31,7 @@ def _http_get(url: str, **kwargs: Any) -> requests.Response:
     if requests.get is not _ORIG_REQUESTS_GET:
         return requests.get(url, **kwargs)
     return get_session().get(url, **kwargs)
+
 
 DEFAULT_USER_AGENT = "scifi-literature/1.0 (academic-researcher)"
 OPENALEX_WORKS_URL = "https://api.openalex.org/works"
@@ -105,14 +105,14 @@ def clean_arxiv_id(raw: str) -> str:
     return clean.strip()
 
 
-def reconstruct_abstract(inverted_index: Optional[Dict[str, List[int]]]) -> Optional[str]:
+def reconstruct_abstract(inverted_index: dict[str, list[int]] | None) -> str | None:
     """
     Reconstruct full abstract string from an OpenAlex abstract inverted index.
     """
     if not inverted_index or not isinstance(inverted_index, dict):
         return None
 
-    pos_words: List[tuple[int, str]] = []
+    pos_words: list[tuple[int, str]] = []
     for word, positions in inverted_index.items():
         if isinstance(positions, list):
             for pos in positions:
@@ -223,7 +223,7 @@ TOP_VENUE_PATTERNS = [
 COMPILED_TOP_VENUE_REGEX = [re.compile(p, re.IGNORECASE) for p in TOP_VENUE_PATTERNS]
 
 
-def classify_venue_tier(venue_name: Optional[str]) -> str:
+def classify_venue_tier(venue_name: str | None) -> str:
     """
     Classify a publication venue into domain-agnostic prestige tiers:
     - 'top': CORE A*/A flagship conferences or SJR Q1 / IEEE / ACM / Nature / Science journals.
@@ -255,7 +255,7 @@ class PaperResolver:
 
     def __init__(
         self,
-        email: Optional[str] = None,
+        email: str | None = None,
         timeout: int = 10,
         cache: Any = None,
     ) -> None:
@@ -273,7 +273,7 @@ class PaperResolver:
             "Accept": "application/json",
         }
 
-    def _get_cached_paper(self, key: str) -> Optional[PaperRecord]:
+    def _get_cached_paper(self, key: str) -> PaperRecord | None:
         if not self.cache:
             return None
         try:
@@ -292,7 +292,7 @@ class PaperResolver:
         except Exception:
             pass
 
-    def _parse_openalex_work(self, data: Dict[str, Any]) -> PaperRecord:
+    def _parse_openalex_work(self, data: dict[str, Any]) -> PaperRecord:
         """
         Parse an OpenAlex work JSON object into a canonical PaperRecord.
         """
@@ -321,7 +321,7 @@ class PaperResolver:
             abstract = reconstruct_abstract(data.get("abstract_inverted_index"))
 
         # Authors
-        authors: List[AuthorRecord] = []
+        authors: list[AuthorRecord] = []
         for idx, a in enumerate(data.get("authorships") or []):
             if not isinstance(a, dict):
                 continue
@@ -353,7 +353,7 @@ class PaperResolver:
             )
 
         # Identifiers
-        identifiers: List[PaperIdentifierRecord] = []
+        identifiers: list[PaperIdentifierRecord] = []
         if openalex_id:
             identifiers.append(
                 PaperIdentifierRecord(
@@ -399,7 +399,7 @@ class PaperResolver:
                 )
 
         # Locations & Access Modeling
-        locations: List[PaperLocationRecord] = []
+        locations: list[PaperLocationRecord] = []
         oa_info = data.get("open_access") or {}
         is_oa = bool(oa_info.get("is_oa", False))
         oa_status = oa_info.get("oa_status") or ("green" if is_oa else "closed")
@@ -440,7 +440,9 @@ class PaperResolver:
             # Construct from primary_location, best_oa_location, or open_access
             primary_loc = data.get("primary_location") or {}
             best_oa_loc = data.get("best_oa_location") or {}
-            target_loc = best_oa_loc if (best_oa_loc.get("pdf_url") or best_oa_loc.get("landing_page_url")) else primary_loc
+            target_loc = (
+                best_oa_loc if (best_oa_loc.get("pdf_url") or best_oa_loc.get("landing_page_url")) else primary_loc
+            )
 
             pdf_url = target_loc.get("pdf_url") or (oa_url if (oa_url and oa_url.endswith(".pdf")) else None)
             landing_page = target_loc.get("landing_page_url") or oa_url
@@ -468,7 +470,7 @@ class PaperResolver:
             )
 
         # Versions
-        versions: List[PaperVersionRecord] = []
+        versions: list[PaperVersionRecord] = []
         raw_type = data.get("type", "")
         version_type = "preprint" if raw_type == "preprint" else "publishedVersion"
         versions.append(
@@ -482,7 +484,7 @@ class PaperResolver:
         )
 
         # Venue extraction for OpenAlex
-        venue_name: Optional[str] = None
+        venue_name: str | None = None
         primary_loc = data.get("primary_location") or {}
         source = primary_loc.get("source") or {}
         if source and isinstance(source, dict):
@@ -526,7 +528,7 @@ class PaperResolver:
             venue_tier=venue_tier,
         )
 
-    def _parse_arxiv_atom(self, entry: ET.Element, arxiv_id: str) -> Optional[PaperRecord]:
+    def _parse_arxiv_atom(self, entry: ET.Element, arxiv_id: str) -> PaperRecord | None:
         """
         Parse an arXiv XML Atom entry into a PaperRecord.
         """
@@ -540,7 +542,9 @@ class PaperResolver:
         title = re.sub(r"\s+", " ", title_node.text.strip())
 
         summary_node = entry.find("atom:summary", ns)
-        abstract = re.sub(r"\s+", " ", summary_node.text.strip()) if summary_node is not None and summary_node.text else None
+        abstract = (
+            re.sub(r"\s+", " ", summary_node.text.strip()) if summary_node is not None and summary_node.text else None
+        )
 
         published_node = entry.find("atom:published", ns)
         publication_date = published_node.text.strip() if published_node is not None and published_node.text else None
@@ -550,7 +554,7 @@ class PaperResolver:
             if m:
                 year = int(m.group(1))
 
-        authors: List[AuthorRecord] = []
+        authors: list[AuthorRecord] = []
         for idx, auth_node in enumerate(entry.findall("atom:author", ns)):
             name_node = auth_node.find("atom:name", ns)
             name = name_node.text.strip() if name_node is not None and name_node.text else "Unknown"
@@ -620,9 +624,9 @@ class PaperResolver:
     def resolve_by_title(
         self,
         title: str,
-        min_year: Optional[int] = None,
-        max_year: Optional[int] = None,
-    ) -> Optional[PaperRecord]:
+        min_year: int | None = None,
+        max_year: int | None = None,
+    ) -> PaperRecord | None:
         """
         Resolve a paper by its title using OpenAlex search, optionally filtering by year range.
         """
@@ -669,7 +673,7 @@ class PaperResolver:
 
         return None
 
-    def resolve_by_doi(self, doi: str) -> Optional[PaperRecord]:
+    def resolve_by_doi(self, doi: str) -> PaperRecord | None:
         """
         Resolve a paper by DOI using OpenAlex with Crossref fallback.
         """
@@ -711,7 +715,7 @@ class PaperResolver:
                         year = parts[0]
                         break
 
-                authors: List[AuthorRecord] = []
+                authors: list[AuthorRecord] = []
                 for idx, a in enumerate(cr_data.get("author", [])):
                     name = f"{a.get('given', '')} {a.get('family', '')}".strip() or a.get("name", "Unknown")
                     orcid = a.get("ORCID")
@@ -748,7 +752,7 @@ class PaperResolver:
 
         return None
 
-    def resolve_by_arxiv_id(self, arxiv_id: str) -> Optional[PaperRecord]:
+    def resolve_by_arxiv_id(self, arxiv_id: str) -> PaperRecord | None:
         """
         Resolve a paper by arXiv identifier using OpenAlex or arXiv XML API fallback.
         """
@@ -807,7 +811,7 @@ class PaperResolver:
 
         return None
 
-    def resolve_by_openalex_id(self, openalex_id: str) -> Optional[PaperRecord]:
+    def resolve_by_openalex_id(self, openalex_id: str) -> PaperRecord | None:
         """
         Directly retrieve an OpenAlex work record by its OpenAlex work ID.
         """
@@ -834,7 +838,7 @@ class PaperResolver:
 
         return None
 
-    def resolve_references(self, openalex_work_id: str, limit: int = 10) -> List[PaperRecord]:
+    def resolve_references(self, openalex_work_id: str, limit: int = 10) -> list[PaperRecord]:
         """
         Resolve referenced works (foundational papers) for a given OpenAlex work ID.
         """
@@ -874,7 +878,7 @@ class PaperResolver:
                     return [self._parse_openalex_work(r) for r in results]
 
             # Fallback to individual resolution if batch returns empty
-            papers: List[PaperRecord] = []
+            papers: list[PaperRecord] = []
             for rid in ref_ids:
                 p = self.resolve_by_openalex_id(rid)
                 if p:
@@ -884,7 +888,7 @@ class PaperResolver:
         except Exception:
             return []
 
-    def resolve_citations(self, openalex_work_id: str, limit: int = 10) -> List[PaperRecord]:
+    def resolve_citations(self, openalex_work_id: str, limit: int = 10) -> list[PaperRecord]:
         """
         Resolve citing works (recent frontier papers) citing a given OpenAlex work ID.
         """

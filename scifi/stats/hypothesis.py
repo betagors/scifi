@@ -7,7 +7,8 @@ for confidence intervals, standard errors, and sample size verification.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 from scipy import stats

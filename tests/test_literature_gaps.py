@@ -2,8 +2,6 @@
 Tests for 4-Stage Research Gap Extraction and Corroboration Engine (scifi.literature.gaps).
 """
 
-import pytest
-
 from scifi.literature.gaps import GapExtractor
 from scifi.literature.models import (
     CitationContextRecord,
@@ -178,9 +176,7 @@ def test_classification_into_five_canonical_gap_categories():
         results = extractor.extract_abstract_gaps(paper)
         assert len(results) == 1, f"Failed to extract gap for {expected_type}"
         _, gap = results[0]
-        assert gap.gap_type == expected_type, (
-            f"Expected {expected_type}, got {gap.gap_type} for sentence: {sentence}"
-        )
+        assert gap.gap_type == expected_type, f"Expected {expected_type}, got {gap.gap_type} for sentence: {sentence}"
 
 
 def test_corroboration_clustering_promotes_status():

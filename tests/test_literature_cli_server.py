@@ -5,8 +5,8 @@ and FastMCP server tools (scifi_map_literature, scifi_query_store, scifi_export_
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,7 +23,6 @@ from scifi.literature.models import (
     EvaluationConditionRecord,
     EvaluationMetricRecord,
     EvidenceRecord,
-    GraphSessionRecord,
     PaperGapRecord,
     PaperIdentifierRecord,
     PaperLocationRecord,
@@ -32,15 +31,21 @@ from scifi.literature.models import (
 from scifi.literature.store import LiteratureStore
 
 
-def _make_sample_paper(paper_id: str = "W123", title: str = "Attention Is All You Need", year: int = 2017) -> PaperRecord:
+def _make_sample_paper(
+    paper_id: str = "W123", title: str = "Attention Is All You Need", year: int = 2017
+) -> PaperRecord:
     return PaperRecord(
         id=paper_id,
         title=title,
         year=year,
         citation_count=1000,
         authors=[AuthorRecord(id="A1", name="Ashish Vaswani")],
-        identifiers=[PaperIdentifierRecord(paper_id=paper_id, provider="openalex", external_id=paper_id, is_canonical=True)],
-        locations=[PaperLocationRecord(id="L1", paper_id=paper_id, location_type="repository", is_oa=True, oa_status="gold")],
+        identifiers=[
+            PaperIdentifierRecord(paper_id=paper_id, provider="openalex", external_id=paper_id, is_canonical=True)
+        ],
+        locations=[
+            PaperLocationRecord(id="L1", paper_id=paper_id, location_type="repository", is_oa=True, oa_status="gold")
+        ],
     )
 
 
@@ -118,11 +123,17 @@ class TestLiteratureCLISubcommands:
             db_path = tmp_path / "test.db"
             out_dir = tmp_path / "report_out"
 
-            ret = scifi.cli.main([
-                "literature", "report", "Attention",
-                "--output-dir", str(out_dir),
-                "--db", str(db_path),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "report",
+                    "Attention",
+                    "--output-dir",
+                    str(out_dir),
+                    "--db",
+                    str(db_path),
+                ]
+            )
             assert ret == 0
             captured = capsys.readouterr().out
             assert "[SUCCESS]" in captured or "Literature report generated" in captured
@@ -131,13 +142,17 @@ class TestLiteratureCLISubcommands:
             assert (out_dir / "literature_map.html").exists()
             assert (out_dir / "references.bib").exists()
 
-    def test_literature_report_forwards_gaps_and_evidence(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_literature_report_forwards_gaps_and_evidence(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         sample_paper = _make_sample_paper()
         sample_cite = CitationRecord(source_paper_id="W123", target_paper_id="W000")
 
-        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
-             patch("scifi.literature.cli.save_markdown_report") as mock_save_md, \
-             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+        with (
+            patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls,
+            patch("scifi.literature.cli.save_markdown_report") as mock_save_md,
+            patch("scifi.literature.cli.save_interactive_html") as mock_save_html,
+        ):
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-test-gaps", [sample_paper], [sample_cite])
             instance.compute_topological_depths.return_value = {"W123": 0}
@@ -168,11 +183,17 @@ class TestLiteratureCLISubcommands:
             store.close()
 
             out_dir = tmp_path / "report_out"
-            ret = scifi.cli.main([
-                "literature", "report", "Attention",
-                "--output-dir", str(out_dir),
-                "--db", str(db_path),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "report",
+                    "Attention",
+                    "--output-dir",
+                    str(out_dir),
+                    "--db",
+                    str(db_path),
+                ]
+            )
             assert ret == 0
             captured = capsys.readouterr().out
             assert "Evidence: 1 extracted technical limitations (1 corroborated)" in captured
@@ -182,11 +203,15 @@ class TestLiteratureCLISubcommands:
             assert "paper_gaps" in mock_save_html.call_args.kwargs
             assert "evidence_map" in mock_save_html.call_args.kwargs
 
-    def test_literature_map_forwards_gaps_and_evidence(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_literature_map_forwards_gaps_and_evidence(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         sample_paper = _make_sample_paper()
 
-        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
-             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+        with (
+            patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls,
+            patch("scifi.literature.cli.save_interactive_html") as mock_save_html,
+        ):
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-map-gaps", [sample_paper], [])
             instance.compute_topological_depths.return_value = {"W123": 0}
@@ -216,11 +241,17 @@ class TestLiteratureCLISubcommands:
             store.close()
 
             out_dir = tmp_path / "map_out"
-            ret = scifi.cli.main([
-                "literature", "map", "Attention",
-                "--output-dir", str(out_dir),
-                "--db", str(db_path),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "map",
+                    "Attention",
+                    "--output-dir",
+                    str(out_dir),
+                    "--db",
+                    str(db_path),
+                ]
+            )
             assert ret == 0
             captured = capsys.readouterr().out
             assert "Evidence: 1 extracted technical limitations (0 corroborated)" in captured
@@ -232,9 +263,11 @@ class TestLiteratureCLISubcommands:
         sample_paper = _make_sample_paper()
         sample_cite = CitationRecord(source_paper_id="W123", target_paper_id="W000")
 
-        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
-             patch("scifi.literature.cli.save_markdown_report") as mock_save_md, \
-             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+        with (
+            patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls,
+            patch("scifi.literature.cli.save_markdown_report") as mock_save_md,
+            patch("scifi.literature.cli.save_interactive_html") as mock_save_html,
+        ):
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-test-bench", [sample_paper], [sample_cite])
             instance.compute_topological_depths.return_value = {"W123": 0}
@@ -267,11 +300,17 @@ class TestLiteratureCLISubcommands:
             store.close()
 
             out_dir = tmp_path / "report_out"
-            ret = scifi.cli.main([
-                "literature", "report", "Attention",
-                "--output-dir", str(out_dir),
-                "--db", str(db_path),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "report",
+                    "Attention",
+                    "--output-dir",
+                    str(out_dir),
+                    "--db",
+                    str(db_path),
+                ]
+            )
             assert ret == 0
             captured = capsys.readouterr().out
             assert "Benchmarks: 1 results across 1 benchmarks (1 SOTA leaders)" in captured
@@ -288,8 +327,10 @@ class TestLiteratureCLISubcommands:
     def test_literature_map_forwards_benchmarks(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         sample_paper = _make_sample_paper()
 
-        with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls, \
-             patch("scifi.literature.cli.save_interactive_html") as mock_save_html:
+        with (
+            patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls,
+            patch("scifi.literature.cli.save_interactive_html") as mock_save_html,
+        ):
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-map-bench", [sample_paper], [])
             instance.compute_topological_depths.return_value = {"W123": 0}
@@ -321,11 +362,17 @@ class TestLiteratureCLISubcommands:
             store.close()
 
             out_dir = tmp_path / "map_out"
-            ret = scifi.cli.main([
-                "literature", "map", "Attention",
-                "--output-dir", str(out_dir),
-                "--db", str(db_path),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "map",
+                    "Attention",
+                    "--output-dir",
+                    str(out_dir),
+                    "--db",
+                    str(db_path),
+                ]
+            )
             assert ret == 0
             captured = capsys.readouterr().out
             assert "Benchmarks: 1 results across 1 benchmarks (1 SOTA leaders)" in captured
@@ -346,11 +393,17 @@ class TestLiteratureCLISubcommands:
             db_path = tmp_path / "test.db"
             out_dir = tmp_path / "map_out"
 
-            ret = scifi.cli.main([
-                "literature", "map", "1706.03762",
-                "--output-dir", str(out_dir),
-                "--db", str(db_path),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "map",
+                    "1706.03762",
+                    "--output-dir",
+                    str(out_dir),
+                    "--db",
+                    str(db_path),
+                ]
+            )
             assert ret == 0
             assert (out_dir / "literature_map.html").exists()
 
@@ -363,25 +416,39 @@ class TestLiteratureCLISubcommands:
             instance.compute_topological_depths.return_value = {"W123": 0}
 
             out_dir = tmp_path / "map_open"
-            ret = scifi.cli.main([
-                "literature", "map", "Transformers",
-                "--output-dir", str(out_dir),
-                "--open",
-                "--db", str(tmp_path / "db.sqlite"),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "map",
+                    "Transformers",
+                    "--output-dir",
+                    str(out_dir),
+                    "--open",
+                    "--db",
+                    str(tmp_path / "db.sqlite"),
+                ]
+            )
             assert ret == 0
             mock_wb_open.assert_called_once()
 
-    def test_literature_report_seed_resolution_failure(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_literature_report_seed_resolution_failure(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         with patch("scifi.literature.cli.LineageCrawler") as mock_crawler_cls:
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-err", [], [])
 
-            ret = scifi.cli.main([
-                "literature", "report", "NonExistentPaperXYZ123",
-                "--output-dir", str(tmp_path / "empty"),
-                "--db", str(tmp_path / "db.sqlite"),
-            ])
+            ret = scifi.cli.main(
+                [
+                    "literature",
+                    "report",
+                    "NonExistentPaperXYZ123",
+                    "--output-dir",
+                    str(tmp_path / "empty"),
+                    "--db",
+                    str(tmp_path / "db.sqlite"),
+                ]
+            )
             assert ret != 0
             captured = capsys.readouterr().err + capsys.readouterr().out
             assert "Could not resolve" in captured or "No papers" in captured
@@ -417,12 +484,19 @@ class TestLiteratureCLISubcommands:
         store.close()
 
         out_bib = tmp_path / "exported.bib"
-        ret = scifi.cli.main([
-            "literature", "db", "export-bib",
-            "--graph-id", "g-202",
-            "-o", str(out_bib),
-            "--db", str(db_path),
-        ])
+        ret = scifi.cli.main(
+            [
+                "literature",
+                "db",
+                "export-bib",
+                "--graph-id",
+                "g-202",
+                "-o",
+                str(out_bib),
+                "--db",
+                str(db_path),
+            ]
+        )
         assert ret == 0
         assert out_bib.exists()
         content = out_bib.read_text(encoding="utf-8")
@@ -434,12 +508,19 @@ class TestLiteratureCLISubcommands:
         LiteratureStore(db_path).close()
 
         out_bib = tmp_path / "missing.bib"
-        ret = scifi.cli.main([
-            "literature", "db", "export-bib",
-            "--graph-id", "non-existent-graph",
-            "-o", str(out_bib),
-            "--db", str(db_path),
-        ])
+        ret = scifi.cli.main(
+            [
+                "literature",
+                "db",
+                "export-bib",
+                "--graph-id",
+                "non-existent-graph",
+                "-o",
+                str(out_bib),
+                "--db",
+                str(db_path),
+            ]
+        )
         assert ret != 0
         captured = capsys.readouterr().err + capsys.readouterr().out
         assert "No papers found" in captured or "ERROR" in captured
@@ -524,10 +605,12 @@ class TestFastMCPLiteratureTools:
         store.save_paper_gap(gap)
         store.close()
 
-        with patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)), \
-             patch("scifi.server.LineageCrawler") as mock_crawler_cls, \
-             patch("scifi.server.save_interactive_html") as mock_save_html, \
-             patch("scifi.server.save_markdown_report") as mock_save_md:
+        with (
+            patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)),
+            patch("scifi.server.LineageCrawler") as mock_crawler_cls,
+            patch("scifi.server.save_interactive_html") as mock_save_html,
+            patch("scifi.server.save_markdown_report") as mock_save_md,
+        ):
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-tool-gaps", [sample_paper], [sample_cite])
             instance.compute_topological_depths.return_value = {"W123": 0}
@@ -586,10 +669,12 @@ class TestFastMCPLiteratureTools:
         store.save_benchmark_result(res)
         store.close()
 
-        with patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)), \
-             patch("scifi.server.LineageCrawler") as mock_crawler_cls, \
-             patch("scifi.server.save_interactive_html") as mock_save_html, \
-             patch("scifi.server.save_markdown_report") as mock_save_md:
+        with (
+            patch("scifi.server.get_literature_store", return_value=LiteratureStore(db_path)),
+            patch("scifi.server.LineageCrawler") as mock_crawler_cls,
+            patch("scifi.server.save_interactive_html") as mock_save_html,
+            patch("scifi.server.save_markdown_report") as mock_save_md,
+        ):
             instance = mock_crawler_cls.return_value
             instance.crawl_lineage.return_value = ("graph-tool-bench", [sample_paper], [sample_cite])
             instance.compute_topological_depths.return_value = {"W123": 0}

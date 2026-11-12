@@ -1,8 +1,10 @@
 # tests/test_integration_zotero_live.py
+
 import pytest
-from pathlib import Path
+
 from scifi.env import auto_detect_zotero_dir
 from scifi.literature.zotero.reader import ZoteroLocalReader
+
 
 def test_live_local_zotero_library_reads():
     z_dir = auto_detect_zotero_dir()

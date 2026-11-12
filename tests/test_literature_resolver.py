@@ -3,12 +3,12 @@ Unit tests for Canonical Paper Resolver & Registry Client (scifi.literature.reso
 """
 
 from unittest.mock import MagicMock, patch
-import pytest
+
 import requests
 
-from scifi.literature.models import PaperRecord, AuthorRecord, PaperIdentifierRecord, PaperLocationRecord
-from scifi.literature.resolver import PaperResolver, reconstruct_abstract, clean_doi, clean_arxiv_id
 from scifi.cache import RegistryCache
+from scifi.literature.models import PaperRecord
+from scifi.literature.resolver import PaperResolver, clean_arxiv_id, clean_doi, reconstruct_abstract
 
 
 class TestAbstractReconstruction:
@@ -424,4 +424,3 @@ class TestPaperResolver:
         assert mock_get_session.return_value.get.called
         args, kwargs = mock_get_session.return_value.get.call_args
         assert "api.openalex.org" in args[0]
-

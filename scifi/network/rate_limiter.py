@@ -10,7 +10,7 @@ import os
 import threading
 import time
 import urllib.parse
-from typing import Mapping, Optional
+from collections.abc import Mapping
 
 # Default proactive rate limits in requests per second.
 DEFAULT_DOMAIN_LIMITS: dict[str, float] = {
@@ -30,7 +30,7 @@ class DomainRateLimiter:
 
     def __init__(
         self,
-        limits: Optional[Mapping[str, float]] = None,
+        limits: Mapping[str, float] | None = None,
         enabled: bool = True,
     ) -> None:
         """Initialize the rate limiter.
@@ -83,7 +83,7 @@ class DomainRateLimiter:
     def get_rate(
         self,
         domain: str,
-        headers: Optional[Mapping[str, str]] = None,
+        headers: Mapping[str, str] | None = None,
     ) -> float:
         """Get the configured rate limit (requests per second) for a domain or URL.
 
@@ -118,7 +118,7 @@ class DomainRateLimiter:
     def acquire(
         self,
         url: str,
-        headers: Optional[Mapping[str, str]] = None,
+        headers: Mapping[str, str] | None = None,
     ) -> float:
         """Acquire rate limit clearance to dispatch a request to the target URL.
 

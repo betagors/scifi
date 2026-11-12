@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Optional
 
 from scifi.literature.models import (
     CitationContextRecord,
@@ -39,7 +38,10 @@ _CATEGORY_PATTERNS: dict[str, list[tuple[str, int]]] = {
         (r"\bcubic\b", 3),
         (r"\bexponential(?:ly)?\b", 3),
         (r"\bpolynomial\b", 2),
-        (r"\bcomputational(?:ly)?\s+(?:complexity|expensive|heavy|demanding|prohibitive|cost|overhead|bottleneck)\b", 4),
+        (
+            r"\bcomputational(?:ly)?\s+(?:complexity|expensive|heavy|demanding|prohibitive|cost|overhead|bottleneck)\b",
+            4,
+        ),
         (r"\btime\s+complexity\b", 4),
         (r"\bspace\s+complexity\b", 4),
         (r"\bmemory\s+(?:complexity|overhead|footprint|bound|consumption|limit|intensive|bottleneck)\b", 4),
@@ -171,22 +173,145 @@ _CONTRADICTION_PATTERNS = [
 
 # Stopwords for clustering key token extraction
 _STOPWORDS = {
-    "the", "and", "for", "that", "this", "with", "from", "are", "was", "were", "been", "being",
-    "have", "has", "had", "does", "did", "doing", "would", "should", "could", "ought",
-    "our", "their", "its", "your", "them", "these", "those", "which", "what", "where", "when",
-    "who", "whom", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other",
-    "some", "such", "than", "too", "very", "can", "will", "just", "about", "into", "through",
-    "during", "before", "after", "above", "below", "between", "under", "again", "further",
-    "then", "once", "here", "there", "only", "same", "also",
-    "however", "although", "while", "unlike", "whereas", "nonetheless", "nevertheless",
-    "method", "methods", "paper", "papers", "approach", "approaches", "algorithm", "algorithms",
-    "proposed", "model", "models", "system", "systems", "work", "works",
-    "author", "authors", "result", "results", "technique", "techniques", "framework",
-    "study", "show", "shows", "shown", "performance", "presents", "proposes", "using", "used",
-    "based", "well", "new", "via", "due", "first", "second", "one", "two", "three",
-    "limitation", "limitations", "limited", "gap", "gaps", "problem", "problems",
-    "challenge", "challenges", "issue", "issues",
-    "suffer", "suffers", "exhibit", "exhibits", "lead", "leads", "cause", "causes",
+    "the",
+    "and",
+    "for",
+    "that",
+    "this",
+    "with",
+    "from",
+    "are",
+    "was",
+    "were",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "does",
+    "did",
+    "doing",
+    "would",
+    "should",
+    "could",
+    "ought",
+    "our",
+    "their",
+    "its",
+    "your",
+    "them",
+    "these",
+    "those",
+    "which",
+    "what",
+    "where",
+    "when",
+    "who",
+    "whom",
+    "why",
+    "how",
+    "all",
+    "any",
+    "both",
+    "each",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "than",
+    "too",
+    "very",
+    "can",
+    "will",
+    "just",
+    "about",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "between",
+    "under",
+    "again",
+    "further",
+    "then",
+    "once",
+    "here",
+    "there",
+    "only",
+    "same",
+    "also",
+    "however",
+    "although",
+    "while",
+    "unlike",
+    "whereas",
+    "nonetheless",
+    "nevertheless",
+    "method",
+    "methods",
+    "paper",
+    "papers",
+    "approach",
+    "approaches",
+    "algorithm",
+    "algorithms",
+    "proposed",
+    "model",
+    "models",
+    "system",
+    "systems",
+    "work",
+    "works",
+    "author",
+    "authors",
+    "result",
+    "results",
+    "technique",
+    "techniques",
+    "framework",
+    "study",
+    "show",
+    "shows",
+    "shown",
+    "performance",
+    "presents",
+    "proposes",
+    "using",
+    "used",
+    "based",
+    "well",
+    "new",
+    "via",
+    "due",
+    "first",
+    "second",
+    "one",
+    "two",
+    "three",
+    "limitation",
+    "limitations",
+    "limited",
+    "gap",
+    "gaps",
+    "problem",
+    "problems",
+    "challenge",
+    "challenges",
+    "issue",
+    "issues",
+    "suffer",
+    "suffers",
+    "exhibit",
+    "exhibits",
+    "lead",
+    "leads",
+    "cause",
+    "causes",
 }
 
 
@@ -223,7 +348,7 @@ def _split_into_sentences(text: str) -> list[str]:
     return sentences
 
 
-def _classify_gap_sentence(sentence: str) -> tuple[Optional[str], int]:
+def _classify_gap_sentence(sentence: str) -> tuple[str | None, int]:
     """
     Score the sentence against the 5 canonical gap categories.
     Returns (best_category, score).
@@ -286,9 +411,7 @@ class GapExtractor:
     and citation contexts, classifies claims, and corroborates findings across sources.
     """
 
-    def extract_abstract_gaps(
-        self, paper: PaperRecord
-    ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
+    def extract_abstract_gaps(self, paper: PaperRecord) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
         """
         Stage 1 & 2: Extract self-reported technical limitations from a paper's abstract.
         Filters sentences containing contrastive markers and classifies into canonical categories.
@@ -419,16 +542,13 @@ class GapExtractor:
                 sentence_lower = sentence.lower()
                 gap_type, score = _classify_gap_sentence(sentence)
 
-                has_limitation_signal = (
-                    any(re.search(pat, sentence_lower) for pat in _CONTRASTIVE_MARKERS)
-                    or bool(
-                        re.search(
-                            r"\b(?:a\s+)?limitation\s+of\b|\bdoes\s+not\s+(?:account|consider|scale|generalize)\b|"
-                            r"\bremains?\s+(?:an?\s+)?(?:open|unresolved|future)\b|\bfuture\s+work\b|"
-                            r"\bfails?\s+to\b|\bdegrades?\b|\btoy\s+benchmark\b|\bonly\s+tested\b|"
-                            r"\bdrawback\b|\bshortcoming\b",
-                            sentence_lower,
-                        )
+                has_limitation_signal = any(re.search(pat, sentence_lower) for pat in _CONTRASTIVE_MARKERS) or bool(
+                    re.search(
+                        r"\b(?:a\s+)?limitation\s+of\b|\bdoes\s+not\s+(?:account|consider|scale|generalize)\b|"
+                        r"\bremains?\s+(?:an?\s+)?(?:open|unresolved|future)\b|\bfuture\s+work\b|"
+                        r"\bfails?\s+to\b|\bdegrades?\b|\btoy\s+benchmark\b|\bonly\s+tested\b|"
+                        r"\bdrawback\b|\bshortcoming\b",
+                        sentence_lower,
                     )
                 )
 
@@ -548,9 +668,7 @@ class GapExtractor:
                 by_gap_type.setdefault(gap.gap_type, []).append(idx)
 
             for gap_type, group_indices in by_gap_type.items():
-                clusters = self._cluster_by_tokens(
-                    [gaps_with_evidence[i] for i in group_indices]
-                )
+                clusters = self._cluster_by_tokens([gaps_with_evidence[i] for i in group_indices])
 
                 for cluster_items in clusters:
                     self._triage_cluster(cluster_items)
@@ -561,7 +679,7 @@ class GapExtractor:
         self,
         target_paper: PaperRecord,
         contexts: list[CitationContextRecord],
-        sections: Optional[dict[str, str]] = None,
+        sections: dict[str, str] | None = None,
     ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
         """
         End-to-end multi-stage pipeline: extracts abstract gaps, full-text section gaps,
@@ -580,10 +698,7 @@ class GapExtractor:
         if n <= 1:
             return [items]
 
-        token_sets = [
-            _extract_key_tokens(f"{gap.claim_summary} {ev.extracted_text}")
-            for ev, gap in items
-        ]
+        token_sets = [_extract_key_tokens(f"{gap.claim_summary} {ev.extracted_text}") for ev, gap in items]
 
         parent = list(range(n))
 
@@ -610,9 +725,7 @@ class GapExtractor:
 
         return list(clusters_dict.values())
 
-    def _triage_cluster(
-        self, cluster: list[tuple[EvidenceRecord, PaperGapRecord]]
-    ) -> None:
+    def _triage_cluster(self, cluster: list[tuple[EvidenceRecord, PaperGapRecord]]) -> None:
         """Evaluate corroboration and contradiction evidence for a cluster of matching gaps."""
         citing_sources: set[str] = set()
         contradicting_sources: set[str] = set()

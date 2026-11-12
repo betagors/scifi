@@ -10,20 +10,19 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 from scifi.env import auto_detect_zotero_dir
-
 
 IGNORE_DIRS = {".git", ".venv", "venv", ".idea", ".vscode", "__pycache__", ".pytest_cache", ".scifi"}
 
 
-def parse_bib_keys_and_titles(bib_path: Path) -> List[Dict[str, str]]:
+def parse_bib_keys_and_titles(bib_path: Path) -> list[dict[str, str]]:
     """Simple parser extracting keys, titles, and DOIs from a BibTeX file."""
     if not bib_path.is_file():
         return []
     content = bib_path.read_text(encoding="utf-8", errors="ignore")
-    entries: List[Dict[str, str]] = []
+    entries: list[dict[str, str]] = []
 
     # Match @type{key, ... }
     entry_pattern = re.compile(r"@(\w+)\s*\{\s*([^,]+),", re.IGNORECASE)
@@ -42,13 +41,15 @@ def parse_bib_keys_and_titles(bib_path: Path) -> List[Dict[str, str]]:
         doi_m = re.search(r"doi\s*=\s*[\"{](.*?)[\"}]", block, re.IGNORECASE)
         eprint_m = re.search(r"(?:eprint|arxiv(?:id)?)\s*=\s*[\"{](.*?)[\"}]", block, re.IGNORECASE)
 
-        entries.append({
-            "key": key,
-            "type": entry_type,
-            "title": title_m.group(1).strip() if title_m else "",
-            "doi": doi_m.group(1).strip() if doi_m else "",
-            "arxiv_id": eprint_m.group(1).strip() if eprint_m else "",
-        })
+        entries.append(
+            {
+                "key": key,
+                "type": entry_type,
+                "title": title_m.group(1).strip() if title_m else "",
+                "doi": doi_m.group(1).strip() if doi_m else "",
+                "arxiv_id": eprint_m.group(1).strip() if eprint_m else "",
+            }
+        )
     return entries
 
 
@@ -72,12 +73,12 @@ def _clean_tex(s: str) -> str:
     return re.sub(r"[{}]", "", s).strip()
 
 
-def _bib_entries_to_zotero_items(bib_paths: List[Path], keys: Set[str]) -> List[Dict[str, Any]]:
+def _bib_entries_to_zotero_items(bib_paths: list[Path], keys: set[str]) -> list[dict[str, Any]]:
     """Convert selected BibTeX entries to Zotero item JSON."""
     import bibtexparser
 
-    items: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for p in bib_paths:
         if not p.is_file():
             continue
@@ -88,7 +89,7 @@ def _bib_entries_to_zotero_items(bib_paths: List[Path], keys: Set[str]) -> List[
             seen.add(e.key)
             f = {k: _clean_tex(v.value) for k, v in e.fields_dict.items()}
             item_type, venue_field = _BIB_TO_ZOTERO_TYPE.get(e.entry_type.lower(), ("document", None))
-            item: Dict[str, Any] = {"itemType": item_type, "title": f.get("title", e.key)}
+            item: dict[str, Any] = {"itemType": item_type, "title": f.get("title", e.key)}
             creators = []
             for a in re.split(r"\s+and\s+", f.get("author", "")):
                 if "," in a:
@@ -119,12 +120,12 @@ def _bib_entries_to_zotero_items(bib_paths: List[Path], keys: Set[str]) -> List[
 
 
 def adapt_project(
-    repo_dir: Union[str, Path],
+    repo_dir: str | Path,
     venue: str = "ieee",
-    collection: Optional[str] = None,
+    collection: str | None = None,
     auto_match: bool = False,
     dry_run: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Safely adapt an existing legacy repository into SciFi structure.
     """
@@ -133,28 +134,35 @@ def adapt_project(
         raise FileNotFoundError(f"Repository directory does not exist: {root}")
 
     # Step 1: Discover files
-    publication_files: List[Tuple[Path, Path]] = []
-    code_files: List[Tuple[Path, Path]] = []
-    data_files: List[Tuple[Path, Path]] = []
+    publication_files: list[tuple[Path, Path]] = []
+    code_files: list[tuple[Path, Path]] = []
+    data_files: list[tuple[Path, Path]] = []
 
     paper_dir = root / "paper"
     code_dir = root / "code"
     scifi_dir = root / ".scifi"
 
-    all_files = [
-        f for f in root.iterdir()
-        if f.is_file() and f.name not in (".gitignore", "README.md", "LICENSE")
-    ]
+    all_files = [f for f in root.iterdir() if f.is_file() and f.name not in (".gitignore", "README.md", "LICENSE")]
     # Prioritize primary main/paper tex files
-    all_files.sort(key=lambda p: 0 if p.name.lower() in ("main.tex", "paper.tex") else (1 if "main" in p.name.lower() or "paper" in p.name.lower() else 2))
+    all_files.sort(
+        key=lambda p: (
+            0
+            if p.name.lower() in ("main.tex", "paper.tex")
+            else (1 if "main" in p.name.lower() or "paper" in p.name.lower() else 2)
+        )
+    )
 
     primary_tex_assigned = (paper_dir / "main.tex").is_file()
-    bib_files: List[Path] = []
+    bib_files: list[Path] = []
 
     for f in all_files:
         suffix = f.suffix.lower()
         if suffix in (".tex", ".sty", ".cls", ".bst"):
-            if suffix == ".tex" and not primary_tex_assigned and ("paper" in f.name.lower() or "main" in f.name.lower()):
+            if (
+                suffix == ".tex"
+                and not primary_tex_assigned
+                and ("paper" in f.name.lower() or "main" in f.name.lower())
+            ):
                 dest = paper_dir / "main.tex"
                 primary_tex_assigned = True
             elif suffix == ".tex" and not primary_tex_assigned:
@@ -180,7 +188,7 @@ def adapt_project(
         publication_files.append((fig_dir, paper_dir / "figures"))
 
     # Discover any existing .bib files in paper/
-    bib_to_parse: List[Path] = list(bib_files)
+    bib_to_parse: list[Path] = list(bib_files)
     if (paper_dir / "references.bib").is_file() and (paper_dir / "references.bib") not in bib_to_parse:
         bib_to_parse.append(paper_dir / "references.bib")
     if paper_dir.is_dir():
@@ -189,8 +197,8 @@ def adapt_project(
                 bib_to_parse.append(b)
 
     # Step 2: Parse citations
-    citations: List[Dict[str, str]] = []
-    seen_keys: Set[str] = set()
+    citations: list[dict[str, str]] = []
+    seen_keys: set[str] = set()
     for b in bib_to_parse:
         for entry in parse_bib_keys_and_titles(b):
             k = entry.get("key")
@@ -204,7 +212,7 @@ def adapt_project(
     zotero_matches = 0
     resolved_collection = collection
     collection_staged = False
-    collection_error: Optional[str] = None
+    collection_error: str | None = None
     populated_linked = 0
     populated_created = 0
 
@@ -217,8 +225,8 @@ def adapt_project(
             reader = ZoteroLocalReader(data_dir=zotero_dir)
             writer = ZoteroLocalWriter()
 
-            matched_keys: List[str] = []
-            unmatched: List[Dict[str, str]] = []
+            matched_keys: list[str] = []
+            unmatched: list[dict[str, str]] = []
             for c in citations:
                 item = None
                 if c.get("doi"):
@@ -255,9 +263,13 @@ def adapt_project(
                     populated_linked = writer.add_items_to_collection(col_key, matched_keys)
                     skip_titles = set()
                     if existing_col:
-                        skip_titles = {re.sub(r"[^a-z0-9]", "", (i.title or "").lower()) for i in reader.get_collection_items(resolved_collection)}
+                        skip_titles = {
+                            re.sub(r"[^a-z0-9]", "", (i.title or "").lower())
+                            for i in reader.get_collection_items(resolved_collection)
+                        }
                     pending = {
-                        c["key"] for c in unmatched
+                        c["key"]
+                        for c in unmatched
                         if re.sub(r"[^a-z0-9]", "", c.get("title", "").lower()) not in skip_titles
                     }
                     bib_items = _bib_entries_to_zotero_items(bib_to_parse, pending)
@@ -320,15 +332,18 @@ def adapt_project(
 
     # Inherit existing scifi.toml configurations if present
     scifi_toml = root / "scifi.toml"
-    scifi_toml_data: Dict[str, Any] = {}
+    scifi_toml_data: dict[str, Any] = {}
     if scifi_toml.is_file():
         try:
             import tomllib
+
             scifi_toml_data = tomllib.loads(scifi_toml.read_text(encoding="utf-8"))
         except Exception:
             pass
 
-    manuscript_sec = scifi_toml_data.get("manuscript", {}) if isinstance(scifi_toml_data.get("manuscript"), dict) else {}
+    manuscript_sec = (
+        scifi_toml_data.get("manuscript", {}) if isinstance(scifi_toml_data.get("manuscript"), dict) else {}
+    )
     resolved_venue = manuscript_sec.get("target_venue", venue) if venue == "ieee" else venue
     resolved_double_blind = manuscript_sec.get("double_blind", True)
 

@@ -1,11 +1,11 @@
 """Data models for theorem-proof completeness sentinel."""
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ProofIssueCategory(str, Enum):
+class ProofIssueCategory(StrEnum):
     ORPHAN_THEOREM = "ORPHAN_THEOREM"
     UNRESOLVED_APPENDIX_PROOF = "UNRESOLVED_APPENDIX_PROOF"
     EMPTY_APPENDIX_PROOF = "EMPTY_APPENDIX_PROOF"

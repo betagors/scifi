@@ -179,9 +179,9 @@ def test_node_level_mapping_from_depths(sample_papers, sample_citations, sample_
     )
 
     # Check that levels 0, 1, and 2 are assigned to respective nodes in nodes data
-    assert '"level": 0' in html or 'level: 0' in html
-    assert '"level": 1' in html or 'level: 1' in html
-    assert '"level": 2' in html or 'level: 2' in html
+    assert '"level": 0' in html or "level: 0" in html
+    assert '"level": 1' in html or "level: 1" in html
+    assert '"level": 2' in html or "level: 2" in html
 
 
 def test_color_coded_access_tiers(sample_depths):
@@ -194,22 +194,30 @@ def test_color_coded_access_tiers(sample_depths):
     green_paper = PaperRecord(
         id="p-green",
         title="Green OA",
-        locations=[PaperLocationRecord(id="l2", paper_id="p-green", location_type="repo", is_oa=True, oa_status="green")],
+        locations=[
+            PaperLocationRecord(id="l2", paper_id="p-green", location_type="repo", is_oa=True, oa_status="green")
+        ],
     )
     hybrid_paper = PaperRecord(
         id="p-hybrid",
         title="Hybrid OA",
-        locations=[PaperLocationRecord(id="l3", paper_id="p-hybrid", location_type="pub", is_oa=True, oa_status="hybrid")],
+        locations=[
+            PaperLocationRecord(id="l3", paper_id="p-hybrid", location_type="pub", is_oa=True, oa_status="hybrid")
+        ],
     )
     bronze_paper = PaperRecord(
         id="p-bronze",
         title="Bronze OA",
-        locations=[PaperLocationRecord(id="l4", paper_id="p-bronze", location_type="pub", is_oa=True, oa_status="bronze")],
+        locations=[
+            PaperLocationRecord(id="l4", paper_id="p-bronze", location_type="pub", is_oa=True, oa_status="bronze")
+        ],
     )
     closed_paper = PaperRecord(
         id="p-closed",
         title="Closed Paywalled",
-        locations=[PaperLocationRecord(id="l5", paper_id="p-closed", location_type="pub", is_oa=False, oa_status="closed")],
+        locations=[
+            PaperLocationRecord(id="l5", paper_id="p-closed", location_type="pub", is_oa=False, oa_status="closed")
+        ],
     )
 
     papers = [gold_paper, green_paper, hybrid_paper, bronze_paper, closed_paper]
@@ -578,7 +586,6 @@ def test_save_interactive_html_with_evidence(tmp_path: Path):
     assert "Corroborated (3 sources)" in content
 
 
-
 def test_visualizer_renders_sota_badge_and_benchmark_section():
     """Verify Vis.js SOTA node styling, legend, and drawer benchmark performance cards."""
     paper = PaperRecord(id="p-sota", title="Winning Method", year=2024)
@@ -619,7 +626,7 @@ def test_visualizer_renders_sota_badge_and_benchmark_section():
     )
 
     # Canvas node styling: gold border / background, SOTA leader label / title
-    assert ("#d97706" in html or "#f59e0b" in html)
+    assert "#d97706" in html or "#f59e0b" in html
     assert "#fef3c7" in html
     assert "SOTA Leader" in html
 
@@ -627,7 +634,10 @@ def test_visualizer_renders_sota_badge_and_benchmark_section():
     assert "⭐ SOTA Leader (Verified Benchmark Performance)" in html
 
     # Drawer section
-    assert ("Empirical Benchmark Performance & SOTA Results" in html or "Empirical Benchmark Performance &amp; SOTA Results" in html)
+    assert (
+        "Empirical Benchmark Performance & SOTA Results" in html
+        or "Empirical Benchmark Performance &amp; SOTA Results" in html
+    )
     assert "HumanEval" in html
     assert "Code Generation" in html
     assert "88.5%" in html
@@ -646,7 +656,7 @@ def test_visualizer_sota_node_role_without_benchmark_results():
         {"p-leader": 0},
         node_roles={"p-leader": "sota_leader"},
     )
-    assert ("#d97706" in html or "#f59e0b" in html)
+    assert "#d97706" in html or "#f59e0b" in html
     assert "#fef3c7" in html
     assert "SOTA Leader" in html
 

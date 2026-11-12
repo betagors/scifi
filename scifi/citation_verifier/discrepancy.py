@@ -6,12 +6,11 @@ from __future__ import annotations
 
 import difflib
 import re
-from typing import List, Optional
 
 from .models import ClaimedMetadata, Discrepancy, Severity
 
 
-def clean_text_for_comparison(text: Optional[str]) -> str:
+def clean_text_for_comparison(text: str | None) -> str:
     """Normalize academic text, stripping LaTeX accents, braces, and excess whitespace."""
     if not text:
         return ""
@@ -55,16 +54,16 @@ def string_similarity(str1: str, str2: str) -> float:
 
 def audit_discrepancies(
     claimed: ClaimedMetadata,
-    verified_title: Optional[str],
-    verified_authors: List[str],
-    verified_year: Optional[int],
-    verified_venue: Optional[str],
-) -> List[Discrepancy]:
+    verified_title: str | None,
+    verified_authors: list[str],
+    verified_year: int | None,
+    verified_venue: str | None,
+) -> list[Discrepancy]:
     """
     Compare user/bibtex claimed citation metadata with authoritative registry data.
     Returns a list of Discrepancy objects.
     """
-    discrepancies: List[Discrepancy] = []
+    discrepancies: list[Discrepancy] = []
 
     # 1. Title Audit
     if claimed.title and verified_title:
@@ -76,7 +75,7 @@ def audit_discrepancies(
                     claimed=claimed.title,
                     verified=verified_title,
                     severity=Severity.ERROR,
-                    message=f"Severe title mismatch (similarity {int(sim*100)}%). This citation may point to the wrong paper.",
+                    message=f"Severe title mismatch (similarity {int(sim * 100)}%). This citation may point to the wrong paper.",
                 )
             )
         elif sim < 0.85:
@@ -86,7 +85,7 @@ def audit_discrepancies(
                     claimed=claimed.title,
                     verified=verified_title,
                     severity=Severity.WARNING,
-                    message=f"Title discrepancy or typo (similarity {int(sim*100)}%).",
+                    message=f"Title discrepancy or typo (similarity {int(sim * 100)}%).",
                 )
             )
 

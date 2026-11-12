@@ -2,8 +2,6 @@
 Citation Verifier: Verify scientific citations via DOI, URL, or metadata against Crossref, OpenAlex, arXiv, and DataCite.
 """
 
-from typing import Optional
-
 from .bib_auditor import audit_bib_content, audit_bib_file, generate_sanitized_bib
 from .discrepancy import audit_discrepancies
 from .fetchers import resolve_citation
@@ -21,10 +19,10 @@ from .models import (
 
 def verify_citation(
     query: str,
-    claimed_title: Optional[str] = None,
-    claimed_year: Optional[int] = None,
-    claimed_author: Optional[str] = None,
-    claimed_venue: Optional[str] = None,
+    claimed_title: str | None = None,
+    claimed_year: int | None = None,
+    claimed_author: str | None = None,
+    claimed_venue: str | None = None,
     timeout: int = 10,
 ) -> CitationMetadata:
     """

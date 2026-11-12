@@ -1,27 +1,30 @@
 """
 Regression tests for latent runtime bugs uncovered during static analysis audit.
 """
+
+import argparse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import pytest
 
+from scifi.cli import cmd_math, cmd_stats
 from scifi.doctor import audit_manuscript
+from scifi.human import audit_human_prose
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import PaperRecord
 from scifi.rebuttal.differ import diff_manuscript
-from scifi.human import audit_human_prose
-from scifi.cli import cmd_math, cmd_stats
-import argparse
 
 
 def test_doctor_calls_audit_bib_file_with_valid_keyword(tmp_path: Path):
     """Ensure doctor does not pass invalid 'search_missing_doi' to audit_bib_file."""
     tex_file = tmp_path / "main.tex"
-    tex_file.write_text(r"\documentclass{article}\begin{document}\cite{Knuth1984}\bibliography{ref}\end{document}", encoding="utf-8")
+    tex_file.write_text(
+        r"\documentclass{article}\begin{document}\cite{Knuth1984}\bibliography{ref}\end{document}", encoding="utf-8"
+    )
     bib_file = tmp_path / "ref.bib"
     bib_file.write_text("@article{Knuth1984, title={Literate Programming}, year={1984}}", encoding="utf-8")
 
     from scifi.citation_verifier.models import BibAuditReport
+
     mock_report = BibAuditReport(file_path=str(bib_file), total_entries=1, verified_count=1)
 
     with patch("scifi.doctor.audit_bib_file", return_value=mock_report) as mock_audit:
@@ -46,7 +49,9 @@ def test_lineage_crawler_calls_extract_reported_results():
         abstract="We achieve 98.5% accuracy on ImageNet.",
         year=2024,
     )
-    with patch("scifi.literature.benchmarks.BenchmarkExtractor.extract_reported_results", return_value=[MagicMock()]) as mock_extractor:
+    with patch(
+        "scifi.literature.benchmarks.BenchmarkExtractor.extract_reported_results", return_value=[MagicMock()]
+    ) as mock_extractor:
         # Before fix, is_paper_accepted attempts to call extract_benchmarks which fails and falls back
         crawler.is_paper_accepted(paper, require_evidence=True)
         assert mock_extractor.called
@@ -60,9 +65,11 @@ def test_differ_handles_compile_latex_dict_result(tmp_path: Path):
     new_tex.write_text("New content", encoding="utf-8")
 
     fake_dict = {"status": "SUCCESS", "pdf_path": str(tmp_path / "diff.pdf")}
-    with patch("shutil.which", return_value="latexdiff"), \
-         patch("subprocess.run") as mock_run, \
-         patch("scifi.rebuttal.differ.compile_latex", return_value=fake_dict):
+    with (
+        patch("shutil.which", return_value="latexdiff"),
+        patch("subprocess.run") as mock_run,
+        patch("scifi.rebuttal.differ.compile_latex", return_value=fake_dict),
+    ):
         mock_run.return_value = MagicMock(stdout=r"\documentclass{article}\begin{document}diff\end{document}")
         summary = diff_manuscript(old_tex, new_tex, generate_pdf=True)
         assert summary.diff_pdf_path == str(tmp_path / "diff.pdf")
@@ -131,6 +138,10 @@ def test_human_trapped_punctuation_checks_islower():
     """
     res = audit_human_prose(latex)
     flags = res.get("flags", [])
-    trapped_flags = [f for f in flags if f.get("dimension") == "math_syntax" and "trapped inside inline math" in f.get("explanation", "")]
+    trapped_flags = [
+        f
+        for f in flags
+        if f.get("dimension") == "math_syntax" and "trapped inside inline math" in f.get("explanation", "")
+    ]
     # Because '1' is not upper and not lower, it should not be treated as a clause transition
     assert len(trapped_flags) == 0

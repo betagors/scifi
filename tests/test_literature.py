@@ -3,7 +3,6 @@ Unit tests for Literature Fetcher and PDF Text Extractor (scifi.literature).
 """
 
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -103,7 +102,7 @@ class TestPaperFetcher:
         mock_response.status_code = 200
         mock_response.iter_content = MagicMock(return_value=[fake_pdf_bytes])
 
-        with patch("requests.get", return_value=mock_response) as mock_get:
+        with patch("requests.get", return_value=mock_response):
             res = fetch_paper_pdf("https://arxiv.org/abs/2301.12345v2", output_dir=tmp_path)
             assert res["status"] == "SUCCESS"
             assert res["source"] == "arXiv"
@@ -235,4 +234,3 @@ class TestPaperFetcher:
             assert mock_get_session.return_value.get.called
             args, kwargs = mock_get_session.return_value.get.call_args
             assert "arxiv.org/pdf" in args[0]
-

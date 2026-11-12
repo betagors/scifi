@@ -7,8 +7,6 @@ import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import CitationRecord, PaperIdentifierRecord, PaperRecord
 from scifi.literature.resolver import PaperResolver
@@ -288,12 +286,10 @@ def test_request_budget_enforcement():
     mock_resolver = MagicMock(spec=PaperResolver)
     mock_resolver.resolve_by_title.return_value = PaperRecord(id="seed", title="Seed Paper", year=2020)
     mock_resolver.resolve_references.return_value = [
-        PaperRecord(id=f"ref-{i}", title=f"Ref {i}", year=2015, citation_count=10)
-        for i in range(10)
+        PaperRecord(id=f"ref-{i}", title=f"Ref {i}", year=2015, citation_count=10) for i in range(10)
     ]
     mock_resolver.resolve_citations.return_value = [
-        PaperRecord(id=f"cit-{i}", title=f"Cit {i}", year=2024, citation_count=15)
-        for i in range(10)
+        PaperRecord(id=f"cit-{i}", title=f"Cit {i}", year=2024, citation_count=15) for i in range(10)
     ]
 
     # Set budget to 2 calls:
@@ -371,7 +367,9 @@ def test_crawl_lineage_integration_with_store(tmp_path: Path):
 
     cur_year = datetime.date.today().year
     seed = PaperRecord(id="W-seed", title="Attention Is All You Need", year=2017, citation_count=80000)
-    ref_found = PaperRecord(id="W-ref", title="Neural Machine Translation", year=2014, citation_count=20000, influential_citation_count=100)
+    ref_found = PaperRecord(
+        id="W-ref", title="Neural Machine Translation", year=2014, citation_count=20000, influential_citation_count=100
+    )
     cit_front = PaperRecord(id="W-front", title="Modern Transformer Frontier", year=cur_year - 1, citation_count=150)
 
     # Introduce a cyclic citation where the older paper W-ref erroneously claims to cite W-front

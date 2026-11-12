@@ -1,18 +1,18 @@
 """Data models for figure and visual accessibility auditor (da-vinci)."""
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 
-class FigureSeverity(str, Enum):
+class FigureSeverity(StrEnum):
     INFO = "INFO"
     WARNING = "WARNING"
     CRITICAL = "CRITICAL"
 
 
-class FigureIssueCategory(str, Enum):
+class FigureIssueCategory(StrEnum):
     LOW_DPI = "LOW_DPI"
     RASTER_CHART = "RASTER_CHART"
     UNREFERENCED_SUBFIGURE = "UNREFERENCED_SUBFIGURE"

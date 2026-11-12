@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
-from .models import AttributionFinding, SuggestedAction
+from .models import AttributionFinding
 
 
 def append_bibtex_entry(bib_file: Path, bibtex_content: str, cite_key: str) -> bool:
@@ -36,7 +35,7 @@ def insert_cite_into_latex(
     tex_path: Path,
     line_number: int,
     cite_key: str,
-    target_entity: Optional[str] = None,
+    target_entity: str | None = None,
 ) -> bool:
     """
     Insert a \\cite{cite_key} into the LaTeX file at the specified line.

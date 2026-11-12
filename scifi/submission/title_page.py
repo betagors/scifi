@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
-from typing import Any, Sequence
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 from scifi.latex.project import resolve_latex_project
 from scifi.submission.models import AuthorInfo, TitlePageResult, normalize_authors
@@ -64,7 +65,9 @@ def extract_metadata_from_latex(tex_path: str | Path) -> tuple[str, list[AuthorI
         for chunk in re.split(r"\\and|\band\b|\\\\", raw_authors):
             name = re.sub(r"\\thanks\{[^}]*\}|\\IEEEauthorblockN\{|\}", "", chunk).strip()
             if name and not any(w in name.lower() for w in ("anonymous", "blind", "under review", "author")):
-                authors.append(AuthorInfo(name=name, affiliation="University/Institution", email="author@institution.edu"))
+                authors.append(
+                    AuthorInfo(name=name, affiliation="University/Institution", email="author@institution.edu")
+                )
 
     return title, authors, abstract
 
@@ -92,7 +95,6 @@ def generate_title_page(
         extracted_title, extracted_authors, extracted_abs = extract_metadata_from_latex(manuscript_path)
 
     final_title = title or extracted_title or "Manuscript Title"
-    final_abs = abstract or extracted_abs
 
     author_list = normalize_authors(authors)
     if not author_list:
@@ -139,7 +141,10 @@ def generate_title_page(
         md_lines.append(f"\n## Funding / Grant Disclosures\n{funding}")
 
     if conflicts or profile.venue_id in ("elsevier", "springer"):
-        conf_text = conflicts or "The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper."
+        conf_text = (
+            conflicts
+            or "The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper."
+        )
         md_lines.append(f"\n## Declaration of Competing Interests\n{conf_text}")
 
     if profile.require_credit_statement or any(a.credit_role for a in author_list):
@@ -170,44 +175,57 @@ def generate_title_page(
     for aff, idx in affiliations_map.items():
         tex_lines.append(f"\\affil[{idx}]{{{aff}}}")
 
-    tex_lines.extend([
-        r"\date{\today}",
-        r"\begin{document}",
-        r"\maketitle",
-        r"\thispagestyle{empty}",
-        r"\vspace{1em}",
-        f"\\noindent $^*$Corresponding author: \\url{{{corr.email}}}\\\\ ",
-    ])
+    tex_lines.extend(
+        [
+            r"\date{\today}",
+            r"\begin{document}",
+            r"\maketitle",
+            r"\thispagestyle{empty}",
+            r"\vspace{1em}",
+            f"\\noindent $^*$Corresponding author: \\url{{{corr.email}}}\\\\ ",
+        ]
+    )
     if corr.orcid:
         tex_lines.append(f"\\noindent ORCID: \\url{{https://orcid.org/{corr.orcid}}}\\\\ ")
 
     if funding:
-        tex_lines.extend([
-            r"\section*{Funding and Grant Acknowledgments}",
-            funding,
-        ])
+        tex_lines.extend(
+            [
+                r"\section*{Funding and Grant Acknowledgments}",
+                funding,
+            ]
+        )
 
-    conf_text = conflicts or "The authors declare that they have no known competing financial interests or personal relationships."
-    tex_lines.extend([
-        r"\section*{Declaration of Competing Interests}",
-        conf_text,
-    ])
+    conf_text = (
+        conflicts
+        or "The authors declare that they have no known competing financial interests or personal relationships."
+    )
+    tex_lines.extend(
+        [
+            r"\section*{Declaration of Competing Interests}",
+            conf_text,
+        ]
+    )
 
     if profile.require_credit_statement or any(a.credit_role for a in author_list):
-        tex_lines.extend([
-            r"\section*{CRediT Authorship Contribution Statement}",
-            r"\begin{description}",
-        ])
+        tex_lines.extend(
+            [
+                r"\section*{CRediT Authorship Contribution Statement}",
+                r"\begin{description}",
+            ]
+        )
         for a in author_list:
             role = a.credit_role or "Writing - original draft, Methodology"
             tex_lines.append(f"  \\item[{a.name}:] {role}.")
         tex_lines.append(r"\end{description}")
 
     if data_availability:
-        tex_lines.extend([
-            r"\section*{Data and Code Availability}",
-            data_availability,
-        ])
+        tex_lines.extend(
+            [
+                r"\section*{Data and Code Availability}",
+                data_availability,
+            ]
+        )
 
     tex_lines.append(r"\end{document}")
     tex_text = "\n".join(tex_lines)

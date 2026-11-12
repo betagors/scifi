@@ -5,8 +5,9 @@ Tests for SciFi packaging, resource bundling, and version consistency.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
+from pathlib import Path
+
 import pytest
 
 import scifi
@@ -26,7 +27,9 @@ def test_version_consistency():
     gemini_file = root / "gemini-extension.json"
     if gemini_file.exists():
         data = json.loads(gemini_file.read_text(encoding="utf-8"))
-        assert data.get("version") == py_version, f"gemini-extension.json version mismatch: {data.get('version')} != {py_version}"
+        assert data.get("version") == py_version, (
+            f"gemini-extension.json version mismatch: {data.get('version')} != {py_version}"
+        )
 
 
 def test_rules_file_parity():
@@ -59,6 +62,7 @@ def test_load_canonical_rules_from_packaged_resource(monkeypatch, tmp_path):
 def test_wheel_package_hygiene():
     """Verify built wheel does not leak top-level skills/ and contains scifi/resources/AGENTS.md."""
     import zipfile
+
     root = Path(__file__).resolve().parent.parent
     dist_dir = root / "dist"
     wheels = list(dist_dir.glob("*.whl"))

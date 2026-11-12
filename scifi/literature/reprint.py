@@ -9,15 +9,15 @@ central literature store.
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
-from typing import Any, Optional
 import urllib.parse
+from pathlib import Path
+from typing import Any
 
 import requests
 
 from scifi.literature.models import PaperLocationRecord, PaperRecord, ReprintRequestRecord
 from scifi.literature.resolver import clean_doi
-from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
+from scifi.literature.store import LiteratureStore
 
 DEFAULT_STORAGE_DIR: Path = Path.home() / ".scifi" / "storage" / "pdfs"
 DEFAULT_USER_AGENT = "scifi-literature/1.0 (academic-researcher; author-reprint-outreach)"
@@ -40,7 +40,7 @@ def _http_get(url: str, **kwargs: Any) -> requests.Response:
         return requests.get(url, **kwargs)
 
 
-def resolve_author_contact(doi: str, timeout: float = 10.0) -> dict[str, Optional[str]]:
+def resolve_author_contact(doi: str, timeout: float = 10.0) -> dict[str, str | None]:
     """
     Query OpenAlex, Crossref, and Semantic Scholar to resolve corresponding author contact.
     Gracefully returns email=None if unlisted, redacted, or missing from public metadata.
@@ -68,7 +68,9 @@ def resolve_author_contact(doi: str, timeout: float = 10.0) -> dict[str, Optiona
                     chosen = authorships[0]
 
                 author_obj = chosen.get("author") or {}
-                name = (author_obj.get("display_name") or chosen.get("raw_author_name") or "Corresponding Author").strip()
+                name = (
+                    author_obj.get("display_name") or chosen.get("raw_author_name") or "Corresponding Author"
+                ).strip()
                 email = chosen.get("email") or author_obj.get("email")
 
                 affiliation = None
@@ -142,8 +144,8 @@ def resolve_author_contact(doi: str, timeout: float = 10.0) -> dict[str, Optiona
 def generate_reprint_draft(
     paper: PaperRecord | dict[str, Any],
     author_name: str | dict[str, Any] | None = None,
-    author_email: Optional[str] = None,
-    author_affiliation: Optional[str] = None,
+    author_email: str | None = None,
+    author_affiliation: str | None = None,
 ) -> dict[str, str]:
     """
     Generate an academic-standard, disciplined reprint request letter.
@@ -187,7 +189,7 @@ def generate_reprint_draft(
     return {"subject": subject, "body": body}
 
 
-def build_mailto_url(email: Optional[str], subject: str, body: str) -> str:
+def build_mailto_url(email: str | None, subject: str, body: str) -> str:
     """
     Construct an RFC-compliant URI percent-encoded mailto link.
     Spaces are encoded as %20 rather than + to ensure universal desktop client compatibility.
@@ -207,11 +209,11 @@ def build_mailto_url(email: Optional[str], subject: str, body: str) -> str:
 
 def prepare_reprint_for_paper(
     store: LiteratureStore,
-    project_id: Optional[str],
+    project_id: str | None,
     paper_id: str,
-    author_name: Optional[str] = None,
-    author_email: Optional[str] = None,
-    author_affiliation: Optional[str] = None,
+    author_name: str | None = None,
+    author_email: str | None = None,
+    author_affiliation: str | None = None,
 ) -> ReprintRequestRecord:
     """
     Orchestrate author contact resolution, draft generation, and store persistence
@@ -278,16 +280,16 @@ def prepare_reprint_for_paper(
 
 def create_reprint_record(
     store: LiteratureStore,
-    project_id: Optional[str],
+    project_id: str | None,
     paper_id: str,
     author_name: str,
-    author_email: Optional[str] = None,
-    author_affiliation: Optional[str] = None,
+    author_email: str | None = None,
+    author_affiliation: str | None = None,
     subject: str = "",
     body: str = "",
-    mailto_url: Optional[str] = None,
+    mailto_url: str | None = None,
     status: str = "DRAFT_READY",
-    request_id: Optional[str] = None,
+    request_id: str | None = None,
 ) -> ReprintRequestRecord:
     """Directly insert a reprint request record into the store."""
     return store.create_reprint_request(
@@ -306,10 +308,10 @@ def create_reprint_record(
 
 def ingest_paper_copy(
     store: LiteratureStore,
-    project_id: Optional[str],
+    project_id: str | None,
     paper_id: str,
     pdf_path: str | Path,
-    storage_dir: Optional[Path | str] = None,
+    storage_dir: Path | str | None = None,
 ) -> dict[str, Any]:
     """
     Ingest an acquired PDF copy into the content-addressed central store.

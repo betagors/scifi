@@ -1,7 +1,6 @@
 """Tests for scifi.rebuttal author rebuttal and diff suite (socrates/rebuttal)."""
 
 from pathlib import Path
-import pytest
 
 from scifi.rebuttal.differ import diff_manuscript
 from scifi.rebuttal.formatter import format_rebuttal_scaffold

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from scifi.rebuttal.models import RebuttalScaffold, ReviewItem
-
 
 RE_REVIEWER_HEADER = re.compile(
     r"(?:###?\s*)?(?:Reviewer|Official Review|Review\s*#?)\s*([0-9A-Za-z]+)\s*[:\-]?",
@@ -70,20 +68,20 @@ def format_rebuttal_scaffold(
             )
             items.append(item)
 
-            scaffold_blocks.append(f"### Q{p_idx} [{category}]: \"{pt}\"\n")
+            scaffold_blocks.append(f'### Q{p_idx} [{category}]: "{pt}"\n')
             scaffold_blocks.append(
-                f"- **1. Summary & Direct Answer:**\n"
-                f"  Under condition $\\mathcal{{C}}$, our approach addresses this directly because ...\n\n"
-                f"- **2. Action Taken & Manuscript Revision:**\n"
-                f"  We have updated Section X (Lines Y–Z) to explicitly document ...\n\n"
-                f"- **3. Empirical / Theoretical Evidence:**\n"
-                f"  The table below summarizes the new comparative evaluation:\n\n"
-                f"  | Method | Metric A ($\\uparrow$) | Metric B ($\\downarrow$) |\n"
-                f"  | :--- | :---: | :---: |\n"
-                f"  | Baseline | 82.4 | 14.1 |\n"
-                f"  | **Ours (Revised)** | **88.9** | **9.2** |\n\n"
-                f"- **4. Revised Manuscript Excerpt:**\n"
-                f"  > *\"...\"*\n"
+                "- **1. Summary & Direct Answer:**\n"
+                "  Under condition $\\mathcal{C}$, our approach addresses this directly because ...\n\n"
+                "- **2. Action Taken & Manuscript Revision:**\n"
+                "  We have updated Section X (Lines Y–Z) to explicitly document ...\n\n"
+                "- **3. Empirical / Theoretical Evidence:**\n"
+                "  The table below summarizes the new comparative evaluation:\n\n"
+                "  | Method | Metric A ($\\uparrow$) | Metric B ($\\downarrow$) |\n"
+                "  | :--- | :---: | :---: |\n"
+                "  | Baseline | 82.4 | 14.1 |\n"
+                "  | **Ours (Revised)** | **88.9** | **9.2** |\n\n"
+                "- **4. Revised Manuscript Excerpt:**\n"
+                '  > *"..."*\n'
             )
 
     full_markdown = "\n".join(scaffold_blocks)

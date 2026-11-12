@@ -4,7 +4,20 @@ Unit and integration tests for SciFi Citation Verifier.
 
 import unittest
 from unittest.mock import patch
+
 import requests
+
+from scifi.citation_verifier import verify_citation
+from scifi.citation_verifier.bib_auditor import (
+    audit_bib_content,
+    generate_sanitized_bib,
+    search_identifier_by_title,
+)
+from scifi.citation_verifier.discrepancy import (
+    audit_discrepancies,
+    clean_text_for_comparison,
+    string_similarity,
+)
 from scifi.citation_verifier.fetchers import (
     ArXivFetcher,
     CrossRefFetcher,
@@ -16,20 +29,8 @@ from scifi.citation_verifier.models import (
     Author,
     CitationMetadata,
     ClaimedMetadata,
-    Severity,
     VerificationStatus,
 )
-from scifi.citation_verifier.discrepancy import (
-    clean_text_for_comparison,
-    string_similarity,
-    audit_discrepancies,
-)
-from scifi.citation_verifier.bib_auditor import (
-    audit_bib_content,
-    generate_sanitized_bib,
-    search_identifier_by_title,
-)
-from scifi.citation_verifier import verify_citation
 
 
 class TestIdentifiers(unittest.TestCase):
@@ -256,7 +257,9 @@ def test_datacite_fetcher_uses_resilient_session():
         mock_session = mock_get_session.return_value
         resp = requests.Response()
         resp.status_code = 200
-        resp._content = b'{"data": {"attributes": {"titles": [{"title": "Data Paper"}], "creators": [{"name": "Smith, J."}]}}}'
+        resp._content = (
+            b'{"data": {"attributes": {"titles": [{"title": "Data Paper"}], "creators": [{"name": "Smith, J."}]}}}'
+        )
         mock_session.get.return_value = resp
 
         meta = DataCiteFetcher.fetch("10.5061/dryad.test")
@@ -294,7 +297,6 @@ def test_extract_identifier_url_uses_resilient_session():
         # Verify custom Mozilla header is preserved
         _, kwargs = mock_session.get.call_args
         assert "Mozilla/5.0" in kwargs["headers"]["User-Agent"]
-
 
 
 if __name__ == "__main__":

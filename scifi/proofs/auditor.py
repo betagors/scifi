@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 from scifi.latex.project import resolve_latex_project
@@ -61,7 +61,7 @@ def audit_latex_proofs(tex_path: Path | str) -> ProofAuditResult:
         env_body = clean_text[start_pos:env_body_end]
 
         label_m = RE_LABEL.search(env_body)
-        thm_label = label_m.group(1) if label_m else f"{env_type}_{idx+1}"
+        thm_label = label_m.group(1) if label_m else f"{env_type}_{idx + 1}"
 
         # Determine span of trailing prose (up to next theorem or next \section)
         next_env_pos = env_matches[idx + 1].start() if idx + 1 < len(env_matches) else len(clean_text)
@@ -69,7 +69,7 @@ def audit_latex_proofs(tex_path: Path | str) -> ProofAuditResult:
         trailing_end = env_body_end + (next_sec_m.start() if next_sec_m else (next_env_pos - env_body_end))
         trailing_prose = clean_text[env_body_end:trailing_end]
 
-        combined_scope = env_body + "\n" + trailing_prose
+        env_body + "\n" + trailing_prose
 
         # 1. Check for inline proof
         has_inline_proof = bool(re.search(r"\\begin\{proof\}", trailing_prose[:1000], re.IGNORECASE))
@@ -88,13 +88,15 @@ def audit_latex_proofs(tex_path: Path | str) -> ProofAuditResult:
             if ref_appendix_label in all_defined_labels:
                 appendix_verified = True
             else:
-                issues.append({
-                    "category": ProofIssueCategory.UNRESOLVED_APPENDIX_PROOF.value,
-                    "severity": "CRITICAL",
-                    "theorem": thm_label,
-                    "message": f"{env_type.capitalize()} '{thm_label}' defers proof to label '{ref_appendix_label}', but this label is not defined in any loaded LaTeX file.",
-                    "recommendation": f"Add \\label{{{ref_appendix_label}}} in the appendix or update the pointer to a valid appendix label.",
-                })
+                issues.append(
+                    {
+                        "category": ProofIssueCategory.UNRESOLVED_APPENDIX_PROOF.value,
+                        "severity": "CRITICAL",
+                        "theorem": thm_label,
+                        "message": f"{env_type.capitalize()} '{thm_label}' defers proof to label '{ref_appendix_label}', but this label is not defined in any loaded LaTeX file.",
+                        "recommendation": f"Add \\label{{{ref_appendix_label}}} in the appendix or update the pointer to a valid appendix label.",
+                    }
+                )
 
         record = TheoremProofRecord(
             env_type=env_type,
@@ -107,13 +109,15 @@ def audit_latex_proofs(tex_path: Path | str) -> ProofAuditResult:
         theorems.append(record)
 
         if not has_inline_proof and not appendix_verified and not ref_appendix_label:
-            issues.append({
-                "category": ProofIssueCategory.ORPHAN_THEOREM.value,
-                "severity": "CRITICAL",
-                "theorem": thm_label,
-                "message": f"Orphan {env_type.capitalize()} '{thm_label}': Stated without an inline \\begin{{proof}} or an explicit cross-reference to an appendix proof.",
-                "recommendation": "Provide an inline proof or explicitly specify 'The proof is deferred to Appendix~\\ref{...}'.",
-            })
+            issues.append(
+                {
+                    "category": ProofIssueCategory.ORPHAN_THEOREM.value,
+                    "severity": "CRITICAL",
+                    "theorem": thm_label,
+                    "message": f"Orphan {env_type.capitalize()} '{thm_label}': Stated without an inline \\begin{{proof}} or an explicit cross-reference to an appendix proof.",
+                    "recommendation": "Provide an inline proof or explicitly specify 'The proof is deferred to Appendix~\\ref{...}'.",
+                }
+            )
 
     orphan_count = sum(1 for t in theorems if not t.has_inline_proof and not t.appendix_verified)
 

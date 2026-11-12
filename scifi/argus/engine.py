@@ -6,7 +6,6 @@ Coordinates detector, searcher, and reporting across single files or multi-file 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
 
 from scifi.latex.project import resolve_latex_project
 
@@ -28,8 +27,8 @@ from .searcher import ArgusSearcher
 class ArgusEngine:
     def __init__(
         self,
-        author_whitelist: Optional[List[str]] = None,
-        preprint_doi: Optional[str] = None,
+        author_whitelist: list[str] | None = None,
+        preprint_doi: str | None = None,
         timeout: int = 10,
         enable_search: bool = True,
     ):
@@ -42,7 +41,7 @@ class ArgusEngine:
             try:
                 proj = resolve_latex_project(file_path)
                 if proj.is_multifile:
-                    all_findings: List[AttributionFinding] = []
+                    all_findings: list[AttributionFinding] = []
                     next_idx = 1
                     for src_file in proj.files:
                         sub_rep = self.audit_text(
@@ -67,11 +66,11 @@ class ArgusEngine:
     def audit_text(
         self,
         text: str,
-        source_file: Optional[str] = None,
+        source_file: str | None = None,
         start_idx: int = 1,
     ) -> AttributionReport:
         spans = split_into_sentence_spans(text)
-        findings: List[AttributionFinding] = []
+        findings: list[AttributionFinding] = []
         finding_idx = start_idx
 
         for span in spans:
@@ -114,7 +113,11 @@ class ArgusEngine:
                         f"Cite the canonical literature to attribute origin."
                     )
 
-                cite_key = candidate_work.generate_cite_key() if candidate_work else f"{entity_term.title().replace(' ', '')}Ref"
+                cite_key = (
+                    candidate_work.generate_cite_key()
+                    if candidate_work
+                    else f"{entity_term.title().replace(' ', '')}Ref"
+                )
                 bibtex = candidate_work.to_bibtex(key=cite_key) if candidate_work else None
 
                 findings.append(

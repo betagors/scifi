@@ -1,11 +1,11 @@
 """Data models for page budget and trimming assistant."""
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class TrimSuggestionType(str, Enum):
+class TrimSuggestionType(StrEnum):
     WIDOW_LINE = "WIDOW_LINE"
     BIBTEX_ABBREVIATION = "BIBTEX_ABBREVIATION"
     TABLE_PADDING = "TABLE_PADDING"

@@ -1,6 +1,7 @@
 """
 Centralized structured logging infrastructure for the SciFi toolkit.
 """
+
 from __future__ import annotations
 
 import logging

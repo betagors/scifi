@@ -7,9 +7,9 @@ to `<repo>/.scifi/literature_manifest.json` and updates `<repo>/.scifi/reference
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from scifi.literature.models import (
     BenchmarkRecord,
@@ -22,7 +22,6 @@ from scifi.literature.models import (
     PaperLocationRecord,
     PaperRecord,
     ProjectRecord,
-    ReprintRequestRecord,
 )
 from scifi.literature.reporter import export_bibtex_entries
 from scifi.literature.store import LiteratureStore
@@ -201,7 +200,7 @@ def export_manifest(
         "project_id": proj.id,
         "project_name": proj.name,
         "description": proj.description,
-        "synced_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "synced_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "papers_count": len(papers_serialized),
         "papers": papers_serialized,
         "citations": citations_serialized,
@@ -221,7 +220,7 @@ def export_manifest(
 def import_manifest(
     store: LiteratureStore,
     manifest_path: str | Path,
-    workspace_path: Optional[str | Path] = None,
+    workspace_path: str | Path | None = None,
 ) -> ProjectRecord:
     """
     Rehydrate project papers, citations, gaps, benchmarks, and reprint requests
@@ -437,7 +436,9 @@ def sync_workspace(
     root_manifest_file = ws / DEFAULT_MANIFEST_FILENAME
 
     # Choose manifest source if existing
-    target_source = manifest_file if manifest_file.exists() else (root_manifest_file if root_manifest_file.exists() else None)
+    target_source = (
+        manifest_file if manifest_file.exists() else (root_manifest_file if root_manifest_file.exists() else None)
+    )
 
     if target_source is not None:
         proj = import_manifest(store, target_source, workspace_path=ws)

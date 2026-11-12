@@ -1,7 +1,6 @@
 """Tests for scifi.proofs theorem-proof sentinel (theorist/euclid)."""
 
 from pathlib import Path
-import pytest
 
 from scifi.proofs.auditor import audit_latex_proofs
 from scifi.proofs.models import ProofIssueCategory

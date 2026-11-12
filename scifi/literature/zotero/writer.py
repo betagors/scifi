@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import requests
 
@@ -33,15 +33,15 @@ class ZoteroLocalWriter:
         self,
         host: str = "127.0.0.1",
         port: int = 23119,
-        api_key: Optional[str] = None,
-        stage_file: Optional[Union[str, Path]] = None,
+        api_key: str | None = None,
+        stage_file: str | Path | None = None,
     ) -> None:
         self.host = host
         self.port = port
         self.api_key = api_key
         self.base_url = f"http://{host}:{port}/api/users/0"
         self.stage_file = Path(stage_file) if stage_file else Path(".scifi/zotero_write_queue.json")
-        self._server_id: Optional[str] = None
+        self._server_id: str | None = None
 
     def is_server_available(self) -> bool:
         """Check if Zotero local server is responding."""
@@ -62,6 +62,7 @@ class ZoteroLocalWriter:
         if not self.api_key:
             try:
                 from scifi.config import load_global_config, set_global_config_value
+
                 g_cfg = load_global_config()
                 cached_key = g_cfg.get("zotero_local_api_key")
                 if cached_key:
@@ -87,7 +88,7 @@ class ZoteroLocalWriter:
             except Exception:
                 pass
 
-    def _headers(self, version: Optional[int] = None) -> Dict[str, str]:
+    def _headers(self, version: int | None = None) -> dict[str, str]:
         self._ensure_session()
         headers = {
             "Content-Type": "application/json",
@@ -101,10 +102,10 @@ class ZoteroLocalWriter:
             headers["If-Unmodified-Since-Version"] = str(version)
         return headers
 
-    def _stage_write(self, mutation: Dict[str, Any]) -> None:
+    def _stage_write(self, mutation: dict[str, Any]) -> None:
         """Persist an unwritten mutation to the offline queue."""
         self.stage_file.parent.mkdir(parents=True, exist_ok=True)
-        queue: List[Dict[str, Any]] = []
+        queue: list[dict[str, Any]] = []
         if self.stage_file.is_file():
             try:
                 queue = json.loads(self.stage_file.read_text(encoding="utf-8"))
@@ -117,51 +118,57 @@ class ZoteroLocalWriter:
         """Generate formatted HTML for a SciFi audit card child note."""
         lines = [
             '<div class="scifi-audit-card" data-scifi-version="1.0">',
-            '<h3>SciFi Scientific Audit Card</h3>',
-            f'<p><strong>Primary Contribution:</strong> {card.contribution}</p>',
+            "<h3>SciFi Scientific Audit Card</h3>",
+            f"<p><strong>Primary Contribution:</strong> {card.contribution}</p>",
         ]
 
         if card.assumptions_flagged:
-            lines.append(f'<details open><summary><strong>Flagged Assumptions ({len(card.assumptions_flagged)})</strong></summary><ul>')
+            lines.append(
+                f"<details open><summary><strong>Flagged Assumptions ({len(card.assumptions_flagged)})</strong></summary><ul>"
+            )
             for a in card.assumptions_flagged:
-                lines.append(f'<li>⚠️ {a}</li>')
-            lines.append('</ul></details>')
+                lines.append(f"<li>⚠️ {a}</li>")
+            lines.append("</ul></details>")
         else:
-            lines.append('<p><em>No unstated assumptions flagged.</em></p>')
+            lines.append("<p><em>No unstated assumptions flagged.</em></p>")
 
         if card.benchmarks_extracted:
-            lines.append(f'<details open><summary><strong>Extracted SOTA Benchmarks ({len(card.benchmarks_extracted)})</strong></summary><ul>')
+            lines.append(
+                f"<details open><summary><strong>Extracted SOTA Benchmarks ({len(card.benchmarks_extracted)})</strong></summary><ul>"
+            )
             for b in card.benchmarks_extracted:
                 metric = b.get("metric", "Metric")
                 val = b.get("value", "")
-                lines.append(f'<li>📊 <strong>{metric}:</strong> {val}</li>')
-            lines.append('</ul></details>')
+                lines.append(f"<li>📊 <strong>{metric}:</strong> {val}</li>")
+            lines.append("</ul></details>")
 
-        math_status = '✅ Verified' if card.math_verified else '⚪ Unaudited / Not applicable'
-        lines.append(f'<p><strong>Symbolic Math Verification:</strong> {math_status}</p>')
-        lines.append(f'<p><strong>Integrity & Retraction Check:</strong> {card.retraction_status}</p>')
-        lines.append('<p><small>Audited autonomously by SciFi.</small></p>')
-        lines.append('</div>')
+        math_status = "✅ Verified" if card.math_verified else "⚪ Unaudited / Not applicable"
+        lines.append(f"<p><strong>Symbolic Math Verification:</strong> {math_status}</p>")
+        lines.append(f"<p><strong>Integrity & Retraction Check:</strong> {card.retraction_status}</p>")
+        lines.append("<p><small>Audited autonomously by SciFi.</small></p>")
+        lines.append("</div>")
         return "\n".join(lines)
 
-    def push_audit_card_note(self, item_key: str, card: ZoteroAuditCard) -> Dict[str, Any]:
+    def push_audit_card_note(self, item_key: str, card: ZoteroAuditCard) -> dict[str, Any]:
         """
         Push or in-place upsert a SciFi audit card child note under a parent item.
         """
         html_content = self.format_audit_card_html(card)
 
         if not self.is_server_available():
-            self._stage_write({
-                "type": "audit_note",
-                "item_key": item_key,
-                "card": {
-                    "contribution": card.contribution,
-                    "assumptions_flagged": card.assumptions_flagged,
-                    "benchmarks_extracted": card.benchmarks_extracted,
-                    "math_verified": card.math_verified,
-                    "retraction_status": card.retraction_status,
-                },
-            })
+            self._stage_write(
+                {
+                    "type": "audit_note",
+                    "item_key": item_key,
+                    "card": {
+                        "contribution": card.contribution,
+                        "assumptions_flagged": card.assumptions_flagged,
+                        "benchmarks_extracted": card.benchmarks_extracted,
+                        "math_verified": card.math_verified,
+                        "retraction_status": card.retraction_status,
+                    },
+                }
+            )
             return {"status": "STAGED", "message": "Zotero is offline; audit note staged in local queue."}
 
         # Check existing child notes
@@ -185,7 +192,7 @@ class ZoteroLocalWriter:
                             return {"status": "UPDATED", "note_key": note_key}
 
             # Create new child note
-            post_payload = [
+            post_payload: list[dict[str, Any]] = [
                 {
                     "itemType": "note",
                     "parentItem": item_key,
@@ -198,30 +205,34 @@ class ZoteroLocalWriter:
                 return {"status": "CREATED", "response": post_resp.json() if post_resp.text else {}}
             return {"status": "ERROR", "code": post_resp.status_code, "body": post_resp.text}
         except Exception as e:
-            self._stage_write({
-                "type": "audit_note",
-                "item_key": item_key,
-                "card": {
-                    "contribution": card.contribution,
-                    "assumptions_flagged": card.assumptions_flagged,
-                    "benchmarks_extracted": card.benchmarks_extracted,
-                    "math_verified": card.math_verified,
-                    "retraction_status": card.retraction_status,
-                },
-            })
+            self._stage_write(
+                {
+                    "type": "audit_note",
+                    "item_key": item_key,
+                    "card": {
+                        "contribution": card.contribution,
+                        "assumptions_flagged": card.assumptions_flagged,
+                        "benchmarks_extracted": card.benchmarks_extracted,
+                        "math_verified": card.math_verified,
+                        "retraction_status": card.retraction_status,
+                    },
+                }
+            )
             return {"status": "STAGED", "error": str(e)}
 
-    def apply_tags(self, item_key: str, tags: List[str], replace_scifi_tags: bool = True) -> Dict[str, Any]:
+    def apply_tags(self, item_key: str, tags: list[str], replace_scifi_tags: bool = True) -> dict[str, Any]:
         """
         Apply tags to parent item while preserving user-authored tags.
         """
         if not self.is_server_available():
-            self._stage_write({
-                "type": "tags",
-                "item_key": item_key,
-                "tags": tags,
-                "replace_scifi_tags": replace_scifi_tags,
-            })
+            self._stage_write(
+                {
+                    "type": "tags",
+                    "item_key": item_key,
+                    "tags": tags,
+                    "replace_scifi_tags": replace_scifi_tags,
+                }
+            )
             return {"status": "STAGED", "message": "Zotero is offline; tag mutation staged in local queue."}
 
         try:
@@ -235,7 +246,7 @@ class ZoteroLocalWriter:
             existing_tags = data.get("tags", [])
 
             # Filter tags
-            merged_tags: List[Dict[str, str]] = []
+            merged_tags: list[dict[str, str]] = []
             for t_obj in existing_tags:
                 tag_name = t_obj.get("tag", "")
                 if replace_scifi_tags and tag_name in SCIFI_STATUS_TAGS:
@@ -258,24 +269,28 @@ class ZoteroLocalWriter:
                 return {"status": "SUCCESS", "tags": [t["tag"] for t in merged_tags]}
             return {"status": "ERROR", "code": patch_resp.status_code}
         except Exception as e:
-            self._stage_write({
-                "type": "tags",
-                "item_key": item_key,
-                "tags": tags,
-                "replace_scifi_tags": replace_scifi_tags,
-            })
+            self._stage_write(
+                {
+                    "type": "tags",
+                    "item_key": item_key,
+                    "tags": tags,
+                    "replace_scifi_tags": replace_scifi_tags,
+                }
+            )
             return {"status": "STAGED", "error": str(e)}
 
-    def create_collection(self, name: str, parent_key: Optional[str] = None) -> Dict[str, Any]:
+    def create_collection(self, name: str, parent_key: str | None = None) -> dict[str, Any]:
         """
         Create a new collection in Zotero (via local HTTP API or offline queue).
         """
         if not self.is_server_available():
-            self._stage_write({
-                "type": "create_collection",
-                "name": name,
-                "parent_key": parent_key,
-            })
+            self._stage_write(
+                {
+                    "type": "create_collection",
+                    "name": name,
+                    "parent_key": parent_key,
+                }
+            )
             return {"status": "STAGED", "message": f"Zotero is offline; collection '{name}' creation staged in queue."}
 
         try:
@@ -285,21 +300,25 @@ class ZoteroLocalWriter:
             resp = requests.post(f"{self.base_url}/collections", headers=self._headers(), json=payload, timeout=3)
             if resp.status_code in (200, 201):
                 return {"status": "CREATED", "response": resp.json() if resp.text else {}}
-            self._stage_write({
-                "type": "create_collection",
-                "name": name,
-                "parent_key": parent_key,
-            })
+            self._stage_write(
+                {
+                    "type": "create_collection",
+                    "name": name,
+                    "parent_key": parent_key,
+                }
+            )
             return {"status": "STAGED", "code": resp.status_code, "body": resp.text}
         except Exception as e:
-            self._stage_write({
-                "type": "create_collection",
-                "name": name,
-                "parent_key": parent_key,
-            })
+            self._stage_write(
+                {
+                    "type": "create_collection",
+                    "name": name,
+                    "parent_key": parent_key,
+                }
+            )
             return {"status": "STAGED", "error": str(e)}
 
-    def get_collection_key(self, name: str) -> Optional[str]:
+    def get_collection_key(self, name: str) -> str | None:
         """Resolve a collection key by exact name via the local API."""
         try:
             resp = requests.get(f"{self.base_url}/collections?limit=100", headers=self._headers(), timeout=5)
@@ -311,7 +330,7 @@ class ZoteroLocalWriter:
             pass
         return None
 
-    def add_items_to_collection(self, collection_key: str, item_keys: List[str]) -> int:
+    def add_items_to_collection(self, collection_key: str, item_keys: list[str]) -> int:
         """Add existing library items to a collection (PATCH preserving other memberships)."""
         added = 0
         for key in item_keys:
@@ -337,11 +356,11 @@ class ZoteroLocalWriter:
                 continue
         return added
 
-    def create_items(self, items: List[Dict[str, Any]], collection_key: str) -> int:
+    def create_items(self, items: list[dict[str, Any]], collection_key: str) -> int:
         """Create new library items (Zotero item JSON) directly inside a collection."""
         created = 0
         for i in range(0, len(items), 25):
-            batch = [dict(it, collections=[collection_key]) for it in items[i:i + 25]]
+            batch = [dict(it, collections=[collection_key]) for it in items[i : i + 25]]
             try:
                 resp = requests.post(f"{self.base_url}/items", headers=self._headers(), json=batch, timeout=15)
                 if resp.status_code in (200, 201):
@@ -350,7 +369,7 @@ class ZoteroLocalWriter:
                 continue
         return created
 
-    def flush_staged_writes(self) -> List[Dict[str, Any]]:
+    def flush_staged_writes(self) -> list[dict[str, Any]]:
         """
         Replay all staged mutations when the Zotero server is available.
         """
@@ -367,8 +386,8 @@ class ZoteroLocalWriter:
         if not self.is_server_available():
             return []
 
-        results: List[Dict[str, Any]] = []
-        unprocessed: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        unprocessed: list[dict[str, Any]] = []
 
         for item in queue:
             m_type = item.get("type")

@@ -6,19 +6,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
 
 
 @dataclass
 class SentenceSpan:
     text: str
     line_number: int
-    citations: List[str] = field(default_factory=list)
+    citations: list[str] = field(default_factory=list)
     raw_text: str = ""
 
 
 # Curated directory of canonical methods, algorithms, and architectures that require attribution
-CANONICAL_METHODS: Dict[str, str] = {
+CANONICAL_METHODS: dict[str, str] = {
     # Parameter-efficient fine-tuning
     "lora": "Low-Rank Adaptation",
     "low-rank adaptation": "Low-Rank Adaptation",
@@ -82,7 +81,7 @@ CANONICAL_METHODS: Dict[str, str] = {
 }
 
 # Concepts considered common knowledge in computational and physical sciences (no citation required)
-COMMON_KNOWLEDGE: Set[str] = {
+COMMON_KNOWLEDGE: set[str] = {
     "gradient descent",
     "stochastic gradient descent",
     "backpropagation",
@@ -128,7 +127,7 @@ COMMON_KNOWLEDGE: Set[str] = {
 }
 
 # Hallmarks of AI-generated or informal online blog prose
-INFORMAL_AND_AI_HALLMARKS: Set[str] = {
+INFORMAL_AND_AI_HALLMARKS: set[str] = {
     "delve",
     "delving",
     "testament",
@@ -188,9 +187,9 @@ def mask_latex_math(content: str) -> str:
     return content
 
 
-def extract_citations_from_span(text: str) -> List[str]:
+def extract_citations_from_span(text: str) -> list[str]:
     """Extract citation keys from standard LaTeX cite commands and numeric brackets."""
-    citations: List[str] = []
+    citations: list[str] = []
     # LaTeX cite commands: \cite{key1,key2}, \citep[...]{key}
     latex_cites = re.findall(
         r"\\(?:cite|citep|citet|citeauthor|parencite|textcite)(?:\[[^\]]*\])*\{([^}]+)\}",
@@ -210,14 +209,14 @@ def extract_citations_from_span(text: str) -> List[str]:
     return citations
 
 
-def split_into_sentence_spans(content: str) -> List[SentenceSpan]:
+def split_into_sentence_spans(content: str) -> list[SentenceSpan]:
     """Parse text into sentence spans tracking 1-based line numbers and local citations."""
     cleaned = strip_latex_comments(content)
     masked = mask_latex_math(cleaned)
     lines = masked.splitlines()
 
-    spans: List[SentenceSpan] = []
-    current_sentence: List[str] = []
+    spans: list[SentenceSpan] = []
+    current_sentence: list[str] = []
     start_line = 1
 
     for idx, line in enumerate(lines, start=1):
@@ -256,12 +255,12 @@ def split_into_sentence_spans(content: str) -> List[SentenceSpan]:
     return spans
 
 
-def extract_potential_methods(text: str) -> List[Tuple[str, str]]:
+def extract_potential_methods(text: str) -> list[tuple[str, str]]:
     """
     Extract recognized methods and heuristics from a sentence.
     Returns a list of (entity_name, canonical_query).
     """
-    found: List[Tuple[str, str]] = []
+    found: list[tuple[str, str]] = []
     lower_text = text.lower()
 
     # 1. Exact match against curated canonical methods dictionary
@@ -291,7 +290,7 @@ def extract_potential_methods(text: str) -> List[Tuple[str, str]]:
     return found
 
 
-def detect_informal_ai_tropes(text: str) -> List[str]:
+def detect_informal_ai_tropes(text: str) -> list[str]:
     """Detect presence of AI slop or informal blog phrasing."""
     lower = text.lower()
     matches = []

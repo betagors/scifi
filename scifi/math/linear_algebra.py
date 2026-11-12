@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 from typing import Any
+
 import sympy as sp
 from sympy.matrices.expressions import MatrixSymbol
 
@@ -65,27 +66,17 @@ def _parse_dimensions(
         for entry in dimensions.split(","):
             parts = entry.strip().split(":")
             if len(parts) != 3:
-                raise ValueError(
-                    f"Invalid matrix specification '{entry}'. Expected NAME:ROWS:COLS format."
-                )
+                raise ValueError(f"Invalid matrix specification '{entry}'. Expected NAME:ROWS:COLS format.")
             name, rows_tok, cols_tok = parts
-            matrices[name.strip()] = MatrixSymbol(
-                name.strip(), as_dim(rows_tok.strip()), as_dim(cols_tok.strip())
-            )
+            matrices[name.strip()] = MatrixSymbol(name.strip(), as_dim(rows_tok.strip()), as_dim(cols_tok.strip()))
     elif isinstance(dimensions, dict):
         for name, shape in dimensions.items():
             if not isinstance(shape, (list, tuple)) or len(shape) != 2:
-                raise ValueError(
-                    f"Matrix '{name}' shape must be a list/tuple of [rows, cols]."
-                )
+                raise ValueError(f"Matrix '{name}' shape must be a list/tuple of [rows, cols].")
             r_tok, c_tok = shape
-            matrices[name.strip()] = MatrixSymbol(
-                name.strip(), as_dim(r_tok), as_dim(c_tok)
-            )
+            matrices[name.strip()] = MatrixSymbol(name.strip(), as_dim(r_tok), as_dim(c_tok))
     else:
-        raise TypeError(
-            f"dimensions must be a dict or a string, got {type(dimensions).__name__}"
-        )
+        raise TypeError(f"dimensions must be a dict or a string, got {type(dimensions).__name__}")
 
     return matrices, dim_syms
 
@@ -105,11 +96,13 @@ def check_matrix_shapes(
         _validate_operation(operation)
         matrices, _ = _parse_dimensions(dimensions)
         namespace: dict[str, Any] = {**matrices}
-        namespace.update({
-            "Transpose": sp.transpose,
-            "Inverse": sp.Inverse,
-            "Identity": sp.Identity,
-        })
+        namespace.update(
+            {
+                "Transpose": sp.transpose,
+                "Inverse": sp.Inverse,
+                "Identity": sp.Identity,
+            }
+        )
 
         expr = eval(operation, {"__builtins__": {}}, namespace)
         shape = expr.shape
@@ -119,10 +112,7 @@ def check_matrix_shapes(
             "is_correct": True,
             "operation": operation,
             "result_shape": [str(s) for s in shape],
-            "matrices": {
-                k: {"rows": str(v.shape[0]), "cols": str(v.shape[1])}
-                for k, v in matrices.items()
-            },
+            "matrices": {k: {"rows": str(v.shape[0]), "cols": str(v.shape[1])} for k, v in matrices.items()},
         }
     except ShapeError as e:
         return {

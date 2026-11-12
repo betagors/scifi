@@ -12,8 +12,9 @@ from __future__ import annotations
 import dataclasses
 import datetime
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional, Union
+from typing import Any
 
 from scifi.literature.benchmarks import CANONICAL_METRICS
 from scifi.literature.models import (
@@ -37,11 +38,11 @@ class PerformanceDelta:
     sota_value: float
     baseline_value: float
     absolute_delta: float
-    relative_improvement_pct: Optional[float] = None
+    relative_improvement_pct: float | None = None
     is_improvement: bool = True
     condition_mismatch: bool = False
-    sota_condition_id: Optional[str] = None
-    baseline_condition_id: Optional[str] = None
+    sota_condition_id: str | None = None
+    baseline_condition_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -61,16 +62,14 @@ class SotaEvaluationReport:
 
     benchmark_id: str
     metric_id: str
-    sota_leader_paper_id: Optional[str] = None
-    high_citation_frontier_paper_id: Optional[str] = None
-    best_metric_value: Optional[float] = None
-    baseline_metric_value: Optional[float] = None
+    sota_leader_paper_id: str | None = None
+    high_citation_frontier_paper_id: str | None = None
+    best_metric_value: float | None = None
+    baseline_metric_value: float | None = None
     deltas: list[PerformanceDelta] = field(default_factory=list)
     paper_roles: dict[str, str] = field(default_factory=dict)
 
-    def get_delta(
-        self, sota_paper_id: str, baseline_paper_id: Optional[str] = None
-    ) -> Optional[PerformanceDelta]:
+    def get_delta(self, sota_paper_id: str, baseline_paper_id: str | None = None) -> PerformanceDelta | None:
         """
         Retrieve performance delta between SOTA paper and baseline paper.
         Supports both get_delta(sota_id, baseline_id) and get_delta(baseline_id).
@@ -104,10 +103,7 @@ class SotaEvaluationReport:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SotaEvaluationReport:
-        deltas = [
-            PerformanceDelta.from_dict(d) if isinstance(d, dict) else d
-            for d in data.get("deltas", [])
-        ]
+        deltas = [PerformanceDelta.from_dict(d) if isinstance(d, dict) else d for d in data.get("deltas", [])]
         return cls(
             benchmark_id=data["benchmark_id"],
             metric_id=data["metric_id"],
@@ -126,7 +122,7 @@ class SotaEvaluationResults(dict[str, SotaEvaluationReport]):
     Provides transparent attribute delegation to the primary report for single-metric calls.
     """
 
-    def __getitem__(self, key: Union[str, tuple[str, str]]) -> SotaEvaluationReport:
+    def __getitem__(self, key: str | tuple[str, str]) -> SotaEvaluationReport:
         if isinstance(key, tuple):
             key = f"{key[0]}:{key[1]}"
         if key in self:
@@ -165,8 +161,8 @@ class SotaEvaluator:
         papers: list[PaperRecord],
         benchmark_results: list[BenchmarkResultRecord],
         metrics: dict[str, EvaluationMetricRecord],
-        benchmarks: Optional[dict[str, BenchmarkRecord]] = None,
-        depths: Optional[dict[str, int]] = None,
+        benchmarks: dict[str, BenchmarkRecord] | None = None,
+        depths: dict[str, int] | None = None,
     ) -> SotaEvaluationResults:
         """
         Evaluate benchmark results grouped by (benchmark_id, metric_id).
@@ -193,9 +189,7 @@ class SotaEvaluator:
                     if m.id == metric_id or m.name == metric_id:
                         metric = m
                         break
-            canonical_metric = CANONICAL_METRICS.get(metric_id) or CANONICAL_METRICS.get(
-                metric_id.lower()
-            )
+            canonical_metric = CANONICAL_METRICS.get(metric_id) or CANONICAL_METRICS.get(metric_id.lower())
 
             goal = "maximize"
             if metric and hasattr(metric, "goal") and metric.goal:
@@ -206,11 +200,7 @@ class SotaEvaluator:
             def sort_key(r: BenchmarkResultRecord) -> tuple[float, int, float, int, str]:
                 p = paper_map.get(r.paper_id)
                 year = p.year if p and p.year is not None else 0
-                growth = (
-                    p.recent_citation_growth
-                    if p and p.recent_citation_growth is not None
-                    else 0.0
-                )
+                growth = p.recent_citation_growth if p and p.recent_citation_growth is not None else 0.0
                 citations = p.citation_count if p and p.citation_count is not None else 0
                 if goal == "minimize":
                     val_key = r.metric_value
@@ -234,22 +224,15 @@ class SotaEvaluator:
             best_val = top_result.metric_value
 
             # Identify unique non-winning papers
-            non_winning_pids = [
-                r.paper_id for r in sorted_results if r.paper_id != sota_leader_id
-            ]
+            non_winning_pids = [r.paper_id for r in sorted_results if r.paper_id != sota_leader_id]
             unique_non_winning_ids = list(dict.fromkeys(non_winning_pids))
 
             non_winning_papers = [
-                paper_map.get(pid) or PaperRecord(id=pid, title=f"Paper {pid}")
-                for pid in unique_non_winning_ids
+                paper_map.get(pid) or PaperRecord(id=pid, title=f"Paper {pid}") for pid in unique_non_winning_ids
             ]
 
             # Frontier distinction: prefer recent works (<= 3 years relative to corpus ref_year)
-            recent_candidates = [
-                p
-                for p in non_winning_papers
-                if p.year is not None and (ref_year - p.year) <= 3
-            ]
+            recent_candidates = [p for p in non_winning_papers if p.year is not None and (ref_year - p.year) <= 3]
             frontier_candidates = recent_candidates if recent_candidates else non_winning_papers
 
             def frontier_rank_key(p: PaperRecord) -> tuple[float, float, int, int]:
@@ -257,13 +240,13 @@ class SotaEvaluator:
                 velocity = float(p.citation_count) / max(0.5, float(ref_year - pyear + 1))
                 return (p.recent_citation_growth, velocity, p.citation_count, p.year or 0)
 
-            high_citation_frontier_id: Optional[str] = None
+            high_citation_frontier_id: str | None = None
             if frontier_candidates:
                 ranked_frontiers = sorted(frontier_candidates, key=frontier_rank_key, reverse=True)
                 high_citation_frontier_id = ranked_frontiers[0].id
 
             # Best baseline value from high citation frontier
-            baseline_val: Optional[float] = None
+            baseline_val: float | None = None
             if high_citation_frontier_id:
                 frontier_res = next(
                     (r for r in sorted_results if r.paper_id == high_citation_frontier_id),
@@ -281,14 +264,10 @@ class SotaEvaluator:
 
                 if goal == "maximize":
                     is_imp = best_val > b_val
-                    rel_imp = (
-                        ((best_val - b_val) / abs(b_val)) * 100.0 if b_val != 0.0 else None
-                    )
+                    rel_imp = ((best_val - b_val) / abs(b_val)) * 100.0 if b_val != 0.0 else None
                 else:
                     is_imp = best_val < b_val
-                    rel_imp = (
-                        ((b_val - best_val) / abs(b_val)) * 100.0 if b_val != 0.0 else None
-                    )
+                    rel_imp = ((b_val - best_val) / abs(b_val)) * 100.0 if b_val != 0.0 else None
 
                 cond_mismatch = top_result.condition_id != b_res.condition_id
 
@@ -320,9 +299,7 @@ class SotaEvaluator:
 
             # Assign roles for this report
             if depths:
-                report.paper_roles = self.assign_enriched_roles(
-                    papers, depths, {f"{bm_id}:{metric_id}": report}
-                )
+                report.paper_roles = self.assign_enriched_roles(papers, depths, {f"{bm_id}:{metric_id}": report})
             else:
                 report.paper_roles[sota_leader_id] = "sota_leader"
                 if high_citation_frontier_id:
@@ -339,11 +316,7 @@ class SotaEvaluator:
         self,
         papers: list[PaperRecord],
         depths: dict[str, int],
-        reports: Union[
-            dict[str, SotaEvaluationReport],
-            Iterable[SotaEvaluationReport],
-            SotaEvaluationReport,
-        ],
+        reports: dict[str, SotaEvaluationReport] | Iterable[SotaEvaluationReport] | SotaEvaluationReport,
     ) -> dict[str, str]:
         """
         Assign canonical enriched node roles:

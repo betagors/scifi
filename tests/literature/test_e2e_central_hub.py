@@ -7,19 +7,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import threading
-import urllib.request
 import urllib.error
+import urllib.request
+from pathlib import Path
 from unittest.mock import patch
-import pytest
 
-from scifi.literature.manifest import export_manifest, import_manifest, sync_workspace
+from scifi.literature.manifest import import_manifest, sync_workspace
 from scifi.literature.models import CitationRecord, PaperLocationRecord, PaperRecord
 from scifi.literature.reprint import (
-    DEFAULT_STORAGE_DIR,
-    generate_reprint_draft,
-    ingest_paper_copy,
     prepare_reprint_for_paper,
 )
 from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore

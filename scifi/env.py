@@ -13,10 +13,10 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
-def auto_detect_zotero_dir() -> Optional[Path]:
+def auto_detect_zotero_dir() -> Path | None:
     """
     Auto-detect the local Zotero data directory across platforms.
     Prioritizes directories containing zotero.sqlite.
@@ -53,11 +53,11 @@ def is_zotero_port_open(host: str = "127.0.0.1", port: int = 23119, timeout: flo
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
+    except (TimeoutError, ConnectionRefusedError, OSError):
         return False
 
 
-def ensure_uv() -> Dict[str, Any]:
+def ensure_uv() -> dict[str, Any]:
     """
     Check if uv package manager is available, returning execution info.
     Falls back gracefully to sys.executable without failing.
@@ -85,7 +85,7 @@ def ensure_uv() -> Dict[str, Any]:
     }
 
 
-def diagnose_environment(auto_fix: bool = False) -> Dict[str, Any]:
+def diagnose_environment(auto_fix: bool = False) -> dict[str, Any]:
     """
     Diagnose environment health across Python, uv, LaTeX toolchain, and Zotero.
     """

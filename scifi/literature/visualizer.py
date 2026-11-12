@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import html
 import json
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from scifi.literature.models import (
     BenchmarkRecord,
@@ -45,10 +44,10 @@ GAP_CATEGORY_COLORS: dict[str, str] = {
 
 SEED_BORDER_COLOR: str = "#3b82f6"  # Blue accent border
 SOTA_BORDER_COLOR: str = "#d97706"  # Gold / Amber accent border
-SOTA_BG_COLOR: str = "#fef3c7"      # Light gold tint background
+SOTA_BG_COLOR: str = "#fef3c7"  # Light gold tint background
 
 
-def _safe_escape(val: Optional[str]) -> str:
+def _safe_escape(val: str | None) -> str:
     """Escape arbitrary text strings to neutralize HTML injection."""
     if not val:
         return ""
@@ -61,11 +60,7 @@ def _safe_json_dumps(obj: Any) -> str:
     with Unicode escape sequences to prevent script breakout attacks.
     """
     raw_json = json.dumps(obj, ensure_ascii=False)
-    return (
-        raw_json.replace("&", "\\u0026")
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-    )
+    return raw_json.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
 def determine_oa_status(paper: PaperRecord) -> str:
@@ -79,11 +74,7 @@ def determine_oa_status(paper: PaperRecord) -> str:
             return status
 
     if paper.locations:
-        found_statuses = [
-            loc.oa_status.lower().strip()
-            for loc in paper.locations
-            if getattr(loc, "oa_status", None)
-        ]
+        found_statuses = [loc.oa_status.lower().strip() for loc in paper.locations if getattr(loc, "oa_status", None)]
         priority = ["gold", "green", "hybrid", "bronze", "closed"]
         for p in priority:
             if p in found_statuses:
@@ -95,11 +86,11 @@ def determine_oa_status(paper: PaperRecord) -> str:
     return "closed"
 
 
-def extract_paper_links(paper: PaperRecord) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def extract_paper_links(paper: PaperRecord) -> tuple[str | None, str | None, str | None]:
     """Extract DOI, arXiv ID, and PDF URL from identifiers and locations."""
-    doi: Optional[str] = None
-    arxiv_id: Optional[str] = None
-    pdf_url: Optional[str] = None
+    doi: str | None = None
+    arxiv_id: str | None = None
+    pdf_url: str | None = None
 
     for ident in paper.identifiers:
         prov = (ident.provider or "").lower()
@@ -160,14 +151,14 @@ def generate_interactive_html(
     papers: list[PaperRecord],
     citations: list[CitationRecord],
     depths: dict[str, int],
-    seed_paper_id: Optional[str] = None,
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
-    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
-    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
-    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
-    node_roles: Optional[dict[str, str]] = None,
+    seed_paper_id: str | None = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    benchmark_results: dict[str, list[BenchmarkResultRecord]] | None = None,
+    benchmarks_map: dict[str, BenchmarkRecord] | None = None,
+    metrics_map: dict[str, EvaluationMetricRecord] | None = None,
+    conditions_map: dict[str, EvaluationConditionRecord] | None = None,
+    node_roles: dict[str, str] | None = None,
 ) -> str:
     """
     Render self-contained, XSS-safe Vis.js interactive HTML visualization of a literature DAG.
@@ -182,7 +173,11 @@ def generate_interactive_html(
     for paper in papers:
         oa_tier = determine_oa_status(paper)
         bg_color = OA_COLORS.get(oa_tier, OA_COLORS["closed"])
-        is_seed = (paper.id == seed_paper_id) or getattr(paper, "is_seed", False) or (getattr(paper, "node_role", "") == "seed")
+        is_seed = (
+            (paper.id == seed_paper_id)
+            or getattr(paper, "is_seed", False)
+            or (getattr(paper, "node_role", "") == "seed")
+        )
 
         # Determine SOTA leader status
         paper_bms = (benchmark_results or {}).get(paper.id, [])
@@ -227,40 +222,44 @@ def generate_interactive_html(
 
         doi, arxiv_id, pdf_url = extract_paper_links(paper)
 
-        vis_nodes.append({
-            "id": paper.id,
-            "label": node_label,
-            "level": depth_level,
-            "title": tooltip,
-            "color": {
-                "background": node_bg,
-                "border": node_border,
-                "highlight": {
-                    "background": highlight_bg,
-                    "border": highlight_border,
+        vis_nodes.append(
+            {
+                "id": paper.id,
+                "label": node_label,
+                "level": depth_level,
+                "title": tooltip,
+                "color": {
+                    "background": node_bg,
+                    "border": node_border,
+                    "highlight": {
+                        "background": highlight_bg,
+                        "border": highlight_border,
+                    },
+                    "hover": {
+                        "background": hover_bg,
+                        "border": hover_border,
+                    },
                 },
-                "hover": {
-                    "background": hover_bg,
-                    "border": hover_border,
+                "borderWidth": border_width,
+                "font": {
+                    "color": font_color,
+                    "size": 13,
+                    "bold": {"color": font_color},
                 },
-            },
-            "borderWidth": border_width,
-            "font": {
-                "color": font_color,
-                "size": 13,
-                "bold": {"color": font_color},
-            },
-            "shape": "box",
-            "margin": 10,
-        })
+                "shape": "box",
+                "margin": 10,
+            }
+        )
 
         author_list = []
         for a in paper.authors:
-            author_list.append({
-                "name": _safe_escape(a.name if hasattr(a, "name") else str(a)),
-                "institution": _safe_escape(getattr(a, "institution", "") or ""),
-                "email": _safe_escape(getattr(a, "email", "") or ""),
-            })
+            author_list.append(
+                {
+                    "name": _safe_escape(a.name if hasattr(a, "name") else str(a)),
+                    "institution": _safe_escape(getattr(a, "institution", "") or ""),
+                    "email": _safe_escape(getattr(a, "email", "") or ""),
+                }
+            )
 
         gaps_list = []
         for gap in (paper_gaps or {}).get(paper.id, []):
@@ -290,19 +289,21 @@ def generate_interactive_html(
 
             cat_label = (gap.gap_type or "GAP").replace("_", " ").upper()
 
-            gaps_list.append({
-                "id": _safe_escape(gap.id),
-                "paper_id": _safe_escape(gap.paper_id),
-                "gap_type": _safe_escape(gap.gap_type),
-                "category_label": _safe_escape(cat_label),
-                "claim_summary": _safe_escape(gap.claim_summary),
-                "primary_evidence_id": _safe_escape(gap.primary_evidence_id),
-                "verification_status": _safe_escape(gap.verification_status),
-                "verification_label": _safe_escape(verif_label),
-                "corroborating_count": gap.corroborating_count,
-                "contradicting_count": gap.contradicting_count,
-                "evidence": ev_data,
-            })
+            gaps_list.append(
+                {
+                    "id": _safe_escape(gap.id),
+                    "paper_id": _safe_escape(gap.paper_id),
+                    "gap_type": _safe_escape(gap.gap_type),
+                    "category_label": _safe_escape(cat_label),
+                    "claim_summary": _safe_escape(gap.claim_summary),
+                    "primary_evidence_id": _safe_escape(gap.primary_evidence_id),
+                    "verification_status": _safe_escape(gap.verification_status),
+                    "verification_label": _safe_escape(verif_label),
+                    "corroborating_count": gap.corroborating_count,
+                    "contradicting_count": gap.contradicting_count,
+                    "evidence": ev_data,
+                }
+            )
 
         benchmarks_list = []
         for res in paper_bms:
@@ -336,25 +337,27 @@ def generate_interactive_html(
             else:
                 formatted_score = f"{metric_name}: {res.metric_value:g}"
 
-            benchmarks_list.append({
-                "id": _safe_escape(res.id),
-                "benchmark_id": _safe_escape(res.benchmark_id),
-                "benchmark_name": _safe_escape(bm_name),
-                "benchmark_domain": _safe_escape(bm_domain),
-                "metric_id": _safe_escape(res.metric_id),
-                "metric_name": _safe_escape(metric_name),
-                "metric_value": res.metric_value,
-                "metric_unit": _safe_escape(metric_unit),
-                "formatted_score": _safe_escape(formatted_score),
-                "is_sota": bool(res.is_sota),
-                "rank": res.rank,
-                "table_or_figure": _safe_escape(res.table_or_figure or ""),
-                "condition_name": _safe_escape(cond_name),
-                "condition_split": _safe_escape(cond_split),
-                "condition_notes": _safe_escape(cond_notes),
-                "provenance_source": _safe_escape(res.provenance_source or ""),
-                "evidence": ev_data,
-            })
+            benchmarks_list.append(
+                {
+                    "id": _safe_escape(res.id),
+                    "benchmark_id": _safe_escape(res.benchmark_id),
+                    "benchmark_name": _safe_escape(bm_name),
+                    "benchmark_domain": _safe_escape(bm_domain),
+                    "metric_id": _safe_escape(res.metric_id),
+                    "metric_name": _safe_escape(metric_name),
+                    "metric_value": res.metric_value,
+                    "metric_unit": _safe_escape(metric_unit),
+                    "formatted_score": _safe_escape(formatted_score),
+                    "is_sota": bool(res.is_sota),
+                    "rank": res.rank,
+                    "table_or_figure": _safe_escape(res.table_or_figure or ""),
+                    "condition_name": _safe_escape(cond_name),
+                    "condition_split": _safe_escape(cond_split),
+                    "condition_notes": _safe_escape(cond_notes),
+                    "provenance_source": _safe_escape(res.provenance_source or ""),
+                    "evidence": ev_data,
+                }
+            )
 
         papers_data[paper.id] = {
             "id": paper.id,
@@ -393,23 +396,25 @@ def generate_interactive_html(
             from_node = c.source_paper_id
             to_node = c.target_paper_id
 
-        vis_edges.append({
-            "from": from_node,
-            "to": to_node,
-            "arrows": {
-                "to": {
-                    "enabled": True,
-                    "scaleFactor": 0.8,
-                }
-            },
-            "width": 2.5 if c.is_influential else 1.2,
-            "color": {
-                "color": "#3b82f6" if c.is_influential else "#94a3b8",
-                "highlight": "#1d4ed8",
-                "hover": "#2563eb",
-            },
-            "title": "Influential Citation" if c.is_influential else "Citation",
-        })
+        vis_edges.append(
+            {
+                "from": from_node,
+                "to": to_node,
+                "arrows": {
+                    "to": {
+                        "enabled": True,
+                        "scaleFactor": 0.8,
+                    }
+                },
+                "width": 2.5 if c.is_influential else 1.2,
+                "color": {
+                    "color": "#3b82f6" if c.is_influential else "#94a3b8",
+                    "highlight": "#1d4ed8",
+                    "hover": "#2563eb",
+                },
+                "title": "Influential Citation" if c.is_influential else "Citation",
+            }
+        )
 
     safe_nodes_json = _safe_json_dumps(vis_nodes)
     safe_edges_json = _safe_json_dumps(vis_edges)
@@ -1252,14 +1257,14 @@ def save_interactive_html(
     papers: list[PaperRecord],
     citations: list[CitationRecord],
     depths: dict[str, int],
-    seed_paper_id: Optional[str] = None,
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
-    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
-    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
-    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
-    node_roles: Optional[dict[str, str]] = None,
+    seed_paper_id: str | None = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    benchmark_results: dict[str, list[BenchmarkResultRecord]] | None = None,
+    benchmarks_map: dict[str, BenchmarkRecord] | None = None,
+    metrics_map: dict[str, EvaluationMetricRecord] | None = None,
+    conditions_map: dict[str, EvaluationConditionRecord] | None = None,
+    node_roles: dict[str, str] | None = None,
 ) -> Path:
     """
     Render and persist interactive HTML visualization to specified filesystem path.

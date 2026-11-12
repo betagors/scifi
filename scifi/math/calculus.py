@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
 import sympy as sp
 from sympy.parsing.latex import parse_latex
-
 
 _SPECIAL_LIMIT_POINTS: dict[str, Any] = {
     "oo": sp.oo,
@@ -98,9 +98,7 @@ def verify_derivative(expr: str, var: str, claimed: str) -> dict[str, Any]:
         }
 
 
-def verify_derivation_step(
-    lhs: str, rhs: str, assumptions: list[str] | None = None
-) -> dict[str, Any]:
+def verify_derivation_step(lhs: str, rhs: str, assumptions: list[str] | None = None) -> dict[str, Any]:
     """
     Verify algebraic or analytical equivalence between lhs and rhs, optionally under assumptions.
     """
@@ -185,8 +183,12 @@ def check_limits(
             "point": point.strip(),
             "direction": direction if direction in ("+", "-") else "two-sided",
             "expression": sp.latex(parsed_expr),
-            "claimed_limit": sp.latex(parsed_claimed) if hasattr(parsed_claimed, "_sympy_") or isinstance(parsed_claimed, sp.Basic) else str(parsed_claimed),
-            "computed_limit": sp.latex(computed) if hasattr(computed, "_sympy_") or isinstance(computed, sp.Basic) else str(computed),
+            "claimed_limit": sp.latex(parsed_claimed)
+            if hasattr(parsed_claimed, "_sympy_") or isinstance(parsed_claimed, sp.Basic)
+            else str(parsed_claimed),
+            "computed_limit": sp.latex(computed)
+            if hasattr(computed, "_sympy_") or isinstance(computed, sp.Basic)
+            else str(computed),
         }
 
         if not is_correct:

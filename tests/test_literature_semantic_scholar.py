@@ -3,7 +3,7 @@ Unit tests for Semantic Scholar Citation Context Client (scifi.literature.semant
 """
 
 from unittest.mock import MagicMock, patch
-import pytest
+
 import requests
 
 from scifi.literature.models import CitationContextRecord
@@ -57,22 +57,20 @@ class TestGetPaperCitationsWithContexts:
         mock_resp.json.return_value = {
             "data": [
                 {
-                    "contexts": [
-                        "In contrast to [1], our transformer architecture avoids quadratic latency."
-                    ],
+                    "contexts": ["In contrast to [1], our transformer architecture avoids quadratic latency."],
                     "intents": ["methodology"],
                     "isInfluential": True,
                     "citingPaper": {
                         "paperId": "citing_paper_01",
                         "title": "Attention Optimization",
                         "year": 2023,
-                        "externalIds": {"DOI": "10.1016/j.jcp.2023.01"}
-                    }
+                        "externalIds": {"DOI": "10.1016/j.jcp.2023.01"},
+                    },
                 },
                 {
                     "contexts": [
                         "Prior work [1] established baseline convergence bounds.",
-                        "We extend the theorem in [1] to non-convex domains."
+                        "We extend the theorem in [1] to non-convex domains.",
                     ],
                     "intents": ["background", "methodology"],
                     "isInfluential": False,
@@ -80,11 +78,11 @@ class TestGetPaperCitationsWithContexts:
                         "paperId": "citing_paper_02",
                         "title": "Extended Convergence Analysis",
                         "year": 2024,
-                        "externalIds": {"ArXiv": "2401.54321"}
-                    }
-                }
+                        "externalIds": {"ArXiv": "2401.54321"},
+                    },
+                },
             ],
-            "offset": 0
+            "offset": 0,
         }
         mock_get.return_value = mock_resp
 
@@ -152,24 +150,14 @@ class TestGetPaperCitationsWithContexts:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
             "data": [
-                {
-                    "contexts": [],
-                    "intents": ["background"],
-                    "isInfluential": False,
-                    "citingPaper": {"paperId": "p1"}
-                },
-                {
-                    "contexts": None,
-                    "intents": [],
-                    "isInfluential": True,
-                    "citingPaper": {"paperId": "p2"}
-                },
+                {"contexts": [], "intents": ["background"], "isInfluential": False, "citingPaper": {"paperId": "p1"}},
+                {"contexts": None, "intents": [], "isInfluential": True, "citingPaper": {"paperId": "p2"}},
                 {
                     "contexts": ["  Valid context sentence.  "],
                     "intents": [],
                     "isInfluential": False,
-                    "citingPaper": {"paperId": "p3"}
-                }
+                    "citingPaper": {"paperId": "p3"},
+                },
             ]
         }
         mock_get.return_value = mock_resp
@@ -213,7 +201,7 @@ class TestGetPaperCitationsWithContexts:
                     "contexts": ["Recovered context after backoff."],
                     "intents": ["methodology"],
                     "isInfluential": False,
-                    "citingPaper": {"paperId": "recovered_01"}
+                    "citingPaper": {"paperId": "recovered_01"},
                 }
             ]
         }
@@ -260,7 +248,7 @@ class TestGetPaperMetadata:
             "title": "Attention Is All You Need",
             "year": 2017,
             "citationCount": 95000,
-            "influentialCitationCount": 12000
+            "influentialCitationCount": 12000,
         }
         mock_get.return_value = mock_resp
 
@@ -303,7 +291,7 @@ class TestClientCaching:
                     "contexts": ["Cached context."],
                     "intents": ["methodology"],
                     "isInfluential": True,
-                    "citingPaper": {"paperId": "cached_paper"}
+                    "citingPaper": {"paperId": "cached_paper"},
                 }
             ]
         }
@@ -367,4 +355,3 @@ class TestResilientSessionIntegration:
         assert mock_get_session.return_value.get.called
         args, kwargs = mock_get_session.return_value.get.call_args
         assert "api.semanticscholar.org" in args[0]
-

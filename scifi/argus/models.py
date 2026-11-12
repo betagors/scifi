@@ -5,20 +5,20 @@ Data models for the Argus Attribution and Plagiarism Detection Engine.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Any
 
 from scifi.citation_verifier.models import CitationMetadata
 
 
-class AttributionCategory(str, Enum):
+class AttributionCategory(StrEnum):
     CANONICAL_ACADEMIC = "CANONICAL_ACADEMIC"
     COMMON_KNOWLEDGE = "COMMON_KNOWLEDGE"
     INFORMAL_WEB = "INFORMAL_WEB"
     PREPRINT_ALIGNMENT = "PREPRINT_ALIGNMENT"
 
 
-class SuggestedAction(str, Enum):
+class SuggestedAction(StrEnum):
     CITE = "CITE"
     REFORMULATE = "REFORMULATE"
     IGNORE = "IGNORE"
@@ -27,20 +27,20 @@ class SuggestedAction(str, Enum):
 @dataclass
 class AttributionFinding:
     id: str
-    line_number: Optional[int]
+    line_number: int | None
     text_snippet: str
-    matched_entity: Optional[str]
+    matched_entity: str | None
     category: AttributionCategory
     suggested_action: SuggestedAction
     confidence: float
     remediation_hint: str
-    candidate_work: Optional[CitationMetadata] = None
-    bibtex_entry: Optional[str] = None
-    cite_key: Optional[str] = None
-    source_file: Optional[str] = None
+    candidate_work: CitationMetadata | None = None
+    bibtex_entry: str | None = None
+    cite_key: str | None = None
+    source_file: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
-        res: Dict[str, Any] = {
+    def to_dict(self) -> dict[str, Any]:
+        res: dict[str, Any] = {
             "id": self.id,
             "line_number": self.line_number,
             "text_snippet": self.text_snippet,
@@ -68,13 +68,15 @@ class AttributionFinding:
             f"- **Line:** {loc_str}",
             f"- **Entity / Topic:** `{self.matched_entity or 'Uncredited text'}`",
             f"- **Action:** **{self.suggested_action.value}**",
-            f"- **Snippet:** *\"{self.text_snippet[:150]}{'...' if len(self.text_snippet) > 150 else ''}\"*",
+            f'- **Snippet:** *"{self.text_snippet[:150]}{"..." if len(self.text_snippet) > 150 else ""}"*',
             f"- **Hint:** {self.remediation_hint}",
         ]
         if self.candidate_work and self.suggested_action == SuggestedAction.CITE:
             lines.append(f"- **Suggested Work:** *{self.candidate_work.title}* ({self.candidate_work.year})")
             if self.candidate_work.canonical_doi:
-                lines.append(f"- **DOI:** [{self.candidate_work.canonical_doi}](https://doi.org/{self.candidate_work.canonical_doi})")
+                lines.append(
+                    f"- **DOI:** [{self.candidate_work.canonical_doi}](https://doi.org/{self.candidate_work.canonical_doi})"
+                )
             if self.cite_key:
                 lines.append(f"- **Cite Key:** `\\cite{{{self.cite_key}}}`")
         return "\n".join(lines)
@@ -82,9 +84,9 @@ class AttributionFinding:
 
 @dataclass
 class AttributionReport:
-    source_file: Optional[str]
-    findings: List[AttributionFinding] = field(default_factory=list)
-    files_scanned: List[str] = field(default_factory=list)
+    source_file: str | None
+    findings: list[AttributionFinding] = field(default_factory=list)
+    files_scanned: list[str] = field(default_factory=list)
 
     @property
     def total_findings(self) -> int:
@@ -106,8 +108,8 @@ class AttributionReport:
     def preprint_count(self) -> int:
         return sum(1 for f in self.findings if f.category == AttributionCategory.PREPRINT_ALIGNMENT)
 
-    def to_dict(self) -> Dict[str, Any]:
-        res: Dict[str, Any] = {
+    def to_dict(self) -> dict[str, Any]:
+        res: dict[str, Any] = {
             "source_file": self.source_file,
             "total_findings": self.total_findings,
             "academic_count": self.academic_count,
@@ -122,7 +124,7 @@ class AttributionReport:
 
     def summary_markdown(self) -> str:
         lines = [
-            f"# Argus Attribution & Integrity Audit Report",
+            "# Argus Attribution & Integrity Audit Report",
             f"**File:** `{self.source_file or 'Raw Input Text'}`  ",
             f"**Total Flags:** {self.total_findings} | "
             f"**Academic Gaps:** {self.academic_count} | "

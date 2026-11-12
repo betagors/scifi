@@ -114,12 +114,14 @@ def parse_log(log_text: str) -> dict:
             err_type = "Fatal Error"
             err_msg = full_msg
 
-        errors.append({
-            "file": None,
-            "line": None,
-            "message": err_msg or full_msg,
-            "error_type": err_type,
-        })
+        errors.append(
+            {
+                "file": None,
+                "line": None,
+                "message": err_msg or full_msg,
+                "error_type": err_type,
+            }
+        )
         seen_error_messages.add(full_msg)
 
     # 3. Missing packages (.sty, .cls, .def, etc.)
@@ -135,14 +137,22 @@ def parse_log(log_text: str) -> dict:
     missing_packages = sorted(set(missing_packages_raw + missing_general))
 
     # 4. Undefined references and citations
-    undefined_refs = sorted(set(re.findall(
-        r"LaTeX Warning:\s*Reference\s*[`']([^`'\n\r]+)['`]\s*on page",
-        log_text,
-    )))
-    undefined_cites = sorted(set(re.findall(
-        r"LaTeX Warning:\s*Citation\s*[`']([^`'\n\r]+)['`]\s*on page",
-        log_text,
-    )))
+    undefined_refs = sorted(
+        set(
+            re.findall(
+                r"LaTeX Warning:\s*Reference\s*[`']([^`'\n\r]+)['`]\s*on page",
+                log_text,
+            )
+        )
+    )
+    undefined_cites = sorted(
+        set(
+            re.findall(
+                r"LaTeX Warning:\s*Citation\s*[`']([^`'\n\r]+)['`]\s*on page",
+                log_text,
+            )
+        )
+    )
 
     # 5. Layout warnings
     overfull = len(re.findall(r"Overfull \\hbox", log_text))

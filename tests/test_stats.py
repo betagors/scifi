@@ -144,11 +144,14 @@ class TestVerifyCurve(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             json_path = os.path.join(tmpdir, "records.json")
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump([
-                    {"x": 1.0, "y": 2.0},
-                    {"x": 2.0, "y": 4.0},
-                    {"x": 3.0, "y": 6.0},
-                ], f)
+                json.dump(
+                    [
+                        {"x": 1.0, "y": 2.0},
+                        {"x": 2.0, "y": 4.0},
+                        {"x": 3.0, "y": 6.0},
+                    ],
+                    f,
+                )
 
             res = verify_curve(
                 formula_latex=r"2 x",

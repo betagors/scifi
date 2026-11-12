@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import collections
 import datetime
-from pathlib import Path
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from pathlib import Path
 
 from scifi.literature.models import (
     AuthorRecord,
@@ -24,13 +23,10 @@ from scifi.literature.models import (
     PaperGapRecord,
     PaperRecord,
 )
+from scifi.literature.resolver import clean_arxiv_id
 from scifi.literature.sota import (
-    PerformanceDelta,
-    SotaEvaluationReport,
-    SotaEvaluationResults,
     SotaEvaluator,
 )
-from scifi.literature.resolver import clean_arxiv_id, clean_doi
 from scifi.literature.visualizer import determine_oa_status, extract_paper_links
 
 # 4 Canonical Delta-Novelty Evaluation Dimensions and mapped gap types
@@ -87,7 +83,7 @@ def escape_table_cell(text: str) -> str:
     return str(text).replace("|", r"\|").strip()
 
 
-def extract_oa_url(paper: PaperRecord) -> Optional[str]:
+def extract_oa_url(paper: PaperRecord) -> str | None:
     """
     Extract best available Open Access URL (PDF or landing page) from paper locations or identifiers.
     Returns None if no open access location or repository preprint exists.
@@ -224,7 +220,7 @@ def export_bibtex_entries(papers: list[PaperRecord]) -> str:
 def _select_baseline_papers(
     papers: list[PaperRecord],
     depths: dict[str, int],
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
 ) -> list[tuple[PaperRecord, str]]:
     """
     Select foundational roots (depth 0) and frontier baselines (depth max_depth)
@@ -268,9 +264,9 @@ def _select_baseline_papers(
 def format_delta_novelty_matrix(
     papers: list[PaperRecord],
     depths: dict[str, int],
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    key_map: Optional[dict[str, str]] = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    key_map: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Format Section 3: Evidence-Backed Delta-Novelty Matrix comparing foundational roots
@@ -346,9 +342,9 @@ def format_delta_novelty_matrix(
 
 def format_traceable_limitations(
     papers: list[PaperRecord],
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    key_map: Optional[dict[str, str]] = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    key_map: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Format Section 4: Traceable Limitations & Research Opportunities grouping gaps by paper
@@ -437,12 +433,12 @@ def format_traceable_limitations(
 def format_benchmark_leaderboard(
     papers: list[PaperRecord],
     depths: dict[str, int],
-    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]] | list[BenchmarkResultRecord]] = None,
-    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
-    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
-    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    key_map: Optional[dict[str, str]] = None,
+    benchmark_results: dict[str, list[BenchmarkResultRecord]] | list[BenchmarkResultRecord] | None = None,
+    benchmarks_map: dict[str, BenchmarkRecord] | None = None,
+    metrics_map: dict[str, EvaluationMetricRecord] | None = None,
+    conditions_map: dict[str, EvaluationConditionRecord] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    key_map: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Format Section 5: Empirical Benchmark Evaluation & SOTA Leaderboard comparing
@@ -489,7 +485,7 @@ def format_benchmark_leaderboard(
         depths=depths,
     )
 
-    def _fmt_score(val: Optional[float], u: Optional[str]) -> str:
+    def _fmt_score(val: float | None, u: str | None) -> str:
         if val is None:
             return "N/A"
         val_str = f"{val:.1f}" if isinstance(val, (int, float)) else str(val)
@@ -497,7 +493,7 @@ def format_benchmark_leaderboard(
             return f"{val_str}%" if u == "%" else f"{val_str} {u}"
         return val_str
 
-    def _fmt_condition(cid: Optional[str]) -> str:
+    def _fmt_condition(cid: str | None) -> str:
         if not cid:
             return "Standard"
         cond_rec = (conditions_map or {}).get(cid)
@@ -542,18 +538,31 @@ def format_benchmark_leaderboard(
         sota_id = rep.sota_leader_paper_id
         sota_val = rep.best_metric_value
         sota_paper = papers_by_id.get(sota_id) if sota_id else None
-        sota_cite = (key_map.get(sota_id, sota_paper.generate_cite_key() if sota_paper else "Unknown") if sota_id else "Unknown")
+        sota_cite = (
+            key_map.get(sota_id, sota_paper.generate_cite_key() if sota_paper else "Unknown") if sota_id else "Unknown"
+        )
         sota_title = sota_paper.title if sota_paper and sota_paper.title else (sota_id or "Untitled")
         sota_score_str = _fmt_score(sota_val, unit)
         sota_display = f"[{sota_cite}] {sota_title} (Score: {sota_score_str})"
 
         sota_res = next(
-            (r for r in flat_results if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == sota_id and (r.is_sota or r.metric_value == sota_val)),
+            (
+                r
+                for r in flat_results
+                if r.benchmark_id == bm_id
+                and r.metric_id == metric_id
+                and r.paper_id == sota_id
+                and (r.is_sota or r.metric_value == sota_val)
+            ),
             None,
         )
         if not sota_res and sota_id:
             sota_res = next(
-                (r for r in flat_results if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == sota_id),
+                (
+                    r
+                    for r in flat_results
+                    if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == sota_id
+                ),
                 None,
             )
 
@@ -568,7 +577,11 @@ def format_benchmark_leaderboard(
             base_score_str = _fmt_score(base_val, unit)
             base_display = f"[{base_cite}] {base_title} (Score: {base_score_str})"
             base_res = next(
-                (r for r in flat_results if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == base_id),
+                (
+                    r
+                    for r in flat_results
+                    if r.benchmark_id == bm_id and r.metric_id == metric_id and r.paper_id == base_id
+                ),
                 None,
             )
         else:
@@ -646,12 +659,12 @@ def generate_markdown_report(
     papers: list[PaperRecord],
     citations: list[CitationRecord],
     depths: dict[str, int],
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
-    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
-    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
-    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    benchmark_results: dict[str, list[BenchmarkResultRecord]] | None = None,
+    benchmarks_map: dict[str, BenchmarkRecord] | None = None,
+    metrics_map: dict[str, EvaluationMetricRecord] | None = None,
+    conditions_map: dict[str, EvaluationConditionRecord] | None = None,
 ) -> str:
     """
     Generate structured, publication-ready Markdown report synthesizing
@@ -660,7 +673,7 @@ def generate_markdown_report(
     and clean BibTeX entries.
     """
     total_papers = len(papers)
-    now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now_utc = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # Compute gap statistics
     all_gaps: list[PaperGapRecord] = []
@@ -668,9 +681,7 @@ def generate_markdown_report(
         for glist in paper_gaps.values():
             all_gaps.extend(glist)
     total_gaps = len(all_gaps)
-    corroborated_gaps = sum(
-        1 for g in all_gaps if (g.verification_status or "").lower() == "corroborated"
-    )
+    corroborated_gaps = sum(1 for g in all_gaps if (g.verification_status or "").lower() == "corroborated")
 
     if total_papers == 0:
         max_depth = 0
@@ -713,7 +724,9 @@ def generate_markdown_report(
             depths=depths,
         )
         sota_leaders = {rep.sota_leader_paper_id for rep in sota_reports.values() if rep.sota_leader_paper_id}
-        verified_sota_leaders = max(len(sota_leaders), len({r.paper_id for r in flat_results if getattr(r, "is_sota", False)}))
+        verified_sota_leaders = max(
+            len(sota_leaders), len({r.paper_id for r in flat_results if getattr(r, "is_sota", False)})
+        )
     else:
         verified_sota_leaders = 0
 
@@ -810,16 +823,22 @@ def generate_markdown_report(
 
             for paper in level_papers[d]:
                 cite_key = key_map.get(paper.id, paper.generate_cite_key())
-                authors_full = ", ".join([a.name.strip() for a in paper.authors if a.name and a.name.strip()]) or "Unknown"
+                authors_full = (
+                    ", ".join([a.name.strip() for a in paper.authors if a.name and a.name.strip()]) or "Unknown"
+                )
                 year_display = str(paper.year) if paper.year is not None else "Unknown"
-                abstract_display = paper.abstract.strip() if paper.abstract and paper.abstract.strip() else "No abstract available."
+                abstract_display = (
+                    paper.abstract.strip() if paper.abstract and paper.abstract.strip() else "No abstract available."
+                )
                 oa_tier_display = determine_oa_status(paper).capitalize()
 
                 report_lines.append(f"#### [{cite_key}] {paper.title or 'Untitled'}")
                 report_lines.append(f"- **CiteKey:** `{cite_key}`")
                 report_lines.append(f"- **Year:** {year_display}")
                 report_lines.append(f"- **Authors:** {authors_full}")
-                report_lines.append(f"- **Citations:** {paper.citation_count} (influential: {paper.influential_citation_count})")
+                report_lines.append(
+                    f"- **Citations:** {paper.citation_count} (influential: {paper.influential_citation_count})"
+                )
                 report_lines.append(f"- **Access Tier:** {oa_tier_display}")
                 report_lines.append(f"- **Abstract / Summary:** {abstract_display}")
                 report_lines.append("")
@@ -902,12 +921,12 @@ def save_markdown_report(
     papers: list[PaperRecord],
     citations: list[CitationRecord],
     depths: dict[str, int],
-    paper_gaps: Optional[dict[str, list[PaperGapRecord]]] = None,
-    evidence_map: Optional[dict[str, EvidenceRecord]] = None,
-    benchmark_results: Optional[dict[str, list[BenchmarkResultRecord]]] = None,
-    benchmarks_map: Optional[dict[str, BenchmarkRecord]] = None,
-    metrics_map: Optional[dict[str, EvaluationMetricRecord]] = None,
-    conditions_map: Optional[dict[str, EvaluationConditionRecord]] = None,
+    paper_gaps: dict[str, list[PaperGapRecord]] | None = None,
+    evidence_map: dict[str, EvidenceRecord] | None = None,
+    benchmark_results: dict[str, list[BenchmarkResultRecord]] | None = None,
+    benchmarks_map: dict[str, BenchmarkRecord] | None = None,
+    metrics_map: dict[str, EvaluationMetricRecord] | None = None,
+    conditions_map: dict[str, EvaluationConditionRecord] | None = None,
 ) -> Path:
     """Save generated markdown report to disk, creating parent directories if needed."""
     out = Path(output_path)

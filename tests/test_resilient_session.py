@@ -1,7 +1,7 @@
 """Unit tests for ResilientSession, backoff computation, and Retry-After parsing."""
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -30,14 +30,14 @@ def test_parse_retry_after_seconds():
 def test_parse_retry_after_http_date():
     """Verify RFC 2822 HTTP-date parsing for future and past dates."""
     # Future date (30 seconds ahead)
-    future = datetime.now(timezone.utc) + timedelta(seconds=30)
+    future = datetime.now(UTC) + timedelta(seconds=30)
     http_date = future.strftime("%a, %d %b %Y %H:%M:%S GMT")
     delay = parse_retry_after(http_date)
     assert delay is not None
     assert 25.0 <= delay <= 35.0
 
     # Past date should clamp to 0.0
-    past = datetime.now(timezone.utc) - timedelta(seconds=30)
+    past = datetime.now(UTC) - timedelta(seconds=30)
     http_date_past = past.strftime("%a, %d %b %Y %H:%M:%S GMT")
     assert parse_retry_after(http_date_past) == 0.0
 
@@ -74,8 +74,10 @@ def test_resilient_session_retries_on_429():
     resp_200 = requests.Response()
     resp_200.status_code = 200
 
-    with patch.object(requests.Session, "request", side_effect=[resp_429, resp_200]) as mock_req, \
-         patch("time.sleep") as mock_sleep:
+    with (
+        patch.object(requests.Session, "request", side_effect=[resp_429, resp_200]) as mock_req,
+        patch("time.sleep") as mock_sleep,
+    ):
         final_resp = session.request("GET", "https://api.crossref.org/works/10.1234")
         assert final_resp.status_code == 200
         assert mock_req.call_count == 2
@@ -90,8 +92,7 @@ def test_resilient_session_returns_terminal_response_on_exhaustion():
     resp_429 = requests.Response()
     resp_429.status_code = 429
 
-    with patch.object(requests.Session, "request", return_value=resp_429) as mock_req, \
-         patch("time.sleep"):
+    with patch.object(requests.Session, "request", return_value=resp_429) as mock_req, patch("time.sleep"):
         final_resp = session.request("GET", "https://api.crossref.org/works/10.1234")
         assert final_resp.status_code == 429
         assert mock_req.call_count == 3  # initial + 2 retries
@@ -115,15 +116,16 @@ def test_resilient_session_transient_5xx_retries():
     resp_200.status_code = 200
 
     # 1. Successful retry across 502 -> 504 -> 200
-    with patch.object(requests.Session, "request", side_effect=[resp_502, resp_504, resp_200]) as mock_req, \
-         patch("time.sleep"):
+    with (
+        patch.object(requests.Session, "request", side_effect=[resp_502, resp_504, resp_200]) as mock_req,
+        patch("time.sleep"),
+    ):
         final_resp = session.request("GET", "https://api.openalex.org/works")
         assert final_resp.status_code == 200
         assert mock_req.call_count == 3
 
     # 2. Exhaustion on persistent 503
-    with patch.object(requests.Session, "request", return_value=resp_503) as mock_req, \
-         patch("time.sleep"):
+    with patch.object(requests.Session, "request", return_value=resp_503) as mock_req, patch("time.sleep"):
         final_resp = session.request("GET", "https://api.openalex.org/works")
         assert final_resp.status_code == 503
         assert mock_req.call_count == 4  # 1 initial + 3 retries
@@ -138,22 +140,28 @@ def test_resilient_session_connection_error_and_timeout():
     resp_200 = requests.Response()
     resp_200.status_code = 200
 
-    with patch.object(
-        requests.Session,
-        "request",
-        side_effect=[requests.exceptions.ConnectionError("Connection reset"), resp_200],
-    ) as mock_req, patch("time.sleep") as mock_sleep:
+    with (
+        patch.object(
+            requests.Session,
+            "request",
+            side_effect=[requests.exceptions.ConnectionError("Connection reset"), resp_200],
+        ) as mock_req,
+        patch("time.sleep") as mock_sleep,
+    ):
         resp = session.request("GET", "https://export.arxiv.org/api/query")
         assert resp.status_code == 200
         assert mock_req.call_count == 2
         assert mock_sleep.called
 
     # 2. Persistent timeout re-raises RequestException after exhaustion
-    with patch.object(
-        requests.Session,
-        "request",
-        side_effect=requests.exceptions.Timeout("Read timed out"),
-    ) as mock_req, patch("time.sleep"):
+    with (
+        patch.object(
+            requests.Session,
+            "request",
+            side_effect=requests.exceptions.Timeout("Read timed out"),
+        ) as mock_req,
+        patch("time.sleep"),
+    ):
         with pytest.raises(requests.exceptions.Timeout) as exc_info:
             session.request("GET", "https://export.arxiv.org/api/query")
         assert "Read timed out" in str(exc_info.value)

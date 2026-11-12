@@ -11,14 +11,13 @@ import logging
 import os
 import re
 import time
-import urllib.parse
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
 from scifi.literature.models import CitationContextRecord
-from scifi.literature.resolver import clean_arxiv_id, clean_doi, DOI_REGEX
+from scifi.literature.resolver import DOI_REGEX, clean_arxiv_id, clean_doi
 from scifi.network import get_session
 
 _ORIG_REQUESTS_GET = requests.get
@@ -28,12 +27,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_S2_API_BASE = "https://api.semanticscholar.org/graph/v1"
 DEFAULT_USER_AGENT = "scifi-literature/1.0 (academic-researcher)"
 CITATION_FIELDS = (
-    "contexts,intents,isInfluential,"
-    "citingPaper.paperId,citingPaper.title,citingPaper.year,citingPaper.externalIds"
+    "contexts,intents,isInfluential,citingPaper.paperId,citingPaper.title,citingPaper.year,citingPaper.externalIds"
 )
 METADATA_FIELDS = (
-    "paperId,title,abstract,year,authors,citationCount,"
-    "influentialCitationCount,externalIds,isOpenAccess,openAccessPdf"
+    "paperId,title,abstract,year,authors,citationCount,influentialCitationCount,externalIds,isOpenAccess,openAccessPdf"
 )
 
 
@@ -101,7 +98,7 @@ def format_paper_id(identifier: str) -> str:
     return ident
 
 
-def _map_intents(raw_intents: Any) -> Optional[str]:
+def _map_intents(raw_intents: Any) -> str | None:
     """
     Format citation intents into a canonical comma-separated string, or None if empty.
     """
@@ -128,7 +125,7 @@ class SemanticScholarClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         timeout: int = 10,
         cache: Any = None,
         max_retries: int = 2,
@@ -151,9 +148,7 @@ class SemanticScholarClient:
             headers["x-api-key"] = self.api_key
         return headers
 
-    def _execute_request(
-        self, url: str, params: Optional[dict[str, Any]] = None
-    ) -> Optional[requests.Response]:
+    def _execute_request(self, url: str, params: dict[str, Any] | None = None) -> requests.Response | None:
         """
         Execute HTTP GET request with exponential backoff for rate limits (429)
         and error resilience. Returns Response object or None.
@@ -196,14 +191,10 @@ class SemanticScholarClient:
                             attempt += 1
                             continue
                         else:
-                            logger.warning(
-                                "Semantic Scholar API rate limited (429) for %s; retries exhausted", url
-                            )
+                            logger.warning("Semantic Scholar API rate limited (429) for %s; retries exhausted", url)
                             return resp
 
-                    logger.warning(
-                        "Semantic Scholar API returned status %d for %s", resp.status_code, url
-                    )
+                    logger.warning("Semantic Scholar API returned status %d for %s", resp.status_code, url)
                     return resp
                 except requests.exceptions.Timeout as exc:
                     logger.warning("Semantic Scholar API timeout for %s: %s", url, exc)
@@ -227,13 +218,9 @@ class SemanticScholarClient:
                 logger.debug("Semantic Scholar 404 for %s", url)
                 return resp
             if resp.status_code == 429:
-                logger.warning(
-                    "Semantic Scholar API rate limited (429) for %s; retries exhausted", url
-                )
+                logger.warning("Semantic Scholar API rate limited (429) for %s; retries exhausted", url)
                 return resp
-            logger.warning(
-                "Semantic Scholar API returned status %d for %s", resp.status_code, url
-            )
+            logger.warning("Semantic Scholar API returned status %d for %s", resp.status_code, url)
             return resp
         except requests.exceptions.Timeout as exc:
             logger.warning("Semantic Scholar API timeout for %s: %s", url, exc)
@@ -242,9 +229,7 @@ class SemanticScholarClient:
             logger.warning("Semantic Scholar API request error for %s: %s", url, exc)
             return None
 
-    def get_paper_citations_with_contexts(
-        self, paper_id_or_doi: str, limit: int = 25
-    ) -> list[CitationContextRecord]:
+    def get_paper_citations_with_contexts(self, paper_id_or_doi: str, limit: int = 25) -> list[CitationContextRecord]:
         """
         Fetch inbound citations for target paper, parsing in-text contexts,
         intents, and influential markers into CitationContextRecord models.
@@ -271,10 +256,7 @@ class SemanticScholarClient:
             try:
                 cached = self.cache.get(cache_key)
                 if cached and isinstance(cached, list):
-                    return [
-                        CitationContextRecord.from_dict(c) if isinstance(c, dict) else c
-                        for c in cached
-                    ]
+                    return [CitationContextRecord.from_dict(c) if isinstance(c, dict) else c for c in cached]
             except Exception as e:
                 logger.debug("Cache lookup failed for %s: %s", cache_key, e)
 
@@ -303,11 +285,7 @@ class SemanticScholarClient:
                 continue
 
             citing_paper = item.get("citingPaper") or {}
-            source_id = (
-                citing_paper.get("paperId")
-                or (citing_paper.get("externalIds") or {}).get("DOI")
-                or "unknown"
-            )
+            source_id = citing_paper.get("paperId") or (citing_paper.get("externalIds") or {}).get("DOI") or "unknown"
             intent_str = _map_intents(item.get("intents"))
             is_inf = bool(item.get("isInfluential", False))
 
@@ -316,9 +294,7 @@ class SemanticScholarClient:
                 if not ctx_clean:
                     continue
 
-                rec_id = str(
-                    uuid.uuid5(uuid.NAMESPACE_URL, f"{source_id}:{clean_target_id}:{ctx_clean}")
-                )
+                rec_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{source_id}:{clean_target_id}:{ctx_clean}"))
                 records.append(
                     CitationContextRecord(
                         id=rec_id,
@@ -342,9 +318,7 @@ class SemanticScholarClient:
     # Convenience alias for pipeline integrations
     fetch_citation_contexts = get_paper_citations_with_contexts
 
-    def get_paper_metadata(
-        self, paper_id_or_doi: str, fields: Optional[str] = None
-    ) -> Optional[dict[str, Any]]:
+    def get_paper_metadata(self, paper_id_or_doi: str, fields: str | None = None) -> dict[str, Any] | None:
         """
         Fetch core paper metadata (title, year, abstract, authors, citation metrics).
 
