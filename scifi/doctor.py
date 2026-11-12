@@ -107,7 +107,7 @@ def audit_manuscript(
     if live and proj.bib_files:
         for bf in proj.bib_files:
             try:
-                rep = audit_bib_file(bf, search_missing_doi=True)
+                rep = audit_bib_file(bf, search_missing=True)
                 retracted_count += rep.retracted_count
                 mismatch_count += rep.mismatch_count
                 live_bib_reports.append({

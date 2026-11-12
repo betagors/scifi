@@ -110,8 +110,8 @@ def diff_manuscript(
 
             if generate_pdf:
                 compile_res = compile_latex(out_tex_path)
-                if compile_res.status == "SUCCESS" and compile_res.pdf_path:
-                    diff_pdf_result = compile_res.pdf_path
+                if compile_res.get("status") == "SUCCESS" and compile_res.get("pdf_path"):
+                    diff_pdf_result = compile_res.get("pdf_path")
         except Exception:
             pass
 

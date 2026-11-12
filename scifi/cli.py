@@ -217,7 +217,7 @@ def cmd_math(args: argparse.Namespace) -> int:
     elif sub == "step":
         res = verify_derivation_step(args.lhs, args.rhs, assumptions=args.assumptions)
     elif sub == "units":
-        res = check_units(args.expression, mode=args.mode)
+        res = check_units(args.expression, check_mode=args.mode)
     elif sub == "shapes":
         try:
             shapes_dict = json.loads(args.shapes)
@@ -226,7 +226,7 @@ def cmd_math(args: argparse.Namespace) -> int:
             return 1
         res = check_matrix_shapes(args.expression, shapes_dict)
     elif sub == "limits":
-        res = check_limits(args.expression, args.variable, args.tends_to, direction=args.direction, expected=args.expected)
+        res = check_limits(args.expression, args.variable, point=args.tends_to, claimed=args.expected, direction=args.direction)
     elif sub == "convexity":
         res = check_convexity(args.expression, args.variables)
     elif sub == "notation":
@@ -245,7 +245,14 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
     sub = getattr(args, "stats_command", None)
     if sub == "curve":
-        res = verify_curve(args.formula, args.data_path, args.x_col, args.y_col, tolerance=args.tolerance)
+        res = verify_curve(
+            args.formula,
+            getattr(args, "var_name", "x") or "x",
+            sim_data_path=args.data_path,
+            x_col=args.x_col,
+            y_col=args.y_col,
+            rtol=getattr(args, "tolerance", 1e-2),
+        )
     elif sub == "audit":
         raw = args.values
         try:

@@ -172,7 +172,7 @@ class LineageCrawler:
 
                 if not has_evidence:
                     try:
-                        bms = bm_extractor.extract_benchmarks(paper)
+                        bms = bm_extractor.extract_reported_results(paper)
                         if bms:
                             has_evidence = True
                     except Exception:

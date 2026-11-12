@@ -629,7 +629,7 @@ def evaluate_math_syntax_quirks(
                 re.search(r"(?:[,.]|[,.]\s*\))$", inner)
                 and not inner.endswith("\\dots")
                 and not inner.endswith("\\ldots")
-                and (not after_char or after_char[0].isupper() or after_char[0].isLower() if hasattr(str, "isLower") else True)
+                and (not after_char or after_char[0].isupper() or after_char[0].islower())
             ):
                 # Ensure the character immediately after closing $ is not another punctuation mark
                 raw_after = line[m_inline.end() : m_inline.end() + 1]
