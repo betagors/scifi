@@ -11,6 +11,16 @@ from typing import Any
 
 
 class VerificationStatus(StrEnum):
+    """Status enumeration classifying citation verification outcomes.
+
+    Attributes:
+        VERIFIED: Citation successfully resolved with consistent bibliographic metadata.
+        RETRACTED: Paper was formally retracted by the publisher or authors.
+        ERRATA_EXISTS: Authoritative publisher correction, erratum, or notice exists.
+        MISMATCH: Claimed metadata (title, author, year, venue) conflicts with registry records.
+        UNRESOLVED: Identifier or query could not be resolved in authoritative registries.
+    """
+
     VERIFIED = "VERIFIED"
     RETRACTED = "RETRACTED"
     ERRATA_EXISTS = "ERRATA_EXISTS"
@@ -19,6 +29,14 @@ class VerificationStatus(StrEnum):
 
 
 class Severity(StrEnum):
+    """Severity levels for citation auditing and discrepancy reporting.
+
+    Attributes:
+        INFO: Minor non-critical notice or metadata discrepancy.
+        WARNING: Potentially significant discrepancy (e.g. year mismatch, missing author).
+        ERROR: Critical integrity failure (e.g. retracted paper, fabricated DOI).
+    """
+
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"

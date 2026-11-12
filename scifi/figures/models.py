@@ -7,12 +7,31 @@ from typing import Any
 
 
 class FigureSeverity(StrEnum):
+    """Severity ratings for scientific figure and visualization audit findings.
+
+    Attributes:
+        INFO: Informational observation or optional visual polish hint.
+        WARNING: Quality concern (e.g. raster chart or borderline print DPI).
+        CRITICAL: Venue rejection risk (e.g. missing figure file, inaccessible palette).
+    """
+
     INFO = "INFO"
     WARNING = "WARNING"
     CRITICAL = "CRITICAL"
 
 
 class FigureIssueCategory(StrEnum):
+    r"""Categories classifying scientific figure defects and accessibility issues.
+
+    Attributes:
+        LOW_DPI: Raster figure below the standard print resolution ceiling (<300 DPI).
+        RASTER_CHART: Plots or curves rendered as bitmap instead of scalable vector format.
+        UNREFERENCED_SUBFIGURE: Subfigure defined in LaTeX but never discussed in body text.
+        COLORBLIND_RISK: Confusable red-green palettes without secondary visual distinctions.
+        MISSING_FIGURE_FILE: Graphic file path referenced in `\includegraphics` not found.
+        LABEL_READABILITY: Inconsistent, unreadable, or missing figure axis labels.
+    """
+
     LOW_DPI = "LOW_DPI"
     RASTER_CHART = "RASTER_CHART"
     UNREFERENCED_SUBFIGURE = "UNREFERENCED_SUBFIGURE"

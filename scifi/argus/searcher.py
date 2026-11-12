@@ -28,6 +28,18 @@ DEFAULT_USER_AGENT = "SciFi-Argus/1.0 (https://github.com/scifi-toolkit; mailto:
 
 
 class ArgusSearcher:
+    """Registry search client for retrieving canonical academic works and evaluating attribution gaps.
+
+    Queries OpenAlex and Crossref to resolve candidate publications for uncredited
+    method references and preprints.
+
+    Attributes:
+        OPENALEX_BASE: Base endpoint for the OpenAlex Works API.
+        CROSSREF_BASE: Base endpoint for the Crossref Works API.
+        author_whitelist: Set of lowercased author names ignored for plagiarism flagging.
+        preprint_doi: Canonical DOI of prior preprint for self-alignment checking.
+    """
+
     OPENALEX_BASE = "https://api.openalex.org/works"
     CROSSREF_BASE = "https://api.crossref.org/works"
 

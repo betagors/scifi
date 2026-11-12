@@ -25,6 +25,18 @@ from .searcher import ArgusSearcher
 
 
 class ArgusEngine:
+    """Core sentinel engine for attribution auditing and uncredited method detection.
+
+    Scans LaTeX manuscripts and multi-file projects to detect named algorithms, models,
+    and methodologies lacking citations, cross-referencing against academic registries.
+
+    Args:
+        author_whitelist: Optional author names excluded from self-plagiarism alerts.
+        preprint_doi: Optional preprint DOI representing prior versions of this work.
+        timeout: HTTP request timeout in seconds when querying registries.
+        enable_search: Whether to query external registries (OpenAlex/Crossref) for matches.
+    """
+
     def __init__(
         self,
         author_whitelist: list[str] | None = None,

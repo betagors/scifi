@@ -6,6 +6,14 @@ from typing import Any
 
 
 class ProofIssueCategory(StrEnum):
+    """Categories classifying theorem-proof completeness deficiencies.
+
+    Attributes:
+        ORPHAN_THEOREM: Theorem, lemma, or proposition lacking an inline or appendix proof.
+        UNRESOLVED_APPENDIX_PROOF: Appendix proof reference points to an undefined LaTeX label.
+        EMPTY_APPENDIX_PROOF: Targeted appendix section exists but contains no substantive proof.
+    """
+
     ORPHAN_THEOREM = "ORPHAN_THEOREM"
     UNRESOLVED_APPENDIX_PROOF = "UNRESOLVED_APPENDIX_PROOF"
     EMPTY_APPENDIX_PROOF = "EMPTY_APPENDIX_PROOF"

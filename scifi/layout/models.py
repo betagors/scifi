@@ -6,6 +6,15 @@ from typing import Any
 
 
 class TrimSuggestionType(StrEnum):
+    """Classification of typographic and structural space-saving opportunities.
+
+    Attributes:
+        WIDOW_LINE: Paragraph ending with an isolated orphan or widow line.
+        BIBTEX_ABBREVIATION: Verbose journal or conference names condensed to ISO-4/IEEE.
+        TABLE_PADDING: High tabular column padding or redundant row spacing.
+        FLOAT_REDUCTION: Oversized figure or table float occupying disproportionate vertical space.
+    """
+
     WIDOW_LINE = "WIDOW_LINE"
     BIBTEX_ABBREVIATION = "BIBTEX_ABBREVIATION"
     TABLE_PADDING = "TABLE_PADDING"

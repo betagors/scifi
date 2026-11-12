@@ -12,6 +12,15 @@ from scifi.citation_verifier.models import CitationMetadata
 
 
 class AttributionCategory(StrEnum):
+    """Categories classifying intellectual attribution sources and gaps.
+
+    Attributes:
+        CANONICAL_ACADEMIC: Formal peer-reviewed or authoritative academic literature.
+        COMMON_KNOWLEDGE: Widely accepted domain facts that do not strictly require citation.
+        INFORMAL_WEB: Non-peer-reviewed online resources (blog posts, forum discussions).
+        PREPRINT_ALIGNMENT: High-overlap frontier preprint or unpublished arXiv manuscript.
+    """
+
     CANONICAL_ACADEMIC = "CANONICAL_ACADEMIC"
     COMMON_KNOWLEDGE = "COMMON_KNOWLEDGE"
     INFORMAL_WEB = "INFORMAL_WEB"
@@ -19,6 +28,14 @@ class AttributionCategory(StrEnum):
 
 
 class SuggestedAction(StrEnum):
+    """Recommended remediation actions for flagged attribution gaps.
+
+    Attributes:
+        CITE: Insert a formal BibTeX citation and bibliography reference.
+        REFORMULATE: Rewrite or rephrase informal phrasing into rigorous academic prose.
+        IGNORE: Benign common knowledge or standard notation requiring no modification.
+    """
+
     CITE = "CITE"
     REFORMULATE = "REFORMULATE"
     IGNORE = "IGNORE"

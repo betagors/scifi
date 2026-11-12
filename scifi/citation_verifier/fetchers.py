@@ -18,6 +18,12 @@ DEFAULT_USER_AGENT = "SciFi-CitationVerifier/1.0 (https://github.com/scifi-toolk
 
 
 class CrossRefFetcher:
+    """Fetcher for querying metadata, DOIs, and retractions from the Crossref API.
+
+    Attributes:
+        BASE_URL: Crossref API endpoint for querying individual works by DOI.
+    """
+
     BASE_URL = "https://api.crossref.org/works/"
 
     @classmethod
@@ -127,6 +133,12 @@ class CrossRefFetcher:
 
 
 class OpenAlexFetcher:
+    """Fetcher for querying unified academic entity metadata from the OpenAlex Works API.
+
+    Attributes:
+        BASE_URL: OpenAlex Works REST API endpoint.
+    """
+
     BASE_URL = "https://api.openalex.org/works/"
 
     @classmethod
@@ -222,6 +234,12 @@ class OpenAlexFetcher:
 
 
 class ArXivFetcher:
+    """Fetcher for querying preprint metadata from the official arXiv OAI-PMH/XML API.
+
+    Attributes:
+        BASE_URL: arXiv raw API query endpoint.
+    """
+
     BASE_URL = "http://export.arxiv.org/api/query?id_list="
 
     @classmethod
@@ -299,6 +317,12 @@ class ArXivFetcher:
 
 
 class DataCiteFetcher:
+    """Fetcher for querying research dataset and artifact metadata from the DataCite REST API.
+
+    Attributes:
+        BASE_URL: DataCite DOIs REST API endpoint.
+    """
+
     BASE_URL = "https://api.datacite.org/dois/"
 
     @classmethod
