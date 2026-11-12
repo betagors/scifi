@@ -3,10 +3,10 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB.svg?style=flat&logo=python&logoColor=white)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/protocol-Model_Context_Protocol-8A2BE2.svg?style=flat)](https://modelcontextprotocol.io)
 [![Antigravity](https://img.shields.io/badge/antigravity-plugin-FF6F00.svg?style=flat)](https://antigravity.google)
-[![Tests Passing](https://img.shields.io/badge/tests-419%20passed-brightgreen.svg?style=flat)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-572%20passed-brightgreen.svg?style=flat)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 32 FastMCP Tools**
+> **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 46 FastMCP Tools**
 >
 > *SciFi transforms AI coding agents (Antigravity, Claude Code, Cursor, VS Code / Cline & Roo Code, Windsurf, OpenCode) and your terminal into a rigorous, peer-review-grade research partner.*
 
@@ -232,9 +232,23 @@ When SciFi is enabled, coding agents interact directly with these 25 structured 
 
 ---
 
+## 📚 Documentation Site
+
+SciFi includes a comprehensive MkDocs Material documentation site covering architecture, CLI commands, all 46 FastMCP tools, and developer guides:
+
+```bash
+# Preview documentation locally
+uv run mkdocs serve
+
+# Build production static documentation
+uv run mkdocs build --strict
+```
+
+---
+
 ## 🧪 Running Tests
 
-The test suite contains **419+ unit and integration tests** covering all modules, CLI commands, and multi-file LaTeX workflows:
+The test suite contains **572 unit, regression, and docstring tests** covering all modules, CLI commands, and multi-file LaTeX workflows:
 
 ```bash
 uv run pytest tests/ -v
