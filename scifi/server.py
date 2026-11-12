@@ -712,7 +712,7 @@ def get_literature_store(db_path: Path | str | None = None) -> LiteratureStore:
 def _resolve_project(
     store: LiteratureStore,
     project_name_or_path: str | Path | None = None,
-) -> Optional[ProjectRecord]:
+) -> ProjectRecord | None:
     """
     Resolve a ProjectRecord from an ID, name, workspace path, or current working directory.
     If project_name_or_path is omitted, auto-discovers from Path.cwd().

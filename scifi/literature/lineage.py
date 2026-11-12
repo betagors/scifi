@@ -697,8 +697,8 @@ class LineageCrawler:
                 extracted_items: list[Any] = []
                 for p in paper_list:
                     try:
-                        extracted = b_extractor.extract_reported_results(p)
-                        extracted_items.extend(extracted)
+                        bm_results = b_extractor.extract_reported_results(p)
+                        extracted_items.extend(bm_results)
                     except Exception:
                         pass
 

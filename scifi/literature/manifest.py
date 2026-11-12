@@ -67,6 +67,8 @@ def export_manifest(
 
     papers = store.get_project_papers(project_id)
 
+    assert proj is not None, "Failed to resolve or register project for manifest"
+
     # 1. Papers with convenience flags
     papers_serialized: list[dict[str, Any]] = []
     seen_paper_ids: set[str] = set()
@@ -286,6 +288,13 @@ def import_manifest(
                     (str(ws_path), proj_name, description, proj_id),
                 )
             proj = store.get_project(proj_id)
+            if proj is None:
+                proj = store.register_project(
+                    name=proj_name,
+                    workspace_path=ws_path,
+                    description=description,
+                    project_id=proj_id,
+                )
         else:
             # Secondary clone or git worktree of the same repository on the same machine.
             # Register it with a new project_id.
@@ -302,6 +311,8 @@ def import_manifest(
             description=description,
             project_id=proj_id,
         )
+
+    assert proj is not None, "Failed to resolve or register project for manifest"
 
     # 1. Papers
     for p_data in data.get("papers", []):
@@ -431,9 +442,11 @@ def sync_workspace(
     if target_source is not None:
         proj = import_manifest(store, target_source, workspace_path=ws)
     else:
-        proj = store.get_project_by_workspace(ws)
-        if proj is None:
+        existing_proj = store.get_project_by_workspace(ws)
+        if existing_proj is None:
             proj = store.register_project(name=ws.name, workspace_path=ws)
+        else:
+            proj = existing_proj
 
     # Export merged state back to .scifi/literature_manifest.json
     export_manifest(store, proj.id, manifest_file)

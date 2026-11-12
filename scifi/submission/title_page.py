@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-from typing import Sequence
+from typing import Any, Sequence
 
 from scifi.latex.project import resolve_latex_project
 from scifi.submission.models import AuthorInfo, TitlePageResult, normalize_authors
@@ -71,7 +71,7 @@ def extract_metadata_from_latex(tex_path: str | Path) -> tuple[str, list[AuthorI
 
 def generate_title_page(
     title: str | None = None,
-    authors: Sequence[AuthorInfo] | None = None,
+    authors: Sequence[AuthorInfo | dict[str, Any] | str] | str | None = None,
     venue: str = "general",
     manuscript_path: str | Path | None = None,
     abstract: str | None = None,
@@ -85,7 +85,9 @@ def generate_title_page(
     """
     profile = get_publisher_profile(venue)
 
-    extracted_title, extracted_authors, extracted_abs = "", [], ""
+    extracted_title: str = ""
+    extracted_authors: list[AuthorInfo] = []
+    extracted_abs: str = ""
     if manuscript_path:
         extracted_title, extracted_authors, extracted_abs = extract_metadata_from_latex(manuscript_path)
 

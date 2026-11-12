@@ -798,10 +798,10 @@ class PaperResolver:
                 ns = {"atom": "http://www.w3.org/2005/Atom"}
                 entry = root.find("atom:entry", ns)
                 if entry is not None:
-                    paper = self._parse_arxiv_atom(entry, clean_id)
-                    if paper:
-                        self._set_cached_paper(cache_key, paper)
-                        return paper
+                    arxiv_paper = self._parse_arxiv_atom(entry, clean_id)
+                    if arxiv_paper:
+                        self._set_cached_paper(cache_key, arxiv_paper)
+                        return arxiv_paper
         except Exception:
             pass
 

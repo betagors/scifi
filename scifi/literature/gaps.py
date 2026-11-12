@@ -236,7 +236,7 @@ def _classify_gap_sentence(sentence: str) -> tuple[Optional[str], int]:
             if re.search(pat, sentence_lower):
                 scores[cat] += weight
 
-    best_cat = max(scores, key=scores.get)
+    best_cat = max(scores, key=lambda k: scores[k])
     best_score = scores[best_cat]
     if best_score > 0:
         return best_cat, best_score

@@ -54,7 +54,7 @@ def prepare_submission_bundle(
     issn: str | None = None,
     code_dir: str | Path | None = None,
     no_code: bool = False,
-    authors: Sequence[AuthorInfo] | None = None,
+    authors: Sequence[AuthorInfo | dict[str, Any] | str] | str | None = None,
     bullets: Sequence[str] | str | None = None,
     figure_path: str | None = None,
     prior_doi: str | None = None,
@@ -104,7 +104,9 @@ def prepare_submission_bundle(
     if not final_authors and "authors" in sub_cfg:
         final_authors = normalize_authors(sub_cfg["authors"])
 
-    extracted_title, extracted_authors, extracted_abs = "", [], ""
+    extracted_title: str = ""
+    extracted_authors: list[AuthorInfo] = []
+    extracted_abs: str = ""
     if tex_path and tex_path.exists():
         extracted_title, extracted_authors, extracted_abs = extract_metadata_from_latex(tex_path)
 
@@ -188,7 +190,7 @@ def prepare_submission_bundle(
             )
 
     # 5. Manifest
-    manifest = {
+    manifest: dict[str, Any] = {
         "status": "READY",
         "venue": final_venue,
         "journal": final_journal,

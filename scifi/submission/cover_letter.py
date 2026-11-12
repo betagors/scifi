@@ -17,7 +17,7 @@ def generate_cover_letter(
     venue: str = "general",
     issn: str | None = None,
     editor_name: str | None = None,
-    authors: Sequence[AuthorInfo] | None = None,
+    authors: Sequence[AuthorInfo | dict[str, Any] | str] | str | None = None,
     abstract: str | None = None,
     contributions: Sequence[str] | None = None,
     figure_path: str | None = None,
@@ -33,7 +33,9 @@ def generate_cover_letter(
     """
     profile = get_publisher_profile(venue)
 
-    ext_title, ext_authors, ext_abs = "", [], ""
+    ext_title: str = ""
+    ext_authors: list[AuthorInfo] = []
+    ext_abs: str = ""
     if manuscript_path:
         ext_title, ext_authors, ext_abs = extract_metadata_from_latex(manuscript_path)
 

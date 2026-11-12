@@ -76,7 +76,7 @@ class ZoteroLocalReader:
                 return col
         return None
 
-    def find_best_matching_collection(self, citations: List[Dict[str, str]]) -> Tuple[Optional[str], int]:
+    def find_best_matching_collection(self, citations: List[Dict[str, str]]) -> tuple[Optional[str], int]:
         """
         Check which existing collection has the highest citation overlap with the given list of citations.
         Returns (best_collection_name, match_count).

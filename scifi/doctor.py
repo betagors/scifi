@@ -26,6 +26,9 @@ import re
 from typing import Any
 
 import bibtexparser
+from scifi.logging import get_logger
+
+logger = get_logger(__name__)
 from scifi.argus.engine import ArgusEngine
 from scifi.citation_verifier import audit_bib_file
 from scifi.config import resolve_config
@@ -57,8 +60,8 @@ def _extract_bib_keys_offline(bib_paths: list[Path]) -> set[str]:
                 raw = bp.read_text(encoding="utf-8", errors="replace")
                 for m in re.finditer(r"@\w+\s*\{\s*([^,\s]+)\s*,", raw):
                     keys.add(m.group(1).strip())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed regex fallback for %s: %s", bp, e)
     return keys
 
 
@@ -117,8 +120,8 @@ def audit_manuscript(
                     "retracted_count": rep.retracted_count,
                     "mismatch_count": rep.mismatch_count,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Live bibliography audit failed for %s: %s", bf, e)
 
     stage_alex = {
         "bib_files": [str(b) for b in proj.bib_files],

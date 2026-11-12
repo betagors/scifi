@@ -542,7 +542,7 @@ def format_benchmark_leaderboard(
         sota_id = rep.sota_leader_paper_id
         sota_val = rep.best_metric_value
         sota_paper = papers_by_id.get(sota_id) if sota_id else None
-        sota_cite = key_map.get(sota_id, sota_paper.generate_cite_key() if sota_paper else (sota_id or "Unknown"))
+        sota_cite = (key_map.get(sota_id, sota_paper.generate_cite_key() if sota_paper else "Unknown") if sota_id else "Unknown")
         sota_title = sota_paper.title if sota_paper and sota_paper.title else (sota_id or "Untitled")
         sota_score_str = _fmt_score(sota_val, unit)
         sota_display = f"[{sota_cite}] {sota_title} (Score: {sota_score_str})"
@@ -616,7 +616,7 @@ def format_benchmark_leaderboard(
         # 7. Evidence Source
         if sota_res and sota_res.table_or_figure:
             ev_source = sota_res.table_or_figure.strip()
-        elif sota_res and sota_res.evidence_id and (evidence_map or {}).get(sota_res.evidence_id):
+        elif sota_res and sota_res.evidence_id and evidence_map and evidence_map.get(sota_res.evidence_id):
             ev = evidence_map[sota_res.evidence_id]
             if ev.source_section:
                 ev_source = f"{ev.source_section} quote"

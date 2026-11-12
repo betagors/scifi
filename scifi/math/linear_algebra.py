@@ -78,9 +78,9 @@ def _parse_dimensions(
                 raise ValueError(
                     f"Matrix '{name}' shape must be a list/tuple of [rows, cols]."
                 )
-            rows_tok, cols_tok = shape
+            r_tok, c_tok = shape
             matrices[name.strip()] = MatrixSymbol(
-                name.strip(), as_dim(rows_tok), as_dim(cols_tok)
+                name.strip(), as_dim(r_tok), as_dim(c_tok)
             )
     else:
         raise TypeError(

@@ -205,14 +205,14 @@ def resolve_latex_project(
             content=path_or_content,
             lines=lines,
         )
-        line_map = [("inline.tex", i) for i in range(1, len(lines) + 1)]
+        inline_line_map = [("inline.tex", i) for i in range(1, len(lines) + 1)]
         cited = _extract_cited_keys(path_or_content)
         return LatexProject(
             root_dir=Path.cwd(),
             entrypoint=Path("inline.tex"),
             files=[src],
             merged_text=path_or_content,
-            line_map=line_map,
+            line_map=inline_line_map,
             bib_files=[Path(explicit_bib).resolve()] if explicit_bib and Path(explicit_bib).is_file() else [],
             missing_includes=[],
             cited_keys=cited,

@@ -311,11 +311,13 @@ class LiteratureStore:
     """
 
     def __init__(self, db_path: str | Path) -> None:
+        self.db_path: Path | str
         if str(db_path) == ":memory:":
             self.db_path = ":memory:"
         else:
-            self.db_path = Path(db_path).resolve()
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            resolved = Path(db_path).resolve()
+            resolved.parent.mkdir(parents=True, exist_ok=True)
+            self.db_path = resolved
 
         self._lock = threading.RLock()
         self.write_lock = self._lock

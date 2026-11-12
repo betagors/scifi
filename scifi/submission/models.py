@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,12 +29,12 @@ class AuthorInfo:
         }
 
 
-def normalize_authors(authors: Sequence[AuthorInfo | dict[str, Any]] | str | None) -> list[AuthorInfo]:
+def normalize_authors(authors: Sequence[AuthorInfo | dict[str, Any] | str] | str | None) -> list[AuthorInfo]:
     """Normalize authors from strings, dicts, or AuthorInfo objects."""
     if not authors:
         return []
     if isinstance(authors, str):
-        parsed = []
+        parsed: list[AuthorInfo] = []
         for name in authors.split(","):
             n = name.strip()
             if n:

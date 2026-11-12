@@ -529,28 +529,28 @@ def cmd_submission(args: argparse.Namespace) -> int:
         from scifi.submission import generate_highlights
 
         bullets_arg = getattr(args, "bullets", None)
-        res = generate_highlights(
+        res_hl = generate_highlights(
             bullets=bullets_arg,
             venue=getattr(args, "venue", "general") or "general",
             manuscript_path=getattr(args, "target", None),
             output_path=getattr(args, "output", None),
         )
         if getattr(args, "json", False):
-            print(json.dumps(res.to_dict(), indent=2))
+            print(json.dumps(res_hl.to_dict(), indent=2))
         else:
-            print(res.markdown_text)
-            if not res.all_valid:
-                for h in res.highlights:
+            print(res_hl.markdown_text)
+            if not res_hl.all_valid:
+                for h in res_hl.highlights:
                     if not h.is_valid:
                         print(f"  [WARNING] {h.issue}", file=sys.stderr)
             if getattr(args, "output", None):
                 print(f"[OK] Highlights saved to {args.output}")
-        return 0 if res.all_valid else 1
+        return 0 if res_hl.all_valid else 1
 
     elif action == "title-page":
         from scifi.submission import generate_title_page
 
-        res = generate_title_page(
+        res_tp = generate_title_page(
             venue=getattr(args, "venue", "general") or "general",
             authors=getattr(args, "authors", None),
             manuscript_path=getattr(args, "target", None),
@@ -559,34 +559,34 @@ def cmd_submission(args: argparse.Namespace) -> int:
             output_path=getattr(args, "output", None),
         )
         if getattr(args, "json", False):
-            print(json.dumps(res.to_dict(), indent=2))
+            print(json.dumps(res_tp.to_dict(), indent=2))
         else:
-            print(res.markdown_text)
-            if res.output_path:
-                print(f"[OK] Title page saved to {res.output_path}")
+            print(res_tp.markdown_text)
+            if res_tp.output_path:
+                print(f"[OK] Title page saved to {res_tp.output_path}")
         return 0
 
     elif action == "pack-code":
         from scifi.submission import package_anonymous_code
 
         authors = [a.strip() for a in (getattr(args, "authors", "") or "").split(",") if a.strip()]
-        res = package_anonymous_code(
+        res_code = package_anonymous_code(
             code_dir=getattr(args, "code_dir", "."),
             output_zip_path=getattr(args, "output", None),
             author_names=authors,
         )
         if getattr(args, "json", False):
-            print(json.dumps(res.to_dict(), indent=2))
+            print(json.dumps(res_code.to_dict(), indent=2))
         else:
-            print(res.audit_report)
-            if res.zip_path:
-                print(f"[OK] Anonymous code archive created at: {res.zip_path}")
-        return 0 if res.audit_passed else 1
+            print(res_code.audit_report)
+            if res_code.zip_path:
+                print(f"[OK] Anonymous code archive created at: {res_code.zip_path}")
+        return 0 if res_code.audit_passed else 1
 
     elif action == "bundle":
         from scifi.submission import prepare_submission_bundle
 
-        res = prepare_submission_bundle(
+        res_bundle = prepare_submission_bundle(
             target_dir_or_tex=getattr(args, "target", "."),
             journal_name=getattr(args, "journal", None),
             venue=getattr(args, "venue", "general") or "general",
@@ -602,16 +602,16 @@ def cmd_submission(args: argparse.Namespace) -> int:
             output_dir=getattr(args, "output", None),
         )
         if getattr(args, "json", False):
-            print(json.dumps(res.to_dict(), indent=2))
+            print(json.dumps(res_bundle.to_dict(), indent=2))
         else:
-            print(f"# Submission Bundle Generated [{res.venue.upper()}]")
-            print(f"- Output directory: `{res.output_dir}`")
-            print(f"- Cover letter: `{res.cover_letter_path}`")
-            print(f"- Highlights: `{res.highlights_path}`")
-            print(f"- Title page: `{res.title_page_path}`")
-            if res.code_zip_path:
-                print(f"- Anonymous code zip: `{res.code_zip_path}`")
-            print(f"- Manifest: `{res.manifest_path}`")
+            print(f"# Submission Bundle Generated [{res_bundle.venue.upper()}]")
+            print(f"- Output directory: `{res_bundle.output_dir}`")
+            print(f"- Cover letter: `{res_bundle.cover_letter_path}`")
+            print(f"- Highlights: `{res_bundle.highlights_path}`")
+            print(f"- Title page: `{res_bundle.title_page_path}`")
+            if res_bundle.code_zip_path:
+                print(f"- Anonymous code zip: `{res_bundle.code_zip_path}`")
+            print(f"- Manifest: `{res_bundle.manifest_path}`")
         return 0
 
     else:
@@ -1108,10 +1108,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         Exit code: 0 on success, non-zero on error.
     """
-    if hasattr(sys.stdout, "reconfigure"):
+    reconfig_out = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfig_out):
         try:
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            reconfig_out(encoding="utf-8", errors="replace")
+            reconfig_err = getattr(sys.stderr, "reconfigure", None)
+            if callable(reconfig_err):
+                reconfig_err(encoding="utf-8", errors="replace")
         except Exception:
             pass
 
@@ -1148,7 +1151,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return citation_cli.cmd_search(args)
     elif args.command in ("argus", "cite", "attribution"):
         if not args.file:
-            for action in parser._subparsers._actions:
+            subparsers = getattr(parser, "_subparsers", None)
+            actions = getattr(subparsers, "_actions", []) if subparsers else []
+            for action in actions:
                 if isinstance(action, argparse._SubParsersAction):
                     p_arg = action.choices.get("argus")
                     if p_arg:
@@ -1159,7 +1164,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return argus_cli.cmd_audit(args)
     elif args.command in ("literature", "lit"):
         if not getattr(args, "lit_command", None):
-            for action in parser._subparsers._actions:
+            subparsers = getattr(parser, "_subparsers", None)
+            actions = getattr(subparsers, "_actions", []) if subparsers else []
+            for action in actions:
                 if isinstance(action, argparse._SubParsersAction):
                     p_lit = action.choices.get("literature")
                     if p_lit:

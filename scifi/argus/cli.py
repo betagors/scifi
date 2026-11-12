@@ -116,10 +116,13 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    if hasattr(sys.stdout, "reconfigure"):
+    reconfig_out = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfig_out):
         try:
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            reconfig_out(encoding="utf-8", errors="replace")
+            reconfig_err = getattr(sys.stderr, "reconfigure", None)
+            if callable(reconfig_err):
+                reconfig_err(encoding="utf-8", errors="replace")
         except Exception:
             pass
 

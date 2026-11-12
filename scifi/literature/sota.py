@@ -363,8 +363,9 @@ class SotaEvaluator:
 
         sota_leader_ids: set[str] = set()
         for rep in report_list:
-            if getattr(rep, "sota_leader_paper_id", None):
-                sota_leader_ids.add(rep.sota_leader_paper_id)
+            leader_id = getattr(rep, "sota_leader_paper_id", None)
+            if leader_id:
+                sota_leader_ids.add(str(leader_id))
 
         max_depth = max(depths.values()) if depths else 0
         roles: dict[str, str] = {}
