@@ -111,3 +111,34 @@ def test_reader_resolves_annotations(mock_zotero_db):
     assert annos[0].comment == "Key theorem"
     assert annos[0].color == "#ffd400"
     assert annos[0].page_label == "3"
+
+
+def test_reader_search_items_and_duplicate_collections(mock_zotero_db):
+    import sqlite3
+
+    db_file = mock_zotero_db / "zotero.sqlite"
+    conn = sqlite3.connect(db_file)
+    cur = conn.cursor()
+    # Add a duplicate collection with the same name "UAV" and a second item in it
+    cur.execute("INSERT INTO collections (collectionID, collectionName, parentCollectionID) VALUES (2, 'UAV', NULL)")
+    cur.execute("INSERT INTO items (itemID, key) VALUES (3, 'ITEMKEY3')")
+    cur.execute("INSERT INTO itemDataValues (valueID, value) VALUES (99, 'UAV Charging Station Optimization')")
+    cur.execute("INSERT INTO itemData (itemID, fieldID, valueID) VALUES (3, 1, 99)")
+    cur.execute("INSERT INTO collectionItems (collectionID, itemID) VALUES (2, 3)")
+    conn.commit()
+    conn.close()
+
+    reader = ZoteroLocalReader(data_dir=mock_zotero_db)
+    # get_collection_items should aggregate across both "UAV" collections
+    all_uav = reader.get_collection_items("UAV")
+    assert {it.key for it in all_uav} == {"ITEMKEY1", "ITEMKEY3"}
+
+    # search_items across entire library
+    charging = reader.search_items(query="charging station")
+    assert [it.key for it in charging] == ["ITEMKEY3"]
+
+    # has_pdf filter
+    with_pdf = reader.search_items(query="uav", has_pdf=True)
+    assert [it.key for it in with_pdf] == ["ITEMKEY1"]
+    without_pdf = reader.search_items(query="uav", has_pdf=False)
+    assert [it.key for it in without_pdf] == ["ITEMKEY3"]

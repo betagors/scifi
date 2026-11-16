@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from .engine import ArgusEngine
+from .entailment import audit_claim_entailment
 from .models import SuggestedAction
 from .patcher import append_bibtex_entry, generate_reformulate_prompt, insert_cite_into_latex
 
@@ -27,6 +28,39 @@ def cmd_audit(args: argparse.Namespace) -> int:
     )
 
     report = engine.audit_file(target_path)
+
+    if getattr(args, "entailment", False):
+        entail_report = audit_claim_entailment(
+            target_path,
+            bib_path=getattr(args, "bib", None),
+            fetch_pdf=not getattr(args, "no_pdf", False),
+        )
+        if args.format == "json":
+            print(
+                json.dumps(
+                    {
+                        "attribution": report.to_dict(),
+                        "entailment": entail_report.to_dict(),
+                    },
+                    indent=2,
+                )
+            )
+        elif args.format == "markdown":
+            print(report.summary_markdown())
+            print("\n" + entail_report.summary_markdown())
+        else:
+            print(f"Argus Audit: {report.source_file}")
+            print(f"Total findings: {report.total_findings}")
+            for f in report.findings:
+                print(
+                    f"[{f.id}] Line {f.line_number}: {f.category.value} -> {f.suggested_action.value} ({f.matched_entity})"
+                )
+                print(f"       Hint: {f.remediation_hint}")
+            print(f"\nEntailment Audit: {entail_report.total_checked} checked, {entail_report.flagged_count} flagged")
+            for ef in entail_report.findings:
+                if ef.status.value in ("OFF_TOPIC", "CONTRADICTS", "MISSING_METRIC"):
+                    print(f"[{ef.id}] Line {ef.line_number} \\cite{{{ef.cite_key}}}: {ef.status.value} — {ef.reason}")
+        return 0 if (report.total_findings == 0 and entail_report.flagged_count == 0) else 2
 
     if args.format == "json":
         print(json.dumps(report.to_dict(), indent=2))
@@ -150,6 +184,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_audit.add_argument("--preprint-doi", help="DOI of author's preprint")
     p_audit.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
+    p_audit.add_argument(
+        "--entailment",
+        action="store_true",
+        help="Run Hypatia claim-to-citation entailment audit on \\cite{} references",
+    )
+    p_audit.add_argument(
+        "--no-pdf",
+        action="store_true",
+        help="Do not download Unpaywall/arXiv PDFs during entailment audit (use OpenAlex abstract only)",
+    )
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Scan raw text string for uncredited methods or informal tropes")

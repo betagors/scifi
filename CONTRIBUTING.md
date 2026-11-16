@@ -27,7 +27,7 @@ uv run pytest tests/ -v
 SciFi follows a **Tripartite Architecture**:
 1. **Deterministic Tools (`scifi/`)**: FastMCP tools and CLI modules that perform exact verification (Crossref/OpenAlex/arXiv lookups, SymPy symbolic calculus, Pint dimensional checks, SciPy statistical audits, multi-file LaTeX resolution, and `latexmk` compilation).
 2. **Cognitive Skills (`skills/<name>/SKILL.md`)**: On-demand playbooks that instruct AI agents on how to orchestrate the deterministic tools.
-3. **Academic Invariants (`rules/AGENTS.md`)**: Strict scholarly standards synchronized across `CLAUDE.md`, `.cursorrules`, `.clinerules`, and `AGENTS.md` via `uv run sf sync`.
+3. **Academic Invariants (`rules/AGENTS.md`)**: Compact always-on scholarly standards for the Antigravity plugin (and synced to workspace `AGENTS.md` via `uv run sf sync`).
 
 ### Key Guidelines for Contributors
 - **Zero External Hallucinations**: Every citation or metadata tool must verify against authoritative registries or local SQLite cache (`scifi/cache.py` / `scifi/literature/store.py`).

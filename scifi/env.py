@@ -110,22 +110,102 @@ def diagnose_environment(auto_fix: bool = False) -> dict[str, Any]:
         "status": "RUNNING" if z_port else ("INSTALLED_OFFLINE" if z_dir else "NOT_FOUND"),
     }
 
-    # LaTeX
-    latexmk_bin = shutil.which("latexmk")
-    pdflatex_bin = shutil.which("pdflatex")
-    xelatex_bin = shutil.which("xelatex")
+    # LaTeX (uses smart cached toolchain discovery, including off-PATH MiKTeX/TeX Live)
+    from scifi.figures.renderer import detect_pdf_renderer
+    from scifi.latex.compiler import discover_tex_toolchain
+
+    tc = discover_tex_toolchain()
+    avail = tc.get("available_engines", {})
+    renderer_info = detect_pdf_renderer(extra_bin_dir=tc.get("bin_dir"))
     latex_info = {
-        "latexmk": latexmk_bin,
-        "pdflatex": pdflatex_bin,
-        "xelatex": xelatex_bin,
-        "available": any([latexmk_bin, pdflatex_bin, xelatex_bin]),
-        "status": "HEALTHY" if any([latexmk_bin, pdflatex_bin]) else "MISSING",
+        "ready": tc.get("ready", False),
+        "distribution": tc.get("distribution"),
+        "primary_engine": tc.get("engine"),
+        "engine_path": tc.get("engine_path"),
+        "bin_dir": tc.get("bin_dir"),
+        "version": tc.get("version"),
+        "cached": tc.get("cached", False),
+        "latexmk": avail.get("latexmk"),
+        "pdflatex": avail.get("pdflatex"),
+        "xelatex": avail.get("xelatex"),
+        "lualatex": avail.get("lualatex"),
+        "pdftoppm": avail.get("pdftoppm"),
+        "pdf_renderer": renderer_info,
+        "available": tc.get("ready", False),
+        "status": "HEALTHY" if tc.get("ready") else "MISSING",
+        "hint": tc.get("hint"),
+    }
+
+    import sqlite3
+
+    import scifi
+    from scifi.lifecycle import detect_install_mode
+    from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH
+    from scifi.setup_cli import check_rules_sync_status
+
+    install_info = detect_install_mode()
+    store_info: dict[str, Any] = {
+        "path": str(DEFAULT_CENTRAL_STORE_PATH),
+        "exists": DEFAULT_CENTRAL_STORE_PATH.is_file(),
+        "schema_version": None,
+        "integrity": None,
+    }
+    if DEFAULT_CENTRAL_STORE_PATH.is_file():
+        try:
+            conn = sqlite3.connect(str(DEFAULT_CENTRAL_STORE_PATH), timeout=2.0)
+            try:
+                store_info["schema_version"] = int(conn.execute("PRAGMA user_version").fetchone()[0])
+                qc = conn.execute("PRAGMA quick_check").fetchone()
+                store_info["integrity"] = qc[0] if qc else "unknown"
+            finally:
+                conn.close()
+        except Exception as exc:
+            store_info["integrity"] = f"error: {exc}"
+
+    scifi_info = {
+        "version": scifi.__version__,
+        "install_mode": install_info["mode"],
+        "store": store_info,
+        "rules": check_rules_sync_status(Path.cwd()),
+    }
+
+    # Datasets & Kaggle
+    from scifi.config import get_datasets_dir
+    from scifi.datasets.kaggle import resolve_kaggle_credentials
+
+    ds_dir = get_datasets_dir()
+    if auto_fix and not ds_dir.exists():
+        try:
+            ds_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+    ds_exists = ds_dir.is_dir()
+    ds_writable = os.access(ds_dir, os.W_OK) if ds_exists else os.access(ds_dir.parent, os.W_OK)
+    datasets_info = {
+        "default_dir": str(ds_dir),
+        "exists": ds_exists,
+        "writable": ds_writable,
+        "status": "HEALTHY" if (ds_exists and ds_writable) else ("READY" if ds_writable else "UNWRITABLE"),
+    }
+
+    kg_creds = resolve_kaggle_credentials()
+    kg_auth = kg_creds.get("mode") in ("basic", "bearer")
+    kaggle_info = {
+        "authenticated": kg_auth,
+        "auth_mode": kg_creds.get("mode"),
+        "username": kg_creds.get("username"),
+        "credential_source": kg_creds.get("source"),
+        "status": "HEALTHY" if kg_auth else "MISSING_CREDENTIALS",
+        "hint": None if kg_auth else "Run 'sf kaggle login' or place kaggle.json in ~/.kaggle/kaggle.json",
     }
 
     return {
+        "scifi": scifi_info,
         "python": py_info,
         "uv": uv_info,
         "zotero": zotero_info,
         "latex": latex_info,
+        "datasets": datasets_info,
+        "kaggle": kaggle_info,
         "healthy": py_info["status"] == "HEALTHY",
     }

@@ -6,23 +6,22 @@ from typing import Any
 
 
 class ReproducibilityCategory(StrEnum):
-    """Categories covering empirical reproducibility and open science guidelines.
+    """Categories covering ML and ML-systems empirical reproducibility and statistical pitfalls."""
 
-    Attributes:
-        RANDOM_SEEDS: Explicit specification of random evaluation seeds and seeds table.
-        ERROR_BARS: Trial repetitions, standard deviations, and 95% confidence intervals.
-        COMPUTE_RESOURCES: Hardware accelerators, GPU cluster node counts, and training hours.
-        HYPERPARAMETERS: Systematic grid/random search range descriptions and hyperparameter tables.
-        CODE_AVAILABILITY: Verifiable code and dataset repository availability statement.
-        DOUBLE_BLIND_CODE: Anonymized repository compliance with zero identifying user links.
-    """
-
+    # Core ML & ML-systems conference/journal reproducibility
     RANDOM_SEEDS = "RANDOM_SEEDS"
     ERROR_BARS = "ERROR_BARS"
     COMPUTE_RESOURCES = "COMPUTE_RESOURCES"
     HYPERPARAMETERS = "HYPERPARAMETERS"
+    SYSTEM_PARAMETERS = "SYSTEM_PARAMETERS"
+    SOLVER_FIDELITY = "SOLVER_FIDELITY"
     CODE_AVAILABILITY = "CODE_AVAILABILITY"
     DOUBLE_BLIND_CODE = "DOUBLE_BLIND_CODE"
+
+    # Statistical pitfalls
+    MULTIPLE_TESTING = "MULTIPLE_TESTING"
+    DATA_LEAKAGE = "DATA_LEAKAGE"
+    PSEUDOREPLICATION = "PSEUDOREPLICATION"
 
 
 @dataclass
@@ -46,6 +45,7 @@ class ReproducibilityAuditResult:
     status: str
     venue: str
     score: int
+    standard: str = "ml"
     checklist_items: dict[str, bool] = field(default_factory=dict)
     issues: list[ReproducibilityIssue] = field(default_factory=list)
 
@@ -53,6 +53,7 @@ class ReproducibilityAuditResult:
         return {
             "status": self.status,
             "venue": self.venue,
+            "standard": self.standard,
             "score": self.score,
             "checklist_items": self.checklist_items,
             "total_issues": len(self.issues),

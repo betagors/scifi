@@ -33,6 +33,24 @@ Audit manuscript and bibliography for line-saving opportunities.
 |---|---|---|---|
 | `tex_path` | string | Yes | Path to LaTeX root file (`main.tex`, `paper.tex`) |
 | `bib_path` | string | No | Path to BibTeX file (auto-discovered if omitted) |
+| `render_previews` | boolean | No | Render compiled PDF pages to PNG for visual layout inspection (default: `true`) |
+| `pdf_path` | string | No | Optional compiled PDF path (auto-detected from `tex_path` if omitted) |
+| `render_dpi` | integer | No | DPI for rendered PNG previews (default: 150) |
+| `pages` | string | No | Optional page numbers or ranges to render (e.g., `"1-4,8"`) |
+| `vlm_check` | boolean | No | Optional external VLM check (default: `false`; not needed when running inside Antigravity/Claude Code) |
+| `vlm_provider` | string | No | Optional external VLM provider (`gemini`, `openai`, `anthropic`, `openai_compatible`) |
+| `vlm_model` | string | No | Optional external VLM model identifier override |
+
+---
+
+## Visual Inspection ("Eyes of SciFi") Protocol (No API Key Required)
+
+`scifi_trim_budget` automatically renders compiled PDF pages to PNGs (`rendered_pages`) and runs local pixel-level whitespace checks (`bottom_whitespace_ratio`). Whenever `rendered_pages` are returned:
+1. Call `read_file` on the PNG `image_path`s to visually inspect the rendered pages directly using your built-in vision.
+2. Check for layout defects that static `.tex` parsing cannot see:
+   - Awkward page-break whitespace or large gaps before/after floats.
+   - Orphan headings or isolated single-line trailing paragraphs at page/column boundaries.
+   - Sparse trailing final page slack or overfull margins/gutters.
 
 Returns:
 ```json

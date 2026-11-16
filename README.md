@@ -8,7 +8,7 @@
 
 > **Zero-Hallucination Citations · Multi-File LaTeX Readiness · Symbolic Calculus Auditing · SOTA Literature Lineage · 46 FastMCP Tools**
 >
-> *SciFi transforms AI coding agents (Antigravity, Claude Code, Cursor, VS Code / Cline & Roo Code, Windsurf, OpenCode) and your terminal into a rigorous, peer-review-grade research partner.*
+> *SciFi transforms Google Antigravity (`plugin.json`, `hooks.json`, `rules/AGENTS.md`, native subagents & skills) and your terminal into a rigorous, peer-review-grade research partner.*
 
 ---
 
@@ -45,17 +45,17 @@ uv sync --extra dev
 uvx --from git+https://github.com/Betagors/scifi sf --help
 ```
 
-### 2. Configure Your AI Agents & API Polite Pool
-SciFi includes an automated setup installer that auto-discovers and configures Antigravity, Claude Code, Claude Desktop, Cursor, VS Code (Cline & Roo Code), Windsurf, and OpenCode:
+### 2. Configure Google Antigravity & API Polite Pool
+SciFi includes an automated setup installer that auto-discovers and configures Google Antigravity (global `~/.gemini/config/mcp_config.json` and workspace `.agents/mcp_config.json`):
 
 ```bash
-# Auto-configure all detected AI environments globally
+# Auto-configure detected Antigravity environments
 uv run sf setup --auto
 
-# Configure repository workspace manifests (.cursor, .mcp.json, opencode.json)
+# Configure workspace Antigravity MCP manifest (.agents/mcp_config.json) and AGENTS.md
 uv run sf setup --workspace
 
-# Synchronize academic rules to CLAUDE.md, .clinerules, .cursorrules, AGENTS.md
+# Synchronize academic rules to workspace AGENTS.md
 uv run sf sync
 
 # Set your Polite-Pool email for faster Crossref / OpenAlex / Unpaywall lookups
@@ -166,8 +166,8 @@ Every capability is available through `scifi` and its short alias `sf`:
 | `scifi rebuttal <cmd>` | `sf socrates` / `sf response` | Author rebuttal generator (`sf rebuttal format`) and LaTeX revision diff tracker (`sf rebuttal diff`) |
 | `scifi config <cmd>` | `sf cfg < show \| set \| init >` | Manage `~/.scifi/config.json` API keys/polite-pool email and workspace `scifi.toml` |
 | `scifi compile [tex]` | `sf c [tex]` / `sf build` | Compile LaTeX manuscript via `latexmk`/`pdflatex` with `file:line` log diagnosis |
-| `scifi setup` | `sf init` / `sf i` | Configure SciFi FastMCP server in Antigravity, Claude, Cursor, Cline, Roo, Windsurf |
-| `scifi sync` | `sf sync` | Synchronize SciFi scientific rules to `CLAUDE.md`, `.clinerules`, `.cursorrules`, `AGENTS.md` |
+| `scifi setup` | `sf init` / `sf i` | Configure SciFi FastMCP server for Google Antigravity |
+| `scifi sync` | `sf sync` | Synchronize SciFi scientific rules to workspace `AGENTS.md` |
 | `scifi server` | `sf mcp` / `sf serve` | Launch the persistent FastMCP JSON-RPC daemon over stdio or SSE |
 
 ---

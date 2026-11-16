@@ -49,12 +49,18 @@ class ZoteroLocalReader:
         return sqlite3.connect(uri, uri=True, timeout=10.0)
 
     def get_collections(self) -> list[ZoteroCollection]:
-        """Retrieve all collections in the local Zotero library."""
+        """Retrieve all non-deleted collections in the local Zotero library."""
         conn = self._get_connection()
         try:
             cur = conn.cursor()
+            has_deleted = cur.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deletedCollections'"
+            ).fetchone()
+            deleted_clause = (
+                "WHERE collectionID NOT IN (SELECT collectionID FROM deletedCollections)" if has_deleted else ""
+            )
             rows = cur.execute(
-                "SELECT collectionID, collectionName, parentCollectionID FROM collections ORDER BY collectionName"
+                f"SELECT collectionID, collectionName, parentCollectionID FROM collections {deleted_clause} ORDER BY collectionName"
             ).fetchall()
             return [
                 ZoteroCollection(
@@ -69,11 +75,13 @@ class ZoteroLocalReader:
 
     def get_collection_by_name(self, name: str) -> ZoteroCollection | None:
         """Find a collection by name (case-insensitive)."""
+        matches = self.get_collections_by_name(name)
+        return matches[0] if matches else None
+
+    def get_collections_by_name(self, name: str) -> list[ZoteroCollection]:
+        """Find all collections matching a name (case-insensitive)."""
         clean_name = name.strip().lower()
-        for col in self.get_collections():
-            if col.name.strip().lower() == clean_name:
-                return col
-        return None
+        return [col for col in self.get_collections() if col.name.strip().lower() == clean_name]
 
     def find_best_matching_collection(self, citations: list[dict[str, str]]) -> tuple[str | None, int]:
         """
@@ -148,6 +156,50 @@ class ZoteroLocalReader:
         except Exception:
             return []
 
+    def _extract_creators(self, cur: sqlite3.Cursor, item_id: int) -> list[str]:
+        """Extract ordered author/creator names ('Last, First' or 'Name') for an item."""
+        try:
+            rows = cur.execute(
+                """
+                SELECT c.firstName, c.lastName, c.fieldMode
+                FROM itemCreators ic
+                JOIN creators c ON ic.creatorID = c.creatorID
+                WHERE ic.itemID = ?
+                ORDER BY ic.orderIndex ASC
+                """,
+                (item_id,),
+            ).fetchall()
+            creators: list[str] = []
+            for first, last, field_mode in rows:
+                first_s = (first or "").strip()
+                last_s = (last or "").strip()
+                if field_mode == 1 or not first_s:
+                    if last_s:
+                        creators.append(last_s)
+                elif last_s:
+                    creators.append(f"{last_s}, {first_s}")
+                elif first_s:
+                    creators.append(first_s)
+            return creators
+        except Exception:
+            return []
+
+    def _extract_item_type(self, cur: sqlite3.Cursor, item_id: int) -> str | None:
+        """Extract Zotero itemType name (e.g., journalArticle, conferencePaper)."""
+        try:
+            row = cur.execute(
+                """
+                SELECT it.typeName
+                FROM items i
+                JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+                WHERE i.itemID = ?
+                """,
+                (item_id,),
+            ).fetchone()
+            return row[0] if row else None
+        except Exception:
+            return None
+
     def _resolve_attachment_pdf(self, cur: sqlite3.Cursor, parent_item_id: int) -> Path | None:
         """Find the local PDF path for an item in Zotero storage."""
         rows = cur.execute(
@@ -174,18 +226,64 @@ class ZoteroLocalReader:
                     return p
         return None
 
+    def _build_item(self, cur: sqlite3.Cursor, it_id: int, it_key: str) -> ZoteroItem:
+        """Construct a ZoteroItem from an itemID and key."""
+        fields = self._extract_item_fields(cur, it_id)
+        title = fields.get("title", "Untitled")
+        doi = fields.get("DOI")
+        if doi:
+            doi = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", doi, flags=re.IGNORECASE).strip()
+
+        extra = fields.get("extra", "")
+        arxiv_id = None
+        arx_match = re.search(r"arxiv:\s*(\d{4}\.\d{4,5}(?:v\d+)?|[a-zA-Z\-]+/\d+)", extra, re.IGNORECASE)
+        if arx_match:
+            arxiv_id = arx_match.group(1)
+
+        date_str = fields.get("date", "")
+        year = None
+        year_match = re.search(r"\b(19\d{2}|20\d{2})\b", date_str)
+        if year_match:
+            year = int(year_match.group(1))
+
+        pdf_path = self._resolve_attachment_pdf(cur, it_id)
+        tags = self._extract_tags(cur, it_id)
+        authors = self._extract_creators(cur, it_id)
+        item_type = self._extract_item_type(cur, it_id)
+        pub_title = fields.get("publicationTitle") or fields.get("proceedingsTitle") or fields.get("bookTitle")
+
+        return ZoteroItem(
+            item_id=it_id,
+            key=it_key,
+            title=title,
+            doi=doi,
+            arxiv_id=arxiv_id,
+            year=year,
+            abstract=fields.get("abstractNote"),
+            publication_title=pub_title,
+            pdf_path=pdf_path,
+            tags=tags,
+            authors=authors,
+            item_type=item_type,
+            url=fields.get("url"),
+            volume=fields.get("volume"),
+            issue=fields.get("issue"),
+            pages=fields.get("pages"),
+        )
+
     def get_collection_items(self, collection_name_or_id: str | int) -> list[ZoteroItem]:
-        """Retrieve all paper items belonging to a collection."""
+        """Retrieve all paper items belonging to a collection (aggregating if duplicate names exist)."""
         if isinstance(collection_name_or_id, int):
-            col_id = collection_name_or_id
+            col_ids = [collection_name_or_id]
         else:
-            col = self.get_collection_by_name(collection_name_or_id)
-            if not col:
+            cols = self.get_collections_by_name(collection_name_or_id)
+            if not cols:
                 return []
-            col_id = col.collection_id
+            col_ids = [c.collection_id for c in cols]
 
         conn = self._get_connection()
         items: list[ZoteroItem] = []
+        seen_ids: set[int] = set()
         try:
             cur = conn.cursor()
             has_deleted = cur.execute(
@@ -193,53 +291,122 @@ class ZoteroLocalReader:
             ).fetchone()
             deleted_clause = "AND i.itemID NOT IN (SELECT itemID FROM deletedItems)" if has_deleted else ""
 
+            placeholders = ",".join("?" for _ in col_ids)
             item_rows = cur.execute(
                 f"""
                 SELECT i.itemID, i.key
                 FROM collectionItems ci
                 JOIN items i ON ci.itemID = i.itemID
-                WHERE ci.collectionID = ? {deleted_clause}
+                WHERE ci.collectionID IN ({placeholders}) {deleted_clause}
                 """,
-                (col_id,),
+                tuple(col_ids),
             ).fetchall()
 
             for it_id, it_key in item_rows:
-                fields = self._extract_item_fields(cur, it_id)
-                title = fields.get("title", "Untitled")
-                doi = fields.get("DOI")
-                if doi:
-                    doi = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", doi, flags=re.IGNORECASE).strip()
+                if it_id in seen_ids:
+                    continue
+                seen_ids.add(it_id)
+                items.append(self._build_item(cur, it_id, it_key))
+            return items
+        finally:
+            conn.close()
 
-                extra = fields.get("extra", "")
-                arxiv_id = None
-                arx_match = re.search(r"arxiv:\s*(\d{4}\.\d{4,5}(?:v\d+)?|[a-zA-Z\-]+/\d+)", extra, re.IGNORECASE)
-                if arx_match:
-                    arxiv_id = arx_match.group(1)
+    def search_items(
+        self,
+        query: str = "",
+        collection: str | None = None,
+        has_pdf: bool | None = None,
+        limit: int = 20,
+    ) -> list[ZoteroItem]:
+        """
+        Search Zotero items across the entire library or within a specific collection.
+        Matches case-insensitive query tokens against title, abstract, authors, venue, DOI, arXiv ID, and tags.
+        """
+        tokens = [t.strip().lower() for t in query.split() if t.strip()]
 
-                date_str = fields.get("date", "")
-                year = None
-                year_match = re.search(r"\b(19\d{2}|20\d{2})\b", date_str)
-                if year_match:
-                    year = int(year_match.group(1))
+        if collection:
+            candidates = self.get_collection_items(collection)
+        else:
+            conn = self._get_connection()
+            candidates = []
+            try:
+                cur = conn.cursor()
+                has_deleted = cur.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deletedItems'"
+                ).fetchone()
+                deleted_clause = "AND i.itemID NOT IN (SELECT itemID FROM deletedItems)" if has_deleted else ""
+                has_item_types = cur.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='itemTypes'"
+                ).fetchone()
+                type_join = "JOIN itemTypes it ON i.itemTypeID = it.itemTypeID" if has_item_types else ""
+                type_clause = "AND it.typeName NOT IN ('attachment', 'note', 'annotation')" if has_item_types else ""
+                rows = cur.execute(
+                    f"""
+                    SELECT i.itemID, i.key
+                    FROM items i
+                    {type_join}
+                    WHERE 1=1 {type_clause} {deleted_clause}
+                    """
+                ).fetchall()
+                for it_id, it_key in rows:
+                    candidates.append(self._build_item(cur, it_id, it_key))
+            finally:
+                conn.close()
 
-                pdf_path = self._resolve_attachment_pdf(cur, it_id)
-                tags = self._extract_tags(cur, it_id)
+        results: list[ZoteroItem] = []
+        for item in candidates:
+            if has_pdf is True and item.pdf_path is None:
+                continue
+            if has_pdf is False and item.pdf_path is not None:
+                continue
+            if tokens:
+                haystack = " ".join(
+                    [
+                        item.title or "",
+                        item.abstract or "",
+                        item.publication_title or "",
+                        item.doi or "",
+                        item.arxiv_id or "",
+                        " ".join(item.authors),
+                        " ".join(item.tags),
+                    ]
+                ).lower()
+                if not all(tok in haystack for tok in tokens):
+                    continue
+            results.append(item)
+            if limit > 0 and len(results) >= limit:
+                break
+        return results
 
-                items.append(
-                    ZoteroItem(
+    def get_item_by_title(self, title: str) -> ZoteroItem | None:
+        """Find an item in Zotero by normalized title."""
+        norm_target = re.sub(r"[^a-z0-9]", "", title.lower())
+        if len(norm_target) < 6:
+            return None
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            rows = cur.execute(
+                """
+                SELECT i.itemID, i.key, v.value
+                FROM itemData id
+                JOIN fields f ON id.fieldID = f.fieldID
+                JOIN itemDataValues v ON id.valueID = v.valueID
+                JOIN items i ON id.itemID = i.itemID
+                WHERE f.fieldName = 'title'
+                """
+            ).fetchall()
+            for it_id, it_key, raw_title in rows:
+                if re.sub(r"[^a-z0-9]", "", (raw_title or "").lower()) == norm_target:
+                    fields = self._extract_item_fields(cur, it_id)
+                    return ZoteroItem(
                         item_id=it_id,
                         key=it_key,
-                        title=title,
-                        doi=doi,
-                        arxiv_id=arxiv_id,
-                        year=year,
-                        abstract=fields.get("abstractNote"),
-                        publication_title=fields.get("publicationTitle"),
-                        pdf_path=pdf_path,
-                        tags=tags,
+                        title=fields.get("title", "Untitled"),
+                        doi=fields.get("DOI"),
+                        pdf_path=self._resolve_attachment_pdf(cur, it_id),
                     )
-                )
-            return items
+            return None
         finally:
             conn.close()
 

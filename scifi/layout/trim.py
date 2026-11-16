@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from scifi.latex.project import resolve_latex_project
 from scifi.layout.abbreviations import abbreviate_bib_string
@@ -75,6 +76,14 @@ def detect_table_and_float_slack(text: str) -> list[TrimSuggestion]:
 def audit_trim_budget(
     tex_path: Path | str,
     bib_path: Path | str | None = None,
+    render_previews: bool = True,
+    pdf_path: Path | str | None = None,
+    render_dpi: int = 150,
+    pages: str | list[int] | None = None,
+    max_pages: int = 12,
+    vlm_check: bool = False,
+    vlm_provider: str | None = None,
+    vlm_model: str | None = None,
 ) -> TrimBudgetResult:
     """Analyze LaTeX manuscript and BibTeX bibliography for legitimate typographic line savings."""
     target_tex = Path(tex_path)
@@ -128,6 +137,111 @@ def audit_trim_budget(
                     )
                 )
 
+    # 4. Render compiled PDF pages for visual layout / whitespace inspection
+    rendered_pages: list[dict[str, Any]] = []
+    if render_previews:
+        compiled_pdf = Path(pdf_path) if pdf_path else (target_tex.with_suffix(".pdf") if target_tex.exists() else None)
+        if compiled_pdf and compiled_pdf.is_file():
+            from scifi.figures.renderer import render_pdf_pages
+
+            pdf_render = render_pdf_pages(
+                compiled_pdf,
+                pages=pages,
+                dpi=render_dpi,
+                max_pages=max_pages,
+            )
+            for rp in pdf_render.get("rendered_pages", []):
+                rendered_pages.append(
+                    {
+                        "kind": "compiled_pdf_page",
+                        "page": rp["page"],
+                        "source_path": str(compiled_pdf.resolve()),
+                        "image_path": rp["image_path"],
+                        "width": rp["width"],
+                        "height": rp["height"],
+                    }
+                )
+
+    # 4b. Local pixel-level page-break whitespace check on rendered PDF pages (no API key required)
+    if rendered_pages:
+        from scifi.figures.pixel_checks import check_page_whitespace
+
+        total_rendered = len(rendered_pages)
+        for idx, rp in enumerate(rendered_pages):
+            ws = check_page_whitespace(rp["image_path"])
+            if not ws.get("analyzed"):
+                continue
+            rp["bottom_whitespace_ratio"] = ws["bottom_whitespace_ratio"]
+            rp["ink_density"] = ws["ink_density"]
+            ratio = ws["bottom_whitespace_ratio"]
+            if ratio >= 0.35:
+                is_last = idx == total_rendered - 1
+                s_type = TrimSuggestionType.TRAILING_PAGE_SLACK if is_last else TrimSuggestionType.PAGE_BREAK_WHITESPACE
+                pct = int(round(ratio * 100))
+                suggestions.append(
+                    TrimSuggestion(
+                        suggestion_type=s_type,
+                        target=f"Page {rp['page']}",
+                        description=(
+                            f"Page {rp['page']} has ~{pct}% trailing empty whitespace at the bottom "
+                            + ("(sparse trailing final page)." if is_last else "(awkward page-break or float gap).")
+                        ),
+                        potential_savings_lines=max(2, int(round(ratio * 15))),
+                        proposed_text="Inspect rendered page PNG and adjust float placement ([tp]) or tighten nearby paragraphs.",
+                    )
+                )
+
+    # 5. Optional external VLM visual layout inspection (or host-agent checklist when vlm_check=False)
+    vlm_inspection: dict[str, Any] = {
+        "status": "HOST_AGENT_READY" if rendered_pages else "DISABLED",
+        "mode": "host_agent" if not vlm_check else "external_vlm",
+        "visual_checklist": [
+            "Inspect rendered_pages[*].image_path using read_file / built-in vision.",
+            "Check for awkward page-break whitespace, orphan headings, float placement gaps, and margin overflow.",
+        ]
+        if rendered_pages
+        else [],
+    }
+    if vlm_check:
+        if not rendered_pages:
+            vlm_inspection = {
+                "status": "SKIPPED_NO_IMAGES",
+                "hint": "No compiled PDF pages rendered for VLM layout inspection.",
+                "findings": [],
+            }
+        else:
+            from scifi.figures.vlm import inspect_images_with_vlm
+
+            vlm_res = inspect_images_with_vlm(
+                rendered_pages,
+                mode="layout",
+                provider=vlm_provider,
+                model=vlm_model,
+                max_images=max_pages,
+            )
+            vlm_inspection = {k: v for k, v in vlm_res.items() if k != "findings"}
+            for finding in vlm_res.get("findings", []):
+                raw_cat = str(finding.get("category", "PAGE_BREAK_WHITESPACE")).upper()
+                try:
+                    s_type = TrimSuggestionType(raw_cat)
+                except ValueError:
+                    s_type = TrimSuggestionType.PAGE_BREAK_WHITESPACE
+                page_num = finding.get("page")
+                target_label = str(finding.get("target") or (f"Page {page_num}" if page_num else "Compiled PDF"))
+                try:
+                    savings = max(0, int(finding.get("potential_savings_lines") or 0))
+                except (TypeError, ValueError):
+                    savings = 0
+                suggestions.append(
+                    TrimSuggestion(
+                        suggestion_type=s_type,
+                        target=target_label,
+                        description=f"[VLM] {finding.get('message', 'Visual layout issue detected.')}",
+                        potential_savings_lines=savings,
+                        proposed_text=str(finding.get("recommendation") or ""),
+                    )
+                )
+
     total_lines = sum(s.potential_savings_lines for s in suggestions)
 
     return TrimBudgetResult(
@@ -136,4 +250,6 @@ def audit_trim_budget(
         bibtex_condensed_entries=condensed_count,
         suggestions=suggestions,
         abbreviated_bib=condensed_bib,
+        rendered_pages=rendered_pages,
+        vlm_inspection=vlm_inspection,
     )

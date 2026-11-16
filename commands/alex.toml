@@ -1,2 +1,0 @@
-description = "Verify academic citations, validate DOIs, check retractions, and audit .bib files"
-prompt = "Verify citations using the alex skill. Check DOI or literature link against Crossref, OpenAlex, arXiv, and DataCite. Detect retractions, errata, author/title/year discrepancies, and generate verified BibTeX or APA citations. If a .bib file is given, run a full audit. Target: {{args}}"

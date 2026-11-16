@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from scifi.argus.engine import ArgusEngine
+from scifi.argus.entailment import audit_claim_entailment
 from scifi.argus.models import SuggestedAction
 from scifi.argus.patcher import append_bibtex_entry, insert_cite_into_latex
 from scifi.citation_verifier import (
@@ -27,6 +28,7 @@ def scifi_verify_citation(
     claimed_author: str | None = None,
     claimed_year: int | None = None,
     claimed_venue: str | None = None,
+    strict_consensus: bool = False,
 ) -> dict[str, Any]:
     """
     Verify an academic citation by DOI, arXiv link, PubMed URL, or raw identifier.
@@ -38,6 +40,7 @@ def scifi_verify_citation(
         claimed_author: Optional first or primary author claimed by the manuscript.
         claimed_year: Optional publication year claimed by the manuscript.
         claimed_venue: Optional publication venue claimed by the manuscript.
+        strict_consensus: When True, require >=2 independent registries to confirm the reference.
 
     Returns:
         Dictionary with verification status (VERIFIED, RETRACTED, ERRATA_EXISTS, MISMATCH, UNRESOLVED),
@@ -46,7 +49,7 @@ def scifi_verify_citation(
     import scifi.server as srv
 
     cache = srv.get_cache()
-    cache_key = f"citation:{identifier}"
+    cache_key = f"citation:{identifier}:strict" if strict_consensus else f"citation:{identifier}"
     cached = cache.get(cache_key)
 
     has_claimed = bool(claimed_title or claimed_author or claimed_year or claimed_venue)
@@ -55,7 +58,7 @@ def scifi_verify_citation(
         canonical_data = cached
     else:
         # Fetch canonical metadata only (without claimed fields) to avoid caching per-call discrepancies
-        meta = srv.verify_citation(query=identifier)
+        meta = srv.verify_citation(query=identifier, strict_consensus=strict_consensus)
         canonical_data = meta.to_dict()
         if meta.status != VerificationStatus.UNRESOLVED:
             cache.set(cache_key, canonical_data)
@@ -98,6 +101,9 @@ def scifi_verify_citation(
 def scifi_audit_bib(
     bib_path: str,
     output_bib: str | None = None,
+    include_verified: bool = False,
+    include_summary: bool = False,
+    strict_consensus: bool = False,
 ) -> dict[str, Any]:
     """
     Audit an entire BibTeX (.bib) file against academic registries (Crossref, OpenAlex, arXiv).
@@ -106,10 +112,13 @@ def scifi_audit_bib(
     Args:
         bib_path: Path to the .bib file to audit.
         output_bib: Optional path where a clean, sanitized .bib file will be written.
+        include_verified: If True, include full metadata dicts for VERIFIED entries (default: False, returns only flagged entries).
+        include_summary: If True, include redundant markdown summary alongside structured entries (default: False).
+        strict_consensus: When True, require >=2 independent registries to confirm each reference.
 
     Returns:
         Dictionary with total entries, counts for verified, retracted, errata, mismatch, unresolved,
-        detailed findings per entry, and markdown summary.
+        and detailed findings for flagged entries (or all entries if include_verified=True).
     """
     bib_file = Path(bib_path)
     if not bib_file.exists():
@@ -120,14 +129,20 @@ def scifi_audit_bib(
 
     import scifi.server as srv
 
-    report = srv.audit_bib_file(bib_file)
+    report = srv.audit_bib_file(bib_file, cache=srv.get_cache(), strict_consensus=strict_consensus)
     if output_bib:
         sanitized = srv.generate_sanitized_bib(report)
         out_path = Path(output_bib)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(sanitized, encoding="utf-8")
 
-    return {
+    entries = (
+        [e.to_dict() for e in report.entries]
+        if include_verified
+        else [e.to_dict() for e in report.entries if e.status != VerificationStatus.VERIFIED]
+    )
+
+    result: dict[str, Any] = {
         "file_path": str(bib_path),
         "total_entries": report.total_entries,
         "verified_count": report.verified_count,
@@ -135,16 +150,35 @@ def scifi_audit_bib(
         "errata_count": report.errata_count,
         "mismatch_count": report.mismatch_count,
         "unresolved_count": report.unresolved_count,
-        "entries": [e.to_dict() for e in report.entries],
+        "entries": entries,
         "output_bib": output_bib if output_bib else None,
-        "summary": report.summary_markdown(),
     }
+    if not include_verified and report.verified_count > 0:
+        result["verified_entries_omitted"] = report.verified_count
+    if include_summary:
+        result["summary"] = report.summary_markdown()
+    return result
+
+
+def _format_search_results(results: list[dict[str, Any]], include_bibtex: bool) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+    for r in results:
+        item = dict(r)
+        authors = item.get("authors") or []
+        if len(authors) > 5:
+            item["authors"] = authors[:5]
+            item["total_authors"] = len(authors)
+        if not include_bibtex:
+            item.pop("bibtex", None)
+        formatted.append(item)
+    return formatted
 
 
 @mcp.tool()
 def scifi_search_literature(
     query: str,
     limit: int = 5,
+    include_bibtex: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Search OpenAlex and academic registries for canonical literature by title, topic, or phrase.
@@ -152,9 +186,10 @@ def scifi_search_literature(
     Args:
         query: Literature query, paper title, or method keyword.
         limit: Maximum number of search results to return (default: 5).
+        include_bibtex: If True, include generated BibTeX entry strings per result (default: False).
 
     Returns:
-        List of dictionaries with paper metadata (title, doi, authors, year, venue, citation_count, cite_key, bibtex).
+        List of dictionaries with paper metadata (title, doi, authors, year, venue, citation_count, cite_key).
     """
     import scifi.server as srv
 
@@ -162,7 +197,7 @@ def scifi_search_literature(
     cache_key = f"search:{query}:{limit}"
     cached = cache.get(cache_key)
     if cached is not None and "results" in cached:
-        return cached["results"]
+        return _format_search_results(cached["results"], include_bibtex=include_bibtex)
 
     results: list[dict[str, Any]] = []
     headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"}
@@ -220,7 +255,7 @@ def scifi_search_literature(
     except Exception:
         pass
 
-    return results
+    return _format_search_results(results, include_bibtex=include_bibtex)
 
 
 @mcp.tool()
@@ -229,6 +264,7 @@ def scifi_audit_attribution(
     bib_path: str | None = None,
     autofix: bool = False,
     enable_search: bool = True,
+    include_full_candidates: bool = False,
 ) -> dict[str, Any]:
     """
     Audit a LaTeX manuscript or text file for uncredited methods, algorithms, models, and plagiarism risks.
@@ -240,6 +276,7 @@ def scifi_audit_attribution(
         bib_path: Optional path to the target references.bib file. Defaults to 'references.bib' in the same folder.
         autofix: Whether to automatically mutate LaTeX file with \\cite and append to bib_path.
         enable_search: Whether to query remote registries for seminal papers of uncredited methods.
+        include_full_candidates: If True, include full CitationMetadata dicts inside candidate_work (default: False).
 
     Returns:
         AttributionReport dictionary containing findings, categories, suggestions, and autofix results.
@@ -251,9 +288,11 @@ def scifi_audit_attribution(
             "error_message": f"File not found: {file_path}",
         }
 
-    engine = ArgusEngine(enable_search=enable_search)
+    import scifi.server as srv
+
+    engine = ArgusEngine(enable_search=enable_search, cache=srv.get_cache())
     report = engine.audit_file(target_path)
-    findings_dict = report.to_dict()
+    findings_dict = report.to_dict(compact_candidate=not include_full_candidates)
 
     if autofix:
         bib_file = Path(bib_path) if bib_path else target_path.parent / "references.bib"
@@ -298,3 +337,40 @@ def scifi_audit_attribution(
         }
 
     return findings_dict
+
+
+@mcp.tool()
+def scifi_audit_claim_entailment(
+    file_path: str,
+    bib_path: str | None = None,
+    fetch_pdf: bool = True,
+) -> dict[str, Any]:
+    """
+    Run a Hypatia-backed claim-to-citation entailment audit on a LaTeX manuscript.
+    Checks whether each \\cite{} reference actually supports the claim in its sentence,
+    flagging off-topic citations, contradictions, and missing cited metrics.
+
+    Args:
+        file_path: Path to the LaTeX (.tex), markdown, or project directory to audit.
+        bib_path: Optional path to the .bib file resolving citation keys.
+        fetch_pdf: Whether to fetch Unpaywall/arXiv PDFs when abstract is missing or lacks a cited metric.
+
+    Returns:
+        EntailmentReport dictionary with per-citation verdicts and aggregate counts.
+    """
+    target_path = Path(file_path)
+    if not target_path.exists():
+        return {
+            "status": "ERROR",
+            "error_message": f"File not found: {file_path}",
+        }
+
+    import scifi.server as srv
+
+    report = audit_claim_entailment(
+        target_path,
+        bib_path=bib_path,
+        fetch_pdf=fetch_pdf,
+        cache=srv.get_cache(),
+    )
+    return report.to_dict()

@@ -5,11 +5,13 @@ BibTeX file parser, batch citation auditor, and sanitizer.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import bibtexparser
 
+from scifi.cache import RegistryCache
 from scifi.network import get_session
 
 from .discrepancy import audit_discrepancies
@@ -24,10 +26,24 @@ from .models import (
 )
 
 
-def search_identifier_by_title(title: str, author_hint: str | None = None, timeout: int = 8) -> tuple[str, str] | None:
+def search_identifier_by_title(
+    title: str,
+    author_hint: str | None = None,
+    timeout: int = 8,
+    cache: RegistryCache | None = None,
+    use_cache: bool = False,
+) -> tuple[str, str] | None:
     """Search OpenAlex by title to find DOI for citations lacking an explicit identifier."""
     if not title or len(title.strip()) < 5:
         return None
+    norm_title = title.strip().lower()
+    active_cache = cache if cache is not None else (RegistryCache() if use_cache else None)
+    cache_key = f"cv_title:{norm_title}"
+    if active_cache is not None:
+        cached = active_cache.get(cache_key)
+        if cached and cached.get("id_type") and cached.get("id_val"):
+            return str(cached["id_type"]), str(cached["id_val"])
+
     url = "https://api.openalex.org/works"
     params: dict[str, str | int] = {"search": title.strip(), "per-page": 3}
     headers = {"User-Agent": "SciFi-CitationVerifier/1.0 (mailto:scifi-toolkit@gmail.com)"}
@@ -39,6 +55,8 @@ def search_identifier_by_title(title: str, author_hint: str | None = None, timeo
                 doi_url = res.get("doi")
                 if doi_url:
                     clean = clean_doi(doi_url)
+                    if active_cache is not None:
+                        active_cache.set(cache_key, {"id_type": "doi", "id_val": clean})
                     return "doi", clean
     except Exception:
         pass
@@ -101,60 +119,110 @@ def extract_claimed_metadata_from_bib_entry(
     return claimed, candidate
 
 
+def _audit_single_bib_entry(
+    entry: Any,
+    *,
+    search_missing: bool,
+    timeout: int,
+    cache: RegistryCache | None,
+    strict_consensus: bool,
+) -> CitationMetadata:
+    """Resolve and audit a single parsed BibTeX entry."""
+    claimed, candidate = extract_claimed_metadata_from_bib_entry(entry)
+
+    if (not candidate or candidate[0] == "unknown") and search_missing and claimed.title:
+        found = search_identifier_by_title(
+            claimed.title,
+            claimed.authors[0] if claimed.authors else None,
+            cache=cache,
+        )
+        if found:
+            candidate = (found[0], found[1], {"inferred_from_title": claimed.title})
+
+    if candidate and candidate[0] != "unknown":
+        id_type, id_val, extra = candidate
+        meta = resolve_citation(
+            id_type,
+            id_val,
+            extra,
+            timeout=timeout,
+            cache=cache,
+            strict_consensus=strict_consensus,
+        )
+    else:
+        meta = CitationMetadata(
+            identifier_type="none",
+            identifier_value=entry.key or "unknown_key",
+            status=VerificationStatus.UNRESOLVED,
+            title=claimed.title or "Unknown Title",
+            source_registry="None",
+        )
+
+    meta.claimed_metadata = claimed
+
+    if meta.status != VerificationStatus.UNRESOLVED:
+        verified_authors = [a.name for a in meta.authors]
+        discrepancies = audit_discrepancies(
+            claimed,
+            verified_title=meta.title,
+            verified_authors=verified_authors,
+            verified_year=meta.year,
+            verified_venue=meta.venue,
+        )
+        meta.discrepancies = discrepancies
+
+        has_error = any(d.severity == Severity.ERROR for d in discrepancies)
+        if has_error and meta.status == VerificationStatus.VERIFIED:
+            meta.status = VerificationStatus.MISMATCH
+
+    return meta
+
+
 def audit_bib_content(
     bib_content: str,
     file_path: str | None = None,
     search_missing: bool = True,
     timeout: int = 10,
+    cache: RegistryCache | None = None,
+    strict_consensus: bool = False,
+    max_workers: int = 4,
 ) -> BibAuditReport:
     """
     Audit an entire BibTeX file or string against authoritative registries.
     Detects retracted papers, broken links, typos, and year discrepancies.
     """
     library = bibtexparser.parse_string(bib_content)
-    report = BibAuditReport(file_path=file_path, total_entries=len(library.entries))
+    entries = list(library.entries)
+    report = BibAuditReport(file_path=file_path, total_entries=len(entries))
 
-    for entry in library.entries:
-        claimed, candidate = extract_claimed_metadata_from_bib_entry(entry)
-
-        # If no identifier was found directly, search by title
-        if (not candidate or candidate[0] == "unknown") and search_missing and claimed.title:
-            found = search_identifier_by_title(claimed.title, claimed.authors[0] if claimed.authors else None)
-            if found:
-                candidate = (found[0], found[1], {"inferred_from_title": claimed.title})
-
-        if candidate and candidate[0] != "unknown":
-            id_type, id_val, extra = candidate
-            meta = resolve_citation(id_type, id_val, extra, timeout=timeout)
-        else:
-            meta = CitationMetadata(
-                identifier_type="none",
-                identifier_value=entry.key or "unknown_key",
-                status=VerificationStatus.UNRESOLVED,
-                title=claimed.title or "Unknown Title",
-                source_registry="None",
+    if max_workers > 1 and len(entries) > 1:
+        worker_count = min(max_workers, len(entries))
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            metas = list(
+                pool.map(
+                    lambda e: _audit_single_bib_entry(
+                        e,
+                        search_missing=search_missing,
+                        timeout=timeout,
+                        cache=cache,
+                        strict_consensus=strict_consensus,
+                    ),
+                    entries,
+                )
             )
-
-        meta.claimed_metadata = claimed
-
-        # Perform discrepancy analysis if citation was verified
-        if meta.status != VerificationStatus.UNRESOLVED:
-            verified_authors = [a.name for a in meta.authors]
-            discrepancies = audit_discrepancies(
-                claimed,
-                verified_title=meta.title,
-                verified_authors=verified_authors,
-                verified_year=meta.year,
-                verified_venue=meta.venue,
+    else:
+        metas = [
+            _audit_single_bib_entry(
+                e,
+                search_missing=search_missing,
+                timeout=timeout,
+                cache=cache,
+                strict_consensus=strict_consensus,
             )
-            meta.discrepancies = discrepancies
+            for e in entries
+        ]
 
-            # Check if discrepancies escalate status to MISMATCH
-            has_error = any(d.severity == Severity.ERROR for d in discrepancies)
-            if has_error and meta.status == VerificationStatus.VERIFIED:
-                meta.status = VerificationStatus.MISMATCH
-
-        # Update tally
+    for meta in metas:
         if meta.status == VerificationStatus.VERIFIED:
             report.verified_count += 1
         elif meta.status == VerificationStatus.RETRACTED:
@@ -171,11 +239,22 @@ def audit_bib_content(
     return report
 
 
-def audit_bib_file(file_path: str | Path, search_missing: bool = True) -> BibAuditReport:
+def audit_bib_file(
+    file_path: str | Path,
+    search_missing: bool = True,
+    cache: RegistryCache | None = None,
+    strict_consensus: bool = False,
+) -> BibAuditReport:
     """Read and audit a .bib file from disk."""
     path = Path(file_path)
     content = path.read_text(encoding="utf-8")
-    return audit_bib_content(content, file_path=str(path), search_missing=search_missing)
+    return audit_bib_content(
+        content,
+        file_path=str(path),
+        search_missing=search_missing,
+        cache=cache,
+        strict_consensus=strict_consensus,
+    )
 
 
 def generate_sanitized_bib(report: BibAuditReport) -> str:

@@ -24,6 +24,7 @@ def verify_citation(
     claimed_author: str | None = None,
     claimed_venue: str | None = None,
     timeout: int = 10,
+    strict_consensus: bool = False,
 ) -> CitationMetadata:
     """
     Verify an individual citation by link or DOI.
@@ -35,12 +36,19 @@ def verify_citation(
         claimed_author: Optional author claimed by the user.
         claimed_venue: Optional journal/conference claimed by the user.
         timeout: Request timeout in seconds.
+        strict_consensus: When True, require >=2 independent registries to confirm the reference.
 
     Returns:
         CitationMetadata with status, canonical metadata, retraction warnings, and discrepancies.
     """
     id_type, id_val, extra = extract_identifier(query, follow_links=True)
-    meta = resolve_citation(id_type, id_val, extra_info=extra, timeout=timeout)
+    meta = resolve_citation(
+        id_type,
+        id_val,
+        extra_info=extra,
+        timeout=timeout,
+        strict_consensus=strict_consensus,
+    )
 
     # If user provided claimed fields, perform discrepancy audit
     if claimed_title or claimed_year or claimed_author or claimed_venue:

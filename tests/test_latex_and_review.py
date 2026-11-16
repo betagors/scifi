@@ -85,6 +85,94 @@ class TestAuditClaims(unittest.TestCase):
         msg = res.get("message") or res.get("error_message", "")
         self.assertIn("File not found", msg)
 
+    def test_audit_claims_cross_paper_latency_table(self):
+        tex = r"""
+\begin{table}
+\begin{tabular}{lcc}
+\toprule
+Work & Method & Online Latency \\
+\midrule
+Bi et al. \cite{Bi2021} & SCA & ~15 ms \\
+Chen et al. \cite{Chen2025} & MAPPO & ~20 ms \\
+Proposed & Lya-BiMAPPO & 2.06 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+"""
+        res = audit_claims(tex)
+        self.assertEqual(res["status"], "SUCCESS")
+        self.assertEqual(res["total_flags"], 1)
+        self.assertIn("Cross-paper wall-clock latency", res["flags"][0]["matched_text"])
+
+    def test_audit_claims_cross_paper_latency_with_footnote_passes(self):
+        tex = r"""
+\begin{table}
+\caption{Comparison across works. Literature latencies are as-reported on disparate hardware.}
+\begin{tabular}{lcc}
+\toprule
+Work & Method & Online Latency \\
+\midrule
+Bi et al. \cite{Bi2021} & SCA & ~15 ms \\
+Chen et al. \cite{Chen2025} & MAPPO & ~20 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+"""
+        res = audit_claims(tex)
+        self.assertEqual(res["status"], "SUCCESS")
+        self.assertEqual(res["total_flags"], 0)
+
+    def test_audit_claims_policy_invariant_column(self):
+        tex = r"""
+\begin{table}
+\begin{tabular}{lcc}
+\toprule
+Algorithm & Device Backlog (Mb) & Edge Backlog (Mb) \\
+\midrule
+BCD-SCA & $1.375 \pm 0.011$ & $0.913 \pm 0.020$ \\
+Penalty-BiMAPPO & $1.375 \pm 0.011$ & $0.450 \pm 0.015$ \\
+Lya-BiMAPPO & $1.375 \pm 0.011$ & $0.257 \pm 0.010$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+"""
+        res = audit_claims(tex)
+        self.assertEqual(res["status"], "SUCCESS")
+        self.assertEqual(res["total_flags"], 1)
+        self.assertIn("Identical column", res["flags"][0]["matched_text"])
+
+    def test_audit_claims_policy_invariant_column_with_footnote_passes(self):
+        tex = r"""
+\begin{table}
+\begin{tabular}{lcc}
+\toprule
+Algorithm & Device Backlog (Mb)\textsuperscript{a} & Edge Backlog (Mb) \\
+\midrule
+BCD-SCA & $1.375 \pm 0.011$ & $0.913 \pm 0.020$ \\
+Penalty-BiMAPPO & $1.375 \pm 0.011$ & $0.450 \pm 0.015$ \\
+Lya-BiMAPPO & $1.375 \pm 0.011$ & $0.257 \pm 0.010$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+"""
+        res = audit_claims(tex)
+        self.assertEqual(res["status"], "SUCCESS")
+        self.assertEqual(res["total_flags"], 0)
+
+    def test_audit_claims_general_reviewer_traps(self):
+        text = (
+            "We uncover an apparent scaling paradox where standard Bayesian theory breaks down.\n"
+            "The relaxation is solved via an L-BFGS SDP solver at each iteration.\n"
+            "The regression curve quantitatively validates the analytical bound across all regimes.\n"
+        )
+        res = audit_claims(text)
+        self.assertEqual(res["status"], "SUCCESS")
+        self.assertGreaterEqual(res["total_flags"], 3)
+        critiques = " ".join(f["critique"] for f in res["flags"])
+        self.assertIn("Potential strawman theory critique", critiques)
+        self.assertIn("Formulation class vs. numerical solver conflation", critiques)
+        self.assertIn("Empirical curve-fit vs. analytical bound conflation", critiques)
+
 
 class TestParseLog(unittest.TestCase):
     def test_parse_log_undefined_references_and_citations(self):

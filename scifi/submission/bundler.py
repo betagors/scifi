@@ -65,6 +65,9 @@ def prepare_submission_bundle(
     editor_name: str | None = None,
     suggested_reviewers: Sequence[dict[str, str]] | None = None,
     output_dir: str | Path | None = None,
+    strict: bool = False,
+    double_blind: bool | None = None,
+    live: bool = False,
 ) -> SubmissionBundleResult:
     """
     Generate all four submission artifacts and packaging manifest in one shot.
@@ -118,6 +121,30 @@ def prepare_submission_bundle(
     final_title = extracted_title or "Manuscript Title"
 
     out_path = Path(output_dir or (base_dir / "dist" / "submission")).resolve()
+
+    gate_readiness_score: int | None = None
+    if strict:
+        from scifi.doctor import audit_manuscript
+
+        audit_res = audit_manuscript(
+            tex_or_dir_path=target_dir_or_tex,
+            venue=final_venue,
+            double_blind=double_blind,
+            live=live,
+        )
+        if audit_res.get("status") == "SUCCESS":
+            gate_readiness_score = audit_res.get("readiness_score")
+            blockers = audit_res.get("critical_blockers", [])
+            if blockers:
+                return SubmissionBundleResult(
+                    status="BLOCKED",
+                    output_dir=str(out_path),
+                    venue=final_venue,
+                    blockers=blockers,
+                    readiness_score=gate_readiness_score,
+                    error_message=f"Submission bundle blocked by {len(blockers)} critical blocker(s).",
+                )
+
     out_path.mkdir(parents=True, exist_ok=True)
 
     # 1. Highlights
@@ -217,6 +244,9 @@ def prepare_submission_bundle(
             "path": str(code_zip_dest),
             "md5": _compute_md5(code_zip_dest),
         }
+    if strict:
+        manifest["gate_passed"] = True
+        manifest["readiness_score"] = gate_readiness_score
 
     manifest_path = out_path / "submission_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -230,4 +260,5 @@ def prepare_submission_bundle(
         title_page_path=str(tp_tex_path),
         code_zip_path=str(code_zip_dest) if code_zip_dest and code_zip_dest.exists() else None,
         manifest_path=str(manifest_path),
+        readiness_score=gate_readiness_score,
     )

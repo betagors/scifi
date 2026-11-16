@@ -325,6 +325,42 @@ def register_literature_subparsers(parser: argparse.ArgumentParser) -> None:
         help=f"Path to SQLite knowledge store (default: {DEFAULT_CENTRAL_STORE_PATH})",
     )
 
+    # 8. kg (LadybugDB Semantic Knowledge Graph)
+    from scifi.literature.kg import DEFAULT_KG_PATH
+
+    p_kg = lit_subparsers.add_parser(
+        "kg",
+        help="Semantic Knowledge Graph (LadybugDB) inspection, rebuild, and multi-hop queries",
+    )
+    kg_sub = p_kg.add_subparsers(dest="kg_command", metavar="<subcommand>")
+
+    p_kg_status = kg_sub.add_parser("status", help="Show KG node/relationship counts and sync status")
+    p_kg_status.add_argument("--db", default=str(DEFAULT_CENTRAL_STORE_PATH))
+    p_kg_status.add_argument("--kg", default=str(DEFAULT_KG_PATH))
+    p_kg_status.add_argument("--json", action="store_true", help="Output JSON")
+
+    p_kg_rebuild = kg_sub.add_parser("rebuild", help="Rebuild LadybugDB KG deterministically from SQLite")
+    p_kg_rebuild.add_argument("--db", default=str(DEFAULT_CENTRAL_STORE_PATH))
+    p_kg_rebuild.add_argument("--kg", default=str(DEFAULT_KG_PATH))
+    p_kg_rebuild.add_argument("--json", action="store_true", help="Output JSON")
+
+    p_kg_trace = kg_sub.add_parser("trace-assumptions", help="Trace inherited & falsified assumptions")
+    p_kg_trace.add_argument("target", help="Method name, Method ID, or Paper ID")
+    p_kg_trace.add_argument("--max-hops", type=int, default=3)
+    p_kg_trace.add_argument("--kg", default=str(DEFAULT_KG_PATH))
+    p_kg_trace.add_argument("--json", action="store_true", help="Output JSON")
+
+    p_kg_contra = kg_sub.add_parser("contradictions", help="List FALSIFIES and CONTRADICTS paths")
+    p_kg_contra.add_argument("--paper", default=None, help="Optional Paper ID filter")
+    p_kg_contra.add_argument("--kg", default=str(DEFAULT_KG_PATH))
+    p_kg_contra.add_argument("--json", action="store_true", help="Output JSON")
+
+    p_kg_query = kg_sub.add_parser("query", help="Execute a read-only Cypher query against the KG")
+    p_kg_query.add_argument("cypher", help="Read-only Cypher query")
+    p_kg_query.add_argument("--max-rows", type=int, default=100)
+    p_kg_query.add_argument("--kg", default=str(DEFAULT_KG_PATH))
+    p_kg_query.add_argument("--json", action="store_true", help="Output JSON")
+
 
 def cmd_report(args: argparse.Namespace) -> int:
     """Execute lineage crawl and generate markdown report, HTML map, and BibTeX file."""
@@ -670,6 +706,64 @@ def cmd_literature(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         return cmd_literature_reprints(args)
     elif lit_cmd == "ingest-pdf":
         return cmd_literature_ingest_pdf(args)
+    elif lit_cmd == "kg":
+        return cmd_literature_kg(args)
+
+    return 0
+
+
+def cmd_literature_kg(args: argparse.Namespace) -> int:
+    """Dispatch `scifi literature kg` subcommands."""
+    from scifi.literature.kg import DEFAULT_KG_PATH, KnowledgeGraphStore
+
+    kg_cmd = getattr(args, "kg_command", None)
+    if not kg_cmd:
+        print("usage: scifi literature kg [-h] {status,rebuild,trace-assumptions,contradictions,query} ...")
+        return 0
+
+    kg_path = getattr(args, "kg", str(DEFAULT_KG_PATH))
+    kg = KnowledgeGraphStore(kg_path)
+    as_json = bool(getattr(args, "json", False))
+
+    if kg_cmd == "status":
+        store = LiteratureStore(getattr(args, "db", str(DEFAULT_CENTRAL_STORE_PATH)))
+        info = kg.stats()
+        info["last_rebuild_utc"] = store.get_kg_sync_state("last_rebuild_utc")
+        if as_json:
+            print(json.dumps(info, indent=2))
+        else:
+            print(f"KG Path: {info['kg_path']}")
+            print(f"Total Nodes: {info['total_nodes']} | Total Relationships: {info['total_relationships']}")
+            print(f"Last Rebuild: {info['last_rebuild_utc'] or 'never'}")
+        return 0
+
+    if kg_cmd == "rebuild":
+        store = LiteratureStore(getattr(args, "db", str(DEFAULT_CENTRAL_STORE_PATH)))
+        counts = kg.rebuild_from_sqlite(store)
+        if as_json:
+            print(json.dumps({"status": "SUCCESS", "counts": counts}, indent=2))
+        else:
+            print(f"Rebuilt KG at {kg.kg_path}: {counts}")
+        return 0
+
+    if kg_cmd == "trace-assumptions":
+        res = kg.trace_assumptions(args.target, max_hops=args.max_hops)
+        print(json.dumps(res, indent=2))
+        return 0
+
+    if kg_cmd == "contradictions":
+        contradictions_res = kg.find_contradictions(paper_id=getattr(args, "paper", None))
+        print(json.dumps(contradictions_res, indent=2))
+        return 0
+
+    if kg_cmd == "query":
+        try:
+            rows = kg.execute_read_query(args.cypher, max_rows=args.max_rows)
+            print(json.dumps(rows, indent=2))
+            return 0
+        except PermissionError as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 1
 
     return 0
 

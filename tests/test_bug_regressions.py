@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 from scifi.cli import cmd_math, cmd_stats
 from scifi.doctor import audit_manuscript
-from scifi.human import audit_human_prose
 from scifi.literature.lineage import LineageCrawler
 from scifi.literature.models import PaperRecord
+from scifi.orwell import audit_orwell_prose
 from scifi.rebuttal.differ import diff_manuscript
 
 
@@ -128,15 +128,15 @@ def test_cli_stats_curve_arg_dispatch(tmp_path: Path):
         )
 
 
-def test_human_trapped_punctuation_checks_islower():
-    """Ensure audit_human_prose does not use broken isLower check that treats symbols as word starts."""
+def test_orwell_trapped_punctuation_checks_islower():
+    """Ensure audit_orwell_prose does not use broken isLower check that treats symbols as word starts."""
     latex = r"""
     \documentclass{article}
     \begin{document}
     The value is $(x, y.)$ 123 followed by number.
     \end{document}
     """
-    res = audit_human_prose(latex)
+    res = audit_orwell_prose(latex)
     flags = res.get("flags", [])
     trapped_flags = [
         f

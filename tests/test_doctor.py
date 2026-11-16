@@ -174,3 +174,86 @@ def test_new_cli_subcommands_end_to_end(tmp_path: Path, monkeypatch):
     assert scifi.cli.main(["venue", str(tex_file), "--venue", "neurips"]) == 0
     assert scifi.cli.main(["shannon", str(tex_file)]) == 0
     assert scifi.cli.main(["doctor", str(tmp_path)]) == 0
+    assert scifi.cli.main(["doctor", str(tmp_path), "--history"]) == 0
+
+
+def test_doctor_audit_history_ledger_and_deltas(tmp_path: Path):
+    """Verify .scifi/audit_history.json persists runs and computes fixed vs. regressed deltas."""
+    import json
+
+    from scifi.doctor import load_audit_history
+
+    bib_file = tmp_path / "references.bib"
+    bib_file.write_text(
+        "@article{known2024,\n  title={Known Paper},\n  author={Smith, A.},\n  year={2024}\n}\n",
+        encoding="utf-8",
+    )
+
+    tex_file = tmp_path / "main.tex"
+    # Draft 1: missing bib key + orphan theorem
+    tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\title{Adaptive Optimization for Distributed Edge Inference Systems}\n"
+        "\\author{Anonymous Authors}\n"
+        "\\begin{document}\n"
+        "\\begin{abstract}\n"
+        "Distributed edge inference requires robust convergence guarantees under dynamic channels. "
+        "Static partitioning fails under rapid load shifts. We propose an adaptive primal-dual "
+        "protocol for distributed edge inference. Experiments on 200 nodes reduce latency by 31.2\\% "
+        "compared to baselines, enabling scalable distributed edge inference.\n"
+        "\\end{abstract}\n"
+        "\\keywords{primal-dual optimization, distributed systems, edge computing}\n"
+        "\\section{Introduction}\n"
+        "Prior work \\cite{known2024} and \\cite{missing_ref_2026} studied this.\n"
+        "\\begin{theorem}\\label{thm:main}\nThe algorithm converges at rate $O(1/T)$.\n\\end{theorem}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+
+    res1 = audit_manuscript(tex_or_dir_path=tmp_path, venue="neurips", double_blind=True)
+    assert res1["status"] == "SUCCESS"
+    assert res1["history_delta"]["run_number"] == 1
+    assert res1["history_delta"]["score_delta"] is None
+    assert any(b["type"] == "orphan_proof" for b in res1["critical_blockers"])
+
+    hist_path = tmp_path / ".scifi" / "audit_history.json"
+    assert hist_path.is_file()
+    raw_hist = json.loads(hist_path.read_text(encoding="utf-8"))
+    assert len(raw_hist["runs"]) == 1
+
+    # Draft 2: fix missing bib key & add proof, but regress with an overclaim
+    tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\title{Adaptive Optimization for Distributed Edge Inference Systems}\n"
+        "\\author{Anonymous Authors}\n"
+        "\\begin{document}\n"
+        "\\begin{abstract}\n"
+        "Distributed edge inference requires robust convergence guarantees under dynamic channels. "
+        "Static partitioning fails under rapid load shifts. We propose an adaptive primal-dual "
+        "protocol for distributed edge inference. Experiments on 200 nodes reduce latency by 31.2\\% "
+        "compared to baselines, enabling scalable distributed edge inference.\n"
+        "\\end{abstract}\n"
+        "\\keywords{primal-dual optimization, distributed systems, edge computing}\n"
+        "\\section{Introduction}\n"
+        "Prior work \\cite{known2024} studied this. "
+        "Our method outperforms all existing baselines.\n"
+        "\\begin{theorem}\\label{thm:main}\nThe algorithm converges at rate $O(1/T)$.\n\\end{theorem}\n"
+        "\\begin{proof}\nFollows from standard Lyapunov drift analysis.\n\\end{proof}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+
+    res2 = audit_manuscript(tex_or_dir_path=tmp_path, venue="neurips", double_blind=True)
+    assert res2["status"] == "SUCCESS"
+    delta = res2["history_delta"]
+    assert delta["run_number"] == 2
+    assert delta["previous_score"] == res1["readiness_score"]
+    assert delta["score_delta"] == res2["readiness_score"] - res1["readiness_score"]
+    assert any("missing_ref_2026" in fx["id"] for fx in delta["fixed_issues"])
+    assert any("proofs:" in fx["id"] for fx in delta["fixed_issues"])
+    assert any("popper:" in rg["id"] for rg in delta["regressed_issues"])
+    assert res2["critical_blockers"] == []
+    assert "Readiness Ledger (Draft Progress)" in res2["report_markdown"]
+
+    runs = load_audit_history(tmp_path)
+    assert len(runs) == 2

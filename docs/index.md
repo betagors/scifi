@@ -59,5 +59,5 @@ flowchart TD
 SciFi is accessible through three complementary interfaces:
 
 1. **CLI Commands (`sf` / `scifi`)**: 20+ specialized terminal commands for local execution and CI/CD pipelines.
-2. **FastMCP Server (46 Tools)**: Model Context Protocol daemon for seamless integration with Claude Code, Cursor, Antigravity, OpenCode, and Gemini.
+2. **FastMCP Server (`scifi.server`)**: Model Context Protocol daemon integrated directly into Google Antigravity alongside `plugin.json`, `hooks.json`, `rules/AGENTS.md`, `skills/`, and `agents/`.
 3. **Web Cockpit UI (`sf ui`)**: Browser-based research dashboard for managing projects, graphs, reprint requests, and literature lineage.

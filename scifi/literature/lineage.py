@@ -29,6 +29,7 @@ from scifi.literature.models import (
 from scifi.literature.resolver import PaperResolver, clean_arxiv_id, clean_doi
 from scifi.literature.semantic_scholar import SemanticScholarClient
 from scifi.literature.sota import SotaEvaluator
+from scifi.literature.sources import fetch_arxiv_structured_text
 from scifi.literature.store import LiteratureStore
 
 
@@ -620,29 +621,50 @@ class LineageCrawler:
                     # 2. Extract full-text gaps (system model assumptions & explicit limitations) if available
                     if extract_fulltext_gaps:
                         try:
+                            ft_sections: dict[str, str] | None = None
                             pdf_path = resolve_paper_pdf(
                                 p,
                                 local_dirs=[pdf_dir] if pdf_dir else None,
-                                auto_fetch=auto_fetch_pdf,
+                                auto_fetch=False,
                             )
                             if pdf_path and Path(pdf_path).is_file():
                                 extracted = extract_pdf_text(pdf_path)
                                 if extracted.get("status") == "SUCCESS" and extracted.get("sections"):
-                                    ft_gaps = extractor.extract_fulltext_gaps(p, extracted["sections"])
-                                    raw_gaps.extend(ft_gaps)
-
-                                    # Update paper locations
-                                    loc_rec = PaperLocationRecord(
-                                        id=f"loc-{uuid.uuid4().hex[:12]}",
-                                        paper_id=p.id,
-                                        location_type="repository" if "arxiv" in str(pdf_path).lower() else "publisher",
-                                        is_oa=True,
-                                        oa_status="gold" if "openalex" in str(pdf_path).lower() else "green",
-                                        local_pdf_path=str(pdf_path),
+                                    ft_sections = extracted["sections"]
+                            elif auto_fetch_pdf:
+                                ext_id_hint = _extract_external_id_for_s2(p)
+                                if ext_id_hint and ext_id_hint.startswith("ARXIV:"):
+                                    structured = fetch_arxiv_structured_text(ext_id_hint[6:])
+                                    if structured.get("status") == "SUCCESS":
+                                        ft_sections = structured
+                                if ft_sections is None:
+                                    pdf_path = resolve_paper_pdf(
+                                        p,
+                                        local_dirs=[pdf_dir] if pdf_dir else None,
+                                        auto_fetch=True,
                                     )
-                                    p.locations.append(loc_rec)
-                                    if self.store is not None:
-                                        self.store.save_paper_location(loc_rec)
+                                    if pdf_path and Path(pdf_path).is_file():
+                                        extracted = extract_pdf_text(pdf_path)
+                                        if extracted.get("status") == "SUCCESS" and extracted.get("sections"):
+                                            ft_sections = extracted["sections"]
+
+                            if ft_sections:
+                                ft_gaps = extractor.extract_fulltext_gaps(p, ft_sections)
+                                raw_gaps.extend(ft_gaps)
+
+                            if pdf_path and Path(pdf_path).is_file() and ft_sections:
+                                # Update paper locations
+                                loc_rec = PaperLocationRecord(
+                                    id=f"loc-{uuid.uuid4().hex[:12]}",
+                                    paper_id=p.id,
+                                    location_type="repository" if "arxiv" in str(pdf_path).lower() else "publisher",
+                                    is_oa=True,
+                                    oa_status="gold" if "openalex" in str(pdf_path).lower() else "green",
+                                    local_pdf_path=str(pdf_path),
+                                )
+                                p.locations.append(loc_rec)
+                                if self.store is not None:
+                                    self.store.save_paper_location(loc_rec)
                         except Exception:
                             pass
 

@@ -299,5 +299,58 @@ def test_extract_identifier_url_uses_resilient_session():
         assert "Mozilla/5.0" in kwargs["headers"]["User-Agent"]
 
 
+class TestStrictConsensus(unittest.TestCase):
+    @patch("scifi.citation_verifier.fetchers.DataCiteFetcher.fetch", return_value=None)
+    @patch("scifi.citation_verifier.fetchers.OpenAlexFetcher.fetch", return_value=None)
+    @patch("scifi.citation_verifier.fetchers.CrossRefFetcher.fetch")
+    def test_strict_consensus_fails_on_single_registry(self, mock_cr, mock_oa, mock_dc):
+        mock_cr.return_value = {"title": ["Single Registry Paper"], "author": [{"family": "Doe", "given": "J."}]}
+        res = verify_citation("10.1234/single", strict_consensus=True)
+        self.assertEqual(res.status, VerificationStatus.UNRESOLVED)
+        self.assertEqual(res.confirmed_registries, ["Crossref"])
+        self.assertTrue(any(d.field == "consensus" for d in res.discrepancies))
+
+    @patch("scifi.citation_verifier.fetchers.DataCiteFetcher.fetch", return_value=None)
+    @patch("scifi.citation_verifier.fetchers.OpenAlexFetcher.fetch")
+    @patch("scifi.citation_verifier.fetchers.CrossRefFetcher.fetch")
+    def test_strict_consensus_passes_on_two_registries(self, mock_cr, mock_oa, mock_dc):
+        mock_cr.return_value = {"title": ["Dual Registry Paper"], "author": [{"family": "Doe", "given": "J."}]}
+        mock_oa.return_value = {"id": "https://openalex.org/W1", "is_retracted": False, "cited_by_count": 12}
+        res = verify_citation("10.1234/dual", strict_consensus=True)
+        self.assertEqual(res.status, VerificationStatus.VERIFIED)
+        self.assertEqual(res.confirmed_registries, ["Crossref", "OpenAlex"])
+        self.assertFalse(any(d.field == "consensus" for d in res.discrepancies))
+
+    @patch("scifi.citation_verifier.fetchers.DataCiteFetcher.fetch")
+    @patch("scifi.citation_verifier.fetchers.OpenAlexFetcher.fetch", return_value=None)
+    @patch("scifi.citation_verifier.fetchers.CrossRefFetcher.fetch")
+    def test_strict_consensus_preserves_retracted_status(self, mock_cr, mock_oa, mock_dc):
+        mock_cr.return_value = {
+            "title": ["Retracted Paper"],
+            "update-to": [{"type": "retraction", "doi": "10.1234/retract-notice"}],
+        }
+        mock_dc.return_value = None
+        res = verify_citation("10.1234/retracted", strict_consensus=True)
+        self.assertEqual(res.status, VerificationStatus.RETRACTED)
+        self.assertTrue(res.is_retracted)
+        self.assertTrue(any(d.field == "consensus" for d in res.discrepancies))
+
+    @patch("scifi.citation_verifier.fetchers.DataCiteFetcher.fetch", return_value=None)
+    @patch("scifi.citation_verifier.fetchers.OpenAlexFetcher.fetch", return_value=None)
+    @patch("scifi.citation_verifier.fetchers.CrossRefFetcher.fetch")
+    def test_audit_bib_strict_consensus(self, mock_cr, mock_oa, mock_dc):
+        mock_cr.return_value = {"title": ["Only Crossref"], "author": [{"family": "Smith", "given": "A."}]}
+        bib = """@article{Smith2024Only,
+  title = {Only Crossref},
+  author = {Smith, A.},
+  year = {2024},
+  doi = {10.1234/only-cr}
+}"""
+        report = audit_bib_content(bib, search_missing=False, strict_consensus=True)
+        self.assertEqual(report.total_entries, 1)
+        self.assertEqual(report.unresolved_count, 1)
+        self.assertEqual(report.verified_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

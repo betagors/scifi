@@ -78,13 +78,39 @@ def check_venue_compliance(
     referenced_labels: set[str] = set()
 
     author_list = [a.strip() for a in (author_names or []) if a.strip()]
+    true_flags: set[str] = set()
 
     for src_file in proj.files:
         rel = src_file.relative_path
+        # Track TeX conditionals (e.g., \ifblindreview ... \else ... \fi, \iffalse ... \fi)
+        if_stack: list[bool] = []
         for line_idx, raw_line in enumerate(src_file.lines, start=1):
             clean_line = RE_COMMENT.sub("", raw_line)
             if not clean_line.strip():
                 continue
+
+            for m_flag in re.finditer(r"\\(blindreview|anonymous|anonymized)(true|false)\b", clean_line):
+                fname, fval = m_flag.group(1), m_flag.group(2)
+                if fval == "true":
+                    true_flags.add(fname)
+                else:
+                    true_flags.discard(fname)
+
+            if re.search(r"\\if(blindreview|anonymous|anonymized)\b", clean_line):
+                m_if = re.search(r"\\if(blindreview|anonymous|anonymized)\b", clean_line)
+                if_stack.append(bool(m_if and m_if.group(1) in true_flags))
+            elif re.search(r"\\iffalse\b", clean_line):
+                if_stack.append(False)
+            elif re.search(r"\\iftrue\b", clean_line):
+                if_stack.append(True)
+            elif re.search(r"\\if[a-zA-Z]+\b", clean_line):
+                if_stack.append(True)
+            elif re.search(r"\\else\b", clean_line) and if_stack:
+                if_stack[-1] = not if_stack[-1]
+            elif re.search(r"\\fi\b", clean_line) and if_stack:
+                if_stack.pop()
+
+            in_inactive_branch = any(not active for active in if_stack)
 
             # 1. Negative \vspace hacks
             if RE_NEG_VSPACE.search(clean_line):
@@ -125,8 +151,8 @@ def check_venue_compliance(
                     }
                 )
 
-            # 4. Double-blind anonymization checks
-            if double_blind:
+            # 4. Double-blind anonymization checks (skip inactive TeX conditional branches)
+            if double_blind and not in_inactive_branch:
                 m_auth = RE_AUTHOR_CMD.search(clean_line)
                 if m_auth:
                     auth_body = m_auth.group(1).strip().lower()

@@ -22,11 +22,19 @@ RE_ENV = re.compile(
     re.DOTALL,
 )
 
-RE_SECTION = re.compile(r"\\(?:section|subsection|subsubsection|chapter)\*?\{([^}]*)\}")
+RE_SECTION_START = re.compile(r"\\(?:section|subsection|subsubsection|chapter)\*?\s*\{")
 
-# Math font commands
-RE_FONT_CMD = re.compile(r"\\(?:mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}")
-FONT_RE = re.compile(r"\\(mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}")
+# Style/boldness font commands that represent formatting variants of the same variable
+STYLE_FONT_CMDS = ("mathbf", "boldsymbol", "bm", "vec")
+FONT_RE = re.compile(r"\\(mathbf|boldsymbol|bm|vec)\{([A-Za-z])\}")
+
+# Semantic font/accent commands that denote distinct mathematical objects (sets, operators, estimators)
+RE_SEMANTIC_FONT_CMD = re.compile(
+    r"\\(?:mathcal|mathbb|mathfrak|hat|tilde|bar|dot|ddot|text|mathrm|operatorname)\{[^}]*\}"
+)
+RE_ANY_FONT_CMD = re.compile(
+    r"\\(?:mathbf|mathbb|mathcal|mathfrak|boldsymbol|bm|hat|tilde|bar|vec|dot|ddot)\{([^}]+)\}"
+)
 
 RE_SUBSCRIPT = re.compile(r"_\{[^}]*\}|_[A-Za-z0-9]")
 RE_SUPERSCRIPT = re.compile(r"\^\{[^}]*\}|\^[A-Za-z0-9]")
@@ -51,7 +59,7 @@ def extract_math_blocks(text: str) -> list[str]:
 
 def symbols_in_block(block: str) -> set[str]:
     """Return single-letter symbols found in a math block."""
-    clean = RE_FONT_CMD.sub(r"\1", block)
+    clean = RE_ANY_FONT_CMD.sub(r"\1", block)
     clean = RE_SUBSCRIPT.sub("", clean)
     clean = RE_SUPERSCRIPT.sub("", clean)
     clean = RE_COMMAND.sub("", clean)
@@ -59,8 +67,23 @@ def symbols_in_block(block: str) -> set[str]:
 
 
 def variant_key(raw_sym: str) -> str:
-    """Case-fold to group font/case variants under a base identifier."""
-    return raw_sym.lower()
+    """Preserve case so standard index/bound pairs (k vs K) are not conflated."""
+    return raw_sym
+
+
+def _extract_balanced_braces(text: str, open_brace_idx: int) -> str:
+    """Extract content inside balanced {...} starting at open_brace_idx."""
+    depth = 0
+    start = open_brace_idx + 1
+    for i in range(open_brace_idx, len(text)):
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i]
+    return text[start:]
 
 
 def split_into_sections(text: str) -> list[tuple[str, str]]:
@@ -70,8 +93,9 @@ def split_into_sections(text: str) -> list[tuple[str, str]]:
     """
     labels: list[str] = []
     positions: list[int] = []
-    for m in RE_SECTION.finditer(text):
-        labels.append(m.group(1).strip())
+    for m in RE_SECTION_START.finditer(text):
+        title = _extract_balanced_braces(text, m.end() - 1).strip()
+        labels.append(title)
         positions.append(m.start())
 
     if not positions:
@@ -91,6 +115,7 @@ def split_into_sections(text: str) -> list[tuple[str, str]]:
 def check_notation(
     tex_content_or_path: str | Path,
     sections: list[str] | None = None,
+    include_manifest: bool = False,
 ) -> dict[str, Any]:
     """
     Scan LaTeX manuscript or multi-file LaTeX project for notation consistency,
@@ -99,6 +124,7 @@ def check_notation(
     Args:
         tex_content_or_path: File path to .tex file, directory path, or raw LaTeX content.
         sections: Optional list of section names to restrict the analysis to.
+        include_manifest: If True, include the full per-section symbol_manifest and all section names per flag.
     """
     tex_path: str | None = None
     files_scanned: list[str] = []
@@ -161,8 +187,9 @@ def check_notation(
                 symbol_variants[variant_key(sym)].add(variant)
                 symbol_sections[variant].append(section_label)
 
-            # 2. Harvest plain letters (strip font commands completely so font variants aren't re-added)
-            plain_clean = RE_FONT_CMD.sub("", block)
+            # 2. Harvest plain letters (strip all font/text commands completely so semantic/font variants aren't re-added)
+            plain_clean = RE_SEMANTIC_FONT_CMD.sub("", block)
+            plain_clean = RE_ANY_FONT_CMD.sub("", plain_clean)
             plain_clean = RE_SUBSCRIPT.sub("", plain_clean)
             plain_clean = RE_SUPERSCRIPT.sub("", plain_clean)
             plain_clean = RE_COMMAND.sub("", plain_clean)
@@ -174,19 +201,15 @@ def check_notation(
     multi_variant_flags: list[dict[str, Any]] = []
     for base, variants in symbol_variants.items():
         if len(variants) > 1:
-            multi_variant_flags.append(
-                {
-                    "base_symbol": base,
-                    "variants_seen": sorted(variants),
-                    "sections": sorted(set(sec for v in variants for sec in symbol_sections.get(v, []))),
-                }
-            )
-
-    # Cross-section symbol manifest
-    manifest = {
-        sec: sorted(set(letter for block in extract_math_blocks(sec_txt) for letter in symbols_in_block(block)))
-        for sec, sec_txt in all_sections
-    }
+            sorted_secs = sorted(set(sec for v in variants for sec in symbol_sections.get(v, [])))
+            item: dict[str, Any] = {
+                "base_symbol": base.lower(),
+                "variants_seen": sorted(variants),
+                "sections": sorted_secs if include_manifest else sorted_secs[:5],
+            }
+            if not include_manifest and len(sorted_secs) > 5:
+                item["total_sections"] = len(sorted_secs)
+            multi_variant_flags.append(item)
 
     issues_count = len(multi_variant_flags)
     result: dict[str, Any] = {
@@ -194,8 +217,12 @@ def check_notation(
         "is_correct": issues_count == 0,
         "sections_scanned": [s for s, _ in all_sections],
         "multi_variant_symbols": multi_variant_flags,
-        "symbol_manifest": manifest,
     }
+    if include_manifest:
+        result["symbol_manifest"] = {
+            sec: sorted(set(letter for block in extract_math_blocks(sec_txt) for letter in symbols_in_block(block)))
+            for sec, sec_txt in all_sections
+        }
     if tex_path:
         result["file"] = tex_path
     if files_scanned:

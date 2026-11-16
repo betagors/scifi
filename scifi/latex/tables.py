@@ -14,6 +14,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +101,9 @@ def generate_latex_table(
     highlight_best: bool = True,
     highlight_second: bool = True,
     output_path: str | Path | None = None,
+    two_column: bool = False,
+    font_size: str | None = None,
+    inject_tex_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """
     Generate a publication-grade LaTeX `booktabs` table from experimental data.
@@ -213,20 +217,30 @@ def generate_latex_table(
 
         body_lines.append("    " + " & ".join(row_cells) + " \\\\")
 
+    env_name = "table*" if two_column else "table"
     latex_lines = [
-        "\\begin{table}[t]",
+        f"\\begin{{{env_name}}}[t]",
         "  \\centering",
-        f"  \\caption{{{caption}}}",
-        f"  \\label{{{label}}}",
-        f"  \\begin{{tabular}}{{{align_spec}}}",
-        "    \\toprule",
-        "    " + " & ".join(header_cells) + " \\\\",
-        "    \\midrule",
-        *body_lines,
-        "    \\bottomrule",
-        "  \\end{tabular}",
-        "\\end{table}",
     ]
+    if font_size:
+        fs = font_size.strip()
+        if not fs.startswith("\\"):
+            fs = f"\\{fs}"
+        latex_lines.append(f"  {fs}")
+    latex_lines.extend(
+        [
+            f"  \\caption{{{caption}}}",
+            f"  \\label{{{label}}}",
+            f"  \\begin{{tabular}}{{{align_spec}}}",
+            "    \\toprule",
+            "    " + " & ".join(header_cells) + " \\\\",
+            "    \\midrule",
+            *body_lines,
+            "    \\bottomrule",
+            "  \\end{tabular}",
+            f"\\end{{{env_name}}}",
+        ]
+    )
     latex_code = "\n".join(latex_lines)
 
     saved_path: str | None = None
@@ -236,6 +250,32 @@ def generate_latex_table(
         out_p.write_text(latex_code + "\n", encoding="utf-8")
         saved_path = str(out_p.resolve())
 
+    injected_into: str | None = None
+    if inject_tex_path:
+        tex_p = Path(inject_tex_path)
+        if not tex_p.is_file():
+            return {"status": "ERROR", "error_message": f"inject_tex_path not found: {inject_tex_path}"}
+        tex_text = tex_p.read_text(encoding="utf-8", errors="replace")
+        marker_re = re.compile(
+            rf"(%\s*SCIFI:TABLE:{re.escape(label)}:START\s*\n)(.*?)(\n%\s*SCIFI:TABLE:{re.escape(label)}:END)",
+            re.DOTALL,
+        )
+        env_re = re.compile(
+            rf"\\begin\{{table\*?\}}(?:(?!(?:\\begin\{{table\*?\}}|\\end\{{table\*?\}})).)*?\\label\{{{re.escape(label)}\}}.*?\\end\{{table\*?\}}",
+            re.DOTALL,
+        )
+        if marker_re.search(tex_text):
+            updated = marker_re.sub(lambda m: f"{m.group(1)}{latex_code}{m.group(3)}", tex_text, count=1)
+        elif env_re.search(tex_text):
+            updated = env_re.sub(lambda _m: latex_code, tex_text, count=1)
+        else:
+            return {
+                "status": "ERROR",
+                "error_message": f"Neither SCIFI:TABLE:{label} markers nor \\label{{{label}}} table found in {inject_tex_path}.",
+            }
+        tex_p.write_text(updated, encoding="utf-8")
+        injected_into = str(tex_p.resolve())
+
     return {
         "status": "SUCCESS",
         "columns": display_columns,
@@ -244,4 +284,5 @@ def generate_latex_table(
         "second_best_values": second_vals,
         "latex": latex_code,
         "output_path": saved_path,
+        "injected_into": injected_into,
     }

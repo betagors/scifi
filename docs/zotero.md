@@ -32,11 +32,21 @@ Check Zotero database detection and local server status:
 sf zotero status
 ```
 
-### Sync Collection
-Inspect papers and linked PDFs in a specific Zotero collection:
+### Sync Collection (Bi-Directional)
+Synchronize papers between your Zotero collection and `references.bib`, and flush any staged writes:
 ```bash
 sf zotero sync --collection "NeurIPS 2026 Submission"
 ```
+
+### Continuous Auto-Sync Watcher
+Watch `zotero.sqlite`, `references.bib`, and Zotero's local server for changes and sync automatically across the current project or all registered projects:
+```bash
+sf zotero watch --interval 5
+sf zotero watch --all --interval 5
+```
+
+> [!NOTE]
+> When `auto_sync = true` in `.scifi/config.toml` (enabled by default in `sf scaffold` and `sf adapt`), the SciFi FastMCP server runs a background sync loop automatically, and `sf` project commands trigger a lightweight fingerprint-checked sync automatically. Set `SCIFI_ZOTERO_AUTO_SYNC=0` or `auto_sync = false` to disable.
 
 ### Read Annotations
 Retrieve highlighted text, margin comments, and color codes for a paper:
@@ -55,7 +65,9 @@ sf zotero flush
 ## FastMCP Tools
 
 AI agents can interact with Zotero directly using the FastMCP tools in `routers.zotero`:
-- `scifi_zotero_status()`: Verify library detection and collections.
+- `scifi_zotero_status()`: Verify library detection, auto-sync status, pending writes, and collections.
+- `scifi_zotero_sync(collection)`: Run bi-directional sync between the Zotero collection, `references.bib`, and staged writes.
+- `scifi_zotero_search(query, collection, has_pdf, limit)`: Search across the entire Zotero library or a specific collection by keyword, title, author, DOI, arXiv ID, or tag with compact metadata.
 - `scifi_zotero_get_collection_papers(collection)`: Retrieve collection papers with local PDF paths.
 - `scifi_zotero_get_annotations(item_key)`: Extract highlights and notes for synthesis.
 - `scifi_zotero_push_audit_note(item_key, audit_data)`: Attach structured SciFi audit cards as child notes.

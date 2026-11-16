@@ -116,6 +116,7 @@ class CitationMetadata:
     has_errata: bool = False
     errata_details: str | None = None
     source_registry: str = "Unknown"
+    confirmed_registries: list[str] = field(default_factory=list)
     discrepancies: list[Discrepancy] = field(default_factory=list)
     claimed_metadata: ClaimedMetadata | None = None
 
@@ -257,10 +258,53 @@ class CitationMetadata:
             "has_errata": self.has_errata,
             "errata_details": self.errata_details,
             "source_registry": self.source_registry,
+            "confirmed_registries": list(self.confirmed_registries),
             "discrepancies": [d.to_dict() for d in self.discrepancies],
             "bibtex": self.to_bibtex(),
             "apa": self.to_apa(),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CitationMetadata:
+        """Reconstruct a CitationMetadata instance from a serialized dictionary."""
+        authors = [
+            Author(
+                name=a.get("name", "Unknown"),
+                family=a.get("family"),
+                given=a.get("given"),
+                orcid=a.get("orcid"),
+            )
+            for a in data.get("authors", [])
+            if isinstance(a, dict)
+        ]
+        status_raw = data.get("status", VerificationStatus.UNRESOLVED.value)
+        try:
+            status = VerificationStatus(status_raw)
+        except ValueError:
+            status = VerificationStatus.UNRESOLVED
+        return cls(
+            identifier_type=data.get("identifier_type", "unknown"),
+            identifier_value=data.get("identifier_value", ""),
+            status=status,
+            canonical_doi=data.get("canonical_doi"),
+            canonical_url=data.get("canonical_url"),
+            title=data.get("title"),
+            authors=authors,
+            year=data.get("year"),
+            venue=data.get("venue"),
+            volume=data.get("volume"),
+            issue=data.get("issue"),
+            pages=data.get("pages"),
+            publisher=data.get("publisher"),
+            entry_type=data.get("entry_type", "article"),
+            citation_count=data.get("citation_count"),
+            is_retracted=bool(data.get("is_retracted", False)),
+            retraction_details=data.get("retraction_details"),
+            has_errata=bool(data.get("has_errata", False)),
+            errata_details=data.get("errata_details"),
+            source_registry=data.get("source_registry", "Unknown"),
+            confirmed_registries=list(data.get("confirmed_registries", [])),
+        )
 
     def summary_markdown(self) -> str:
         """Generate a concise Markdown card summarizing verification results."""
@@ -299,6 +343,10 @@ class CitationMetadata:
         if self.citation_count is not None:
             lines.append(f"- **Citations**: {self.citation_count:,}")
         lines.append(f"- **Source Registry**: {self.source_registry}")
+        if self.confirmed_registries:
+            lines.append(
+                f"- **Confirmed Registries**: {', '.join(self.confirmed_registries)} ({len(self.confirmed_registries)})"
+            )
 
         if self.discrepancies:
             lines.append("\n#### Discrepancies vs Claimed Citation:")

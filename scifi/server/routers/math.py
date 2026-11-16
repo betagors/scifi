@@ -145,6 +145,7 @@ def scifi_check_convexity(
 def scifi_check_notation(
     tex_path: str,
     sections: list[str] | None = None,
+    include_manifest: bool = False,
 ) -> dict[str, Any]:
     """
     Audit manuscript LaTeX for mathematical symbol notation consistency, collisions, and overloading.
@@ -152,11 +153,12 @@ def scifi_check_notation(
     Args:
         tex_path: Path to LaTeX manuscript file or raw LaTeX content.
         sections: Optional list of sections to restrict the audit to.
+        include_manifest: If True, include the full per-section symbol_manifest (default: False).
 
     Returns:
-        Dictionary with status, symbols_found, collisions, and notation recommendations.
+        Dictionary with status, sections_scanned, multi_variant_symbols, and notation recommendations.
     """
-    return check_notation(tex_content_or_path=tex_path, sections=sections)
+    return check_notation(tex_content_or_path=tex_path, sections=sections, include_manifest=include_manifest)
 
 
 @mcp.tool()

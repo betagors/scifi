@@ -40,6 +40,12 @@ class ZoteroItem:
     pdf_path: Path | None = None
     annotations: list[ZoteroAnnotation] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    authors: list[str] = field(default_factory=list)
+    item_type: str | None = None
+    url: str | None = None
+    volume: str | None = None
+    issue: str | None = None
+    pages: str | None = None
 
 
 @dataclass
@@ -61,3 +67,5 @@ class ZoteroConfig:
     api_key: str | None = None
     auto_tag: bool = True
     sync_bib: str | None = "references.bib"
+    auto_sync: bool = True
+    sync_interval: float = 10.0

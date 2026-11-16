@@ -1,6 +1,0 @@
-{
-  "name": "scifi",
-  "version": "1.0.0",
-  "description": "Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, mathematical derivations, and LaTeX manuscripts.",
-  "contextFileName": "rules/AGENTS.md"
-}

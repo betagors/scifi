@@ -57,3 +57,13 @@ Returns:
   ]
 }
 ```
+
+---
+
+## Theorem-to-Algorithm & Assumption Integrity Checklist
+
+Beyond structural proof resolution, audit every theoretical statement against these three universal rigor checks:
+
+1. **Conditional Oracle Guarantee vs. Practical Implementation:** Check whether the theorem assumes an idealized estimator, exact subproblem solver, or $\delta$-optimal oracle while the implemented method couples learned models, greedy steps, or heuristic approximations. Unless the composite pipeline is proven to inherit that bound, explicitly state that the theorem certifies the idealized model/oracle and separate that conditional guarantee from empirical performance.
+2. **Hypothesis, Domain & Weight Completeness:** For boundedness, convergence, or weighted-norm theorems, verify that all required regularity, domain, positivity, and parameter-weight restrictions (e.g., $\omega_i > 0$, Lipschitz constants, compactness) are explicitly stated in the theorem hypotheses or derived cleanly.
+3. **Avoid Strawman "Paradox" Framing:** Do not frame structural or sample-path refinements as a breakdown or "paradox" of classical theory by overstating what classical theory requires (e.g., confusing expectation-level conditions with deterministic per-sample monotonicity). Present exact discrepancy bounds on their own mathematical merit.

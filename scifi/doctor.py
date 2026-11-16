@@ -21,23 +21,27 @@ Executes a cohesive 6-stage peer-review readiness pipeline across single-file
 
 from __future__ import annotations
 
+import json
 import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import bibtexparser
 
 from scifi.argus.engine import ArgusEngine
+from scifi.cache import RegistryCache
 from scifi.citation_verifier import audit_bib_file
-from scifi.config import resolve_config
+from scifi.config import resolve_config, validate_workspace_config
 from scifi.figures import audit_figure_accessibility
-from scifi.human import audit_human_prose
 from scifi.latex.compiler import compile_latex
 from scifi.latex.project import resolve_latex_project
 from scifi.latex.venue import check_venue_compliance
 from scifi.layout import audit_trim_budget
 from scifi.logging import get_logger
 from scifi.math.notation import check_notation
+from scifi.orwell import audit_orwell_prose
 from scifi.proofs import audit_latex_proofs
 from scifi.reproducibility import audit_reproducibility
 from scifi.review.claims import audit_claims
@@ -66,6 +70,229 @@ def _extract_bib_keys_offline(bib_paths: list[Path]) -> set[str]:
     return keys
 
 
+def _extract_critical_blockers(stages: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract critical submission blockers (retractions, double-blind leaks, orphan proofs)."""
+    blockers: list[dict[str, Any]] = []
+
+    alex = stages.get("alex_bibliography", {})
+    retracted = int(alex.get("retracted_count", 0) or 0)
+    if retracted > 0:
+        blockers.append(
+            {
+                "type": "retraction",
+                "severity": "CRITICAL",
+                "location": ", ".join(alex.get("bib_files", [])) or "bibliography",
+                "message": f"{retracted} retracted paper(s) cited in bibliography.",
+            }
+        )
+
+    venue = stages.get("venue_compliance", {})
+    for iss in venue.get("issues", []):
+        if iss.get("category") == "ANONYMIZATION_LEAK" and iss.get("severity") == "ERROR":
+            loc = f"{iss.get('file', '')}:{iss.get('line', '')}".strip(":")
+            blockers.append(
+                {
+                    "type": "double_blind_leak",
+                    "severity": "CRITICAL",
+                    "location": loc,
+                    "message": iss.get("message", "Double-blind anonymization leak detected."),
+                }
+            )
+
+    repro = stages.get("reproducibility", {})
+    for iss in repro.get("issues", []):
+        if str(iss.get("category", "")).lower() == "double_blind_code" and iss.get("severity") == "CRITICAL":
+            blockers.append(
+                {
+                    "type": "double_blind_leak",
+                    "severity": "CRITICAL",
+                    "location": iss.get("location", "manuscript"),
+                    "message": iss.get("message", "Non-anonymous repository URL detected."),
+                }
+            )
+
+    proofs = stages.get("proofs_completeness", {})
+    orphan_count = int(proofs.get("orphan_theorems", 0) or 0)
+    if orphan_count > 0:
+        proof_issues = [i for i in proofs.get("issues", []) if i.get("severity") == "CRITICAL"]
+        if proof_issues:
+            for pi in proof_issues:
+                blockers.append(
+                    {
+                        "type": "orphan_proof",
+                        "severity": "CRITICAL",
+                        "location": pi.get("theorem", ""),
+                        "message": pi.get("message", "Orphan theorem without proof."),
+                    }
+                )
+        else:
+            blockers.append(
+                {
+                    "type": "orphan_proof",
+                    "severity": "CRITICAL",
+                    "location": "proofs",
+                    "message": f"{orphan_count} orphan theorem(s) lacking proof or appendix reference.",
+                }
+            )
+
+    return blockers
+
+
+def _extract_issue_signatures(stages: dict[str, Any]) -> dict[str, str]:
+    """Build deterministic issue_id -> description mapping for cross-draft diffing."""
+    issues: dict[str, str] = {}
+
+    alex = stages.get("alex_bibliography", {})
+    for key in alex.get("missing_bib_keys", []):
+        issues[f"alex:missing_bib:{key}"] = f"Missing .bib key: {key}"
+    if int(alex.get("retracted_count", 0) or 0) > 0:
+        issues["alex:retracted_citations"] = f"{alex['retracted_count']} retracted citation(s)"
+
+    argus = stages.get("argus_attribution", {})
+    for f in argus.get("findings", []):
+        src = f.get("source_file", "")
+        ent = f.get("matched_entity", "")
+        issues[f"argus:{src}:{ent}"] = f"Argus ({src}): {ent}"
+
+    turing = stages.get("turing_notation", {})
+    for ms in turing.get("multi_variant_symbols", []):
+        sym = ms.get("base_symbol", "")
+        issues[f"turing:notation:{sym}"] = f"Inconsistent notation for '{sym}'"
+
+    popper = stages.get("popper_claims", {})
+    for fl in popper.get("flags", []):
+        src = fl.get("file", "")
+        txt = (fl.get("matched_text", "") or "")[:40]
+        issues[f"popper:{src}:{txt}"] = f"Popper ({src}): {txt}"
+
+    shannon = stages.get("shannon_metadata", {})
+    triage = shannon.get("triage_score")
+    if isinstance(triage, (int, float)) and triage < 70:
+        issues["shannon:low_triage_score"] = f"Title/Abstract Triage Score < 70 ({triage}/100)"
+
+    venue = stages.get("venue_compliance", {})
+    for iss in venue.get("issues", []):
+        if iss.get("severity") in ("ERROR", "WARNING"):
+            cat = iss.get("category", "")
+            src = iss.get("file", "")
+            msg = (iss.get("message", "") or "")[:60]
+            issues[f"venue:{cat}:{src}:{msg}"] = f"[{iss.get('severity')}] {src}: {msg}"
+
+    human = stages.get("human_stylometry", {})
+    h_score = human.get("human_score")
+    if isinstance(h_score, (int, float)) and h_score < 70:
+        issues["human:low_authenticity_score"] = f"Human Authenticity Score < 70 ({h_score}/100)"
+
+    figures = stages.get("figures_visual", {})
+    for fi in figures.get("issues", []):
+        if fi.get("severity") == "CRITICAL":
+            cat = fi.get("category", "")
+            ref = fi.get("figure_ref", "")
+            issues[f"figures:{cat}:{ref}"] = f"Figure '{ref}': {(fi.get('message', '') or '')[:60]}"
+
+    proofs = stages.get("proofs_completeness", {})
+    for pi in proofs.get("issues", []):
+        cat = pi.get("category", "")
+        thm = pi.get("theorem", "")
+        issues[f"proofs:{cat}:{thm}"] = f"Proof '{thm}': {(pi.get('message', '') or '')[:60]}"
+
+    return issues
+
+
+def _history_file_path(tex_or_dir_path: str | Path) -> Path:
+    """Resolve the .scifi/audit_history.json path for a workspace or file."""
+    p = Path(tex_or_dir_path)
+    workspace_dir = p if p.is_dir() else p.parent
+    return workspace_dir / ".scifi" / "audit_history.json"
+
+
+def load_audit_history(tex_or_dir_path: str | Path = ".") -> list[dict[str, Any]]:
+    """Load persisted doctor audit runs from `.scifi/audit_history.json`."""
+    hist_path = _history_file_path(tex_or_dir_path)
+    if not hist_path.is_file():
+        return []
+    try:
+        data = json.loads(hist_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("runs"), list):
+            return data["runs"]
+    except Exception as e:
+        logger.warning("Failed to read audit history at %s: %s", hist_path, e)
+    return []
+
+
+def record_audit_history(
+    workspace_dir: Path,
+    result: dict[str, Any],
+    venue: str,
+    double_blind: bool,
+) -> dict[str, Any]:
+    """Persist a doctor run to `.scifi/audit_history.json` and return the delta vs previous run."""
+    hist_path = workspace_dir / ".scifi" / "audit_history.json"
+    runs = load_audit_history(workspace_dir)
+
+    stages = result.get("stages", {})
+    curr_issues = _extract_issue_signatures(stages)
+    curr_score = int(result.get("readiness_score", 0))
+    blockers = result.get("critical_blockers", [])
+
+    prev = runs[-1] if runs else None
+    run_number = len(runs) + 1
+
+    if prev is not None:
+        prev_issues = prev.get("issues", {})
+        if not isinstance(prev_issues, dict):
+            prev_issues = {}
+        prev_keys = set(prev_issues.keys())
+        curr_keys = set(curr_issues.keys())
+        fixed_keys = sorted(prev_keys - curr_keys)
+        regressed_keys = sorted(curr_keys - prev_keys)
+        prev_score = int(prev.get("readiness_score", 0))
+        delta: dict[str, Any] = {
+            "history_path": str(hist_path),
+            "run_number": run_number,
+            "previous_run_number": prev.get("run_number", len(runs)),
+            "previous_timestamp": prev.get("timestamp"),
+            "previous_score": prev_score,
+            "score_delta": curr_score - prev_score,
+            "fixed_issues": [{"id": k, "description": prev_issues[k]} for k in fixed_keys],
+            "regressed_issues": [{"id": k, "description": curr_issues[k]} for k in regressed_keys],
+            "persisting_issues_count": len(curr_keys & prev_keys),
+        }
+    else:
+        delta = {
+            "history_path": str(hist_path),
+            "run_number": run_number,
+            "previous_run_number": None,
+            "previous_timestamp": None,
+            "previous_score": None,
+            "score_delta": None,
+            "fixed_issues": [],
+            "regressed_issues": [],
+            "persisting_issues_count": len(curr_issues),
+        }
+
+    entry = {
+        "run_number": run_number,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "entrypoint": result.get("project", {}).get("entrypoint"),
+        "venue": venue,
+        "double_blind": double_blind,
+        "readiness_score": curr_score,
+        "readiness_tier": result.get("readiness_tier"),
+        "critical_blockers_count": len(blockers),
+        "critical_blockers": blockers,
+        "issues": curr_issues,
+    }
+    runs.append(entry)
+
+    hist_path.parent.mkdir(parents=True, exist_ok=True)
+    hist_path.write_text(
+        json.dumps({"schema_version": 1, "runs": runs}, indent=2),
+        encoding="utf-8",
+    )
+    return delta
+
+
 def audit_manuscript(
     tex_or_dir_path: str | Path = ".",
     bib_path: str | Path | None = None,
@@ -74,13 +301,17 @@ def audit_manuscript(
     compile_pdf: bool = False,
     live: bool = False,
     output_report: str | Path | None = None,
+    persist_history: bool = True,
+    parallel: bool = True,
+    render_previews: bool = False,
 ) -> dict[str, Any]:
     """
-    Run the complete 6-stage SciFi Manuscript Readiness Pipeline on a single .tex file
+    Run the complete SciFi Manuscript Readiness Pipeline on a single .tex file
     or multi-file LaTeX project directory (`main.tex` + `sections/*.tex`).
     """
     p = Path(tex_or_dir_path)
     workspace_dir = p if p.is_dir() else p.parent
+    config_validation = validate_workspace_config(workspace_dir=workspace_dir)
     cfg = resolve_config(workspace_dir=workspace_dir)
 
     effective_venue = venue or cfg.target_venue or "general"
@@ -105,13 +336,14 @@ def audit_manuscript(
     missing_bib_keys = sorted(cited_keys_set - bib_keys) if proj.bib_files else list(proj.cited_keys)
     uncited_bib_keys = sorted(bib_keys - cited_keys_set)
 
+    live_cache = RegistryCache() if live else None
     live_bib_reports: list[dict[str, Any]] = []
     retracted_count = 0
     mismatch_count = 0
     if live and proj.bib_files:
         for bf in proj.bib_files:
             try:
-                rep = audit_bib_file(bf, search_missing=True)
+                rep = audit_bib_file(bf, search_missing=True, cache=live_cache)
                 retracted_count += rep.retracted_count
                 mismatch_count += rep.mismatch_count
                 live_bib_reports.append(
@@ -137,54 +369,79 @@ def audit_manuscript(
         "live_audit": live_bib_reports if live else "SKIPPED_OFFLINE (pass --live to query Crossref/OpenAlex)",
     }
 
-    # ── Stage 2: Attribution & Plagiarism Audit (Argus) ──────────────────────
+    # ── Stages 2–11: Independent Manuscript Audits (parallel or sequential) ──
     argus_engine = ArgusEngine(
         author_whitelist=cfg.author_whitelist,
         preprint_doi=cfg.preprint_doi,
         enable_search=live,
+        cache=live_cache,
     )
-    argus_rep = argus_engine.audit_file(proj.entrypoint)
+
+    if parallel:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            fut_argus = pool.submit(argus_engine.audit_file, proj.entrypoint)
+            fut_turing = pool.submit(check_notation, proj.entrypoint)
+            fut_popper = pool.submit(audit_claims, proj.entrypoint)
+            fut_shannon = pool.submit(
+                evaluate_manuscript_metadata,
+                tex_path=proj.entrypoint,
+                target_venue=effective_venue,
+                live=live,
+            )
+            fut_venue = pool.submit(
+                check_venue_compliance,
+                proj.entrypoint,
+                venue=effective_venue,
+                double_blind=effective_double_blind,
+                author_names=cfg.author_whitelist,
+            )
+            fut_human = pool.submit(audit_orwell_prose, proj.entrypoint)
+            fut_figures = pool.submit(audit_figure_accessibility, proj.entrypoint, render_previews=render_previews)
+            fut_proofs = pool.submit(audit_latex_proofs, proj.entrypoint)
+            fut_repro = pool.submit(
+                audit_reproducibility,
+                proj.entrypoint,
+                venue=effective_venue or "neurips",
+                double_blind=effective_double_blind,
+            )
+            fut_trim = pool.submit(audit_trim_budget, proj.entrypoint, render_previews=render_previews)
+
+            argus_rep = fut_argus.result()
+            stage_turing = fut_turing.result()
+            stage_popper = fut_popper.result()
+            stage_shannon = fut_shannon.result()
+            stage_venue = fut_venue.result()
+            stage_human = fut_human.result()
+            stage_figures = fut_figures.result()
+            stage_proofs = fut_proofs.result()
+            stage_repro = fut_repro.result()
+            stage_trim = fut_trim.result()
+    else:
+        argus_rep = argus_engine.audit_file(proj.entrypoint)
+        stage_turing = check_notation(proj.entrypoint)
+        stage_popper = audit_claims(proj.entrypoint)
+        stage_shannon = evaluate_manuscript_metadata(
+            tex_path=proj.entrypoint,
+            target_venue=effective_venue,
+            live=live,
+        )
+        stage_venue = check_venue_compliance(
+            proj.entrypoint,
+            venue=effective_venue,
+            double_blind=effective_double_blind,
+            author_names=cfg.author_whitelist,
+        )
+        stage_human = audit_orwell_prose(proj.entrypoint)
+        stage_figures = audit_figure_accessibility(proj.entrypoint, render_previews=render_previews)
+        stage_proofs = audit_latex_proofs(proj.entrypoint)
+        stage_repro = audit_reproducibility(
+            proj.entrypoint,
+            venue=effective_venue or "neurips",
+            double_blind=effective_double_blind,
+        )
+        stage_trim = audit_trim_budget(proj.entrypoint, render_previews=render_previews)
+
     stage_argus = argus_rep.to_dict()
-
-    # ── Stage 3: Cross-Section Notation Consistency (Turing) ─────────────────
-    stage_turing = check_notation(proj.entrypoint)
-
-    # ── Stage 4: Adversarial Claims Scanner (Popper) ─────────────────────────
-    stage_popper = audit_claims(proj.entrypoint)
-
-    # ── Stage 5: Title, 5-Beat Abstract & SEO Scorecard (Shannon) ────────────
-    stage_shannon = evaluate_manuscript_metadata(
-        tex_path=proj.entrypoint,
-        target_venue=effective_venue,
-        live=live,
-    )
-
-    # ── Stage 6: Venue Compliance & Double-Blind Anonymization ───────────────
-    stage_venue = check_venue_compliance(
-        proj.entrypoint,
-        venue=effective_venue,
-        double_blind=effective_double_blind,
-        author_names=cfg.author_whitelist,
-    )
-
-    # ── Stage 7: Humanizer & LaTeX Forensic Stylometry (Human) ───────────────
-    stage_human = audit_human_prose(proj.entrypoint)
-
-    # ── Stage 8: Figure & Visual Accessibility (Da Vinci) ───────────────────
-    stage_figures = audit_figure_accessibility(proj.entrypoint)
-
-    # ── Stage 9: Theorem–Proof Completeness (Euclid) ────────────────────────
-    stage_proofs = audit_latex_proofs(proj.entrypoint)
-
-    # ── Stage 10: Conference Reproducibility Checklist (Bacon) ──────────────
-    stage_repro = audit_reproducibility(
-        proj.entrypoint,
-        venue=effective_venue or "neurips",
-        double_blind=effective_double_blind,
-    )
-
-    # ── Stage 11: Page Budget Micro-Trimming (Layout) ────────────────────────
-    stage_trim = audit_trim_budget(proj.entrypoint)
 
     stage_compiler: dict[str, Any] | None = None
     if compile_pdf:
@@ -313,6 +570,16 @@ def audit_manuscript(
         },
     }
 
+    result["config_validation"] = config_validation
+    result["critical_blockers"] = _extract_critical_blockers(result["stages"])
+    if persist_history:
+        result["history_delta"] = record_audit_history(
+            workspace_dir=workspace_dir,
+            result=result,
+            venue=effective_venue,
+            double_blind=effective_double_blind,
+        )
+
     report_md = format_doctor_report_markdown(result)
     result["report_markdown"] = report_md
 
@@ -354,6 +621,35 @@ def format_doctor_report_markdown(data: dict[str, Any]) -> str:
         lines.append("## 🔍 Score Deductions Summary")
         for d in data["deductions"]:
             lines.append(f"- {d}")
+        lines.append("")
+
+    blockers = data.get("critical_blockers", [])
+    if blockers:
+        lines.append("## 🚫 Critical Submission Blockers")
+        for b in blockers:
+            loc = f" (`{b['location']}`)" if b.get("location") else ""
+            lines.append(f"- **[{b['type'].upper()}]**{loc}: {b['message']}")
+        lines.append("")
+
+    delta = data.get("history_delta")
+    if delta:
+        lines.append("## 📈 Readiness Ledger (Draft Progress)")
+        run_num = delta.get("run_number", 1)
+        prev_score = delta.get("previous_score")
+        if prev_score is not None:
+            sc_delta = delta.get("score_delta", 0)
+            delta_str = f"+{sc_delta}" if sc_delta > 0 else str(sc_delta)
+            lines.append(f"- **Run #{run_num}** | **Score Delta:** `{delta_str} pts` (previous: {prev_score}/100)")
+            fixed = delta.get("fixed_issues", [])
+            regressed = delta.get("regressed_issues", [])
+            lines.append(f"- **Fixed Issues ({len(fixed)}):** " + ("None" if not fixed else ""))
+            for fx in fixed[:8]:
+                lines.append(f"  - ✅ {fx['description']}")
+            lines.append(f"- **Regressed Issues ({len(regressed)}):** " + ("None" if not regressed else ""))
+            for rg_item in regressed[:8]:
+                lines.append(f"  - ❌ {rg_item['description']}")
+        else:
+            lines.append("- **Run #1** recorded in `.scifi/audit_history.json` (baseline established).")
         lines.append("")
 
     lines.extend(
@@ -423,7 +719,7 @@ def format_doctor_report_markdown(data: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "## 7. Humanizer & LaTeX Forensic Stylometry (Human)",
+                "## 7. Orwell Academic Prose & LaTeX Stylometry (Orwell)",
                 f"- **Human Authenticity Score:** **{human.get('human_score', 'N/A')} / 100** (`{human.get('classification', 'N/A')}`)",
                 f"- **Forensic & Stylometric Flags:** {human.get('total_flags', 0)}",
             ]

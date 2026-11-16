@@ -109,7 +109,19 @@ def cmd_submission(args: argparse.Namespace) -> int:
             conflicts=getattr(args, "conflicts", None),
             editor_name=getattr(args, "editor", None),
             output_dir=getattr(args, "output", None),
+            strict=getattr(args, "strict", False),
+            double_blind=True if getattr(args, "double_blind", False) else None,
+            live=getattr(args, "live", False),
         )
+        if res_bundle.status == "BLOCKED":
+            if getattr(args, "json", False):
+                print(json.dumps(res_bundle.to_dict(), indent=2))
+            else:
+                print(f"[BLOCKED] {res_bundle.error_message}", file=sys.stderr)
+                for b in res_bundle.blockers:
+                    loc = f" ({b['location']})" if b.get("location") else ""
+                    print(f"  - [{b['type'].upper()}]{loc}: {b['message']}", file=sys.stderr)
+            return 1
         if getattr(args, "json", False):
             print(json.dumps(res_bundle.to_dict(), indent=2))
         else:

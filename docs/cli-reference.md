@@ -30,7 +30,7 @@ SciFi provides two command-line binary aliases: `sf` and `scifi`. Both provide a
 | `sf literature` | Hypatia lineage discovery graph, gap analysis, and central knowledge store |
 | `sf scaffold` | Scaffold a standard 2-pillar SciFi research project workspace |
 | `sf compile` | Autonomously compile LaTeX manuscripts with log diagnostic parsing |
-| `sf setup` | Automatically configure AI coding environments (Claude Code, Cursor, Antigravity) |
+| `sf setup` | Automatically configure Google Antigravity (`~/.gemini/config/mcp_config.json` or `.agents/mcp_config.json`) |
 | `sf ui` | Launch the browser-based research cockpit UI |
 
 ---

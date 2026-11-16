@@ -218,6 +218,9 @@ class SubmissionBundleResult:
     title_page_path: str | None = None
     code_zip_path: str | None = None
     manifest_path: str | None = None
+    blockers: list[dict[str, Any]] = field(default_factory=list)
+    readiness_score: int | None = None
+    error_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -229,4 +232,7 @@ class SubmissionBundleResult:
             "title_page_path": self.title_page_path,
             "code_zip_path": self.code_zip_path,
             "manifest_path": self.manifest_path,
+            "blockers": self.blockers,
+            "readiness_score": self.readiness_score,
+            "error_message": self.error_message,
         }

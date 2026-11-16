@@ -6,6 +6,7 @@ with pre-configured LaTeX structures and Zotero collection binding.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -203,11 +204,28 @@ def scaffold_project(
         "port = 23119",
         'sync_bib = "references.bib"',
         "auto_tag = true",
+        "auto_sync = true",
     ]
 
     config_file = scifi_dir / "config.toml"
     if not config_file.exists():
         config_file.write_text("\n".join(config_lines) + "\n", encoding="utf-8")
+
+    if zotero_dir and not os.environ.get("PYTEST_CURRENT_TEST"):
+        if col_str:
+            try:
+                from scifi.literature.zotero.writer import ZoteroLocalWriter
+
+                writer = ZoteroLocalWriter(stage_file=scifi_dir / "zotero_write_queue.json")
+                writer.create_collection(col_str)
+            except Exception:
+                pass
+        try:
+            from scifi.literature.zotero.sync import register_zotero_project
+
+            register_zotero_project(root)
+        except Exception:
+            pass
 
     return {
         "status": "SUCCESS",

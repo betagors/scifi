@@ -88,3 +88,11 @@ Audit empirical simulation data: compute mean, standard error, confidence interv
 |---|---|---|
 | `is_statistically_sound: true` | $N \ge 30$, satisfying Central Limit Theorem | Safe to report mean, margin of error, and confidence interval in paper. |
 | `is_statistically_sound: false` | $N < 30$ ($N$ too small for CLT assumption) | Warn user about `clt_warning`. Recommend increasing sample size to at least 30 runs, or explicitly note Student's $t$ caveat. |
+
+---
+
+## Analytical Bounds vs. Empirical Regression Fits
+
+When comparing numerical trade-off or scaling curves (e.g., $y = a + b x^{-\alpha}$ convergence, error, or energy–latency trade-off plots) against theoretical bounds:
+- **Never conflate an empirical fit with analytical bound verification:** If the derived theoretical bound constant $B$ differs by orders of magnitude from an empirically fitted regression coefficient $b$, or if the asymptotic baseline $a$ is not established by an independent exact solver, ground-truth oracle, or certified lower bound, do **not** label the fitted curve as quantitative verification of the theorem bound.
+- **Required Framing:** Either derive a tighter valid analytical constant and independently certify the reference baseline, or explicitly separate the theorem's worst-case upper/lower bound from the empirical trend—presenting the plot as *empirical scaling consistency with the predicted functional rate* rather than quantitative proof of the theorem's constants.

@@ -50,7 +50,8 @@ The abstract must satisfy two distinct readers simultaneously:
 - **The Non-Technical / Interdisciplinary Reader (or Generalist Editor):** Needs to understand the motivation, intuition, and practical significance without cognitive exhaustion.
 - **The Expert Peer Reviewer:** Scrutinizes technical bottlenecks, mathematical specificity, and quantified benchmark baselines.
 
-### Structure (Strictly 150–220 Words):
+### Structure (Strictly 150–220 Words; Venue-Aware):
+- **Venue Word Caps:** Target 150–200 words (250 max) for `ieee`/`acm`, 150–250 words for `elsevier`/`springer`, and 150–220 words for `general`. Keep experimental setup details (e.g., seed counts) out of the abstract if trimming to meet a strict 200-word cap.
 - **Beat 1: Context & Lay-Accessible Problem Hook (1–2 sentences):**
   Ground the domain in concrete physical or operational reality. Keep sentences under 30 words. No unanchored equations ($O(N)$), nested clauses, or hyper-niche jargon.
 - **Beat 2: Specific Technical Bottleneck (1 sentence):**
@@ -72,6 +73,7 @@ Ensure the primary search keyphrase appears naturally **three times** throughout
 - **Zero em dashes (—):** Replace with parentheses, standard commas, or discrete sentences.
 - **Zero AI clichés:** Eliminate *delve*, *pivotal*, *testament*, *tapestry*, *seamless*, *groundbreaking*, *crucial*, *vital*.
 - **No run-on sentences:** Keep all sentences $\le 35$ words.
+- **Numerical style consistency:** Use digits for numbers $\ge 10$ (e.g., `30 episodes`, not `thirty`) and for experimental counts paired with quantitative metrics (e.g., `5 seeds` alongside `3.66 ms` or `2.35%`).
 - **No first-person singular pronouns:** Use objective academic passive voice or discipline-standard active plural.
 
 ---
@@ -80,6 +82,7 @@ Ensure the primary search keyphrase appears naturally **three times** throughout
 
 Do not waste keyword metadata slots by duplicating words already present in the chosen title. Search engines (Scopus, Web of Science, Google Scholar) index both title and keywords:
 - **Non-Redundancy Rule:** Ensure author keywords share $<35\%$ word overlap with the title.
+- **Canonical Acronym Expansion (Controlled Taxonomies):** Reviewers and Associate Editors expect at least one canonical venue taxonomy term (IEEE Thesaurus, ACM CCS, MeSH, Inspec) in the keywords. When the title uses a domain or methodological acronym (e.g., `GNN`, `MCMC`, `PDE`, `CRISPR`), spell out the canonical full phrase in the keywords (e.g., *"graph neural networks"*, *"Markov chain Monte Carlo"*, *"partial differential equations"*)—this satisfies taxonomy expectations and matches full-phrase search queries while keeping title-keyword word overlap at $0\%$.
 - **Vocabulary Broadening:** Allocate 5–7 keywords across:
   - 2 Controlled Thesaurus terms (IEEE Thesaurus, Inspec, MeSH, ACM Computing Classification).
   - 2 Application / Domain context terms (e.g., *"satellite communications"*, *"edge computing"*).

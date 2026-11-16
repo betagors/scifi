@@ -20,19 +20,19 @@ uv run sf doctor --env
 
 ---
 
-## Configuring AI Agents & MCP
+## Configuring Google Antigravity & MCP
 
-SciFi automatically detects and configures all popular AI coding environments with a single command:
+SciFi automatically detects and configures Google Antigravity with a single command:
 
 ```bash
 uv run sf setup --auto
 ```
 
-This registers the 46 FastMCP tools and syncs academic rules into:
-- **Claude Code**: `~/.claude.json`
-- **Cursor**: `~/.cursor/mcp.json`
-- **Antigravity**: `~/.gemini/antigravity/mcp_config.json`
-- **OpenCode**: `opencode.json`
+This registers the FastMCP server in:
+- **Antigravity (Global)**: `~/.gemini/config/mcp_config.json`
+- **Antigravity (Workspace)**: `.agents/mcp_config.json` (plus `AGENTS.md` via `sf setup --workspace` or `sf sync`)
+
+Or install the repository directly as a native Antigravity plugin (`plugin.json`, `mcp_config.json`, `hooks.json`, `rules/AGENTS.md`, `skills/`, `agents/`).
 
 ### Manual MCP Server Configuration
 

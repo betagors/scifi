@@ -320,6 +320,33 @@ class TestNotation(unittest.TestCase):
         self.assertEqual(res["status"], "VALID")
         self.assertTrue(res["is_correct"])
 
+    def test_verify_derivative_sympy_builtin_symbol_collisions(self):
+        # Regression test: Q, S, N, beta, gamma must be treated as Symbols, not SymPy singletons/functions
+        res = verify_derivative(
+            expr="(V + Y) * t * k * f**2 - (t * Q / C) * f",
+            var="f",
+            claimed="2 * (V + Y) * t * k * f - t * Q / C",
+        )
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+
+        step = verify_derivation_step(
+            lhs="(S + N) * gamma * beta * Q",
+            rhs="Q * beta * gamma * (N + S)",
+        )
+        self.assertEqual(step["status"], "VALID")
+        self.assertTrue(step["is_correct"])
+
+    def test_verify_derivative_mixed_latex_and_python_power(self):
+        # Regression test: mixed ** and LaTeX commands like \alpha, \psi
+        res = verify_derivative(
+            expr=r"-3*\alpha*(1 - b)**2 + \psi*b",
+            var="b",
+            claimed=r"6*\alpha*(1 - b) + \psi",
+        )
+        self.assertEqual(res["status"], "VALID")
+        self.assertTrue(res["is_correct"])
+
 
 if __name__ == "__main__":
     unittest.main()

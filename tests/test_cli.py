@@ -79,14 +79,13 @@ def test_cli_subcommand_helps(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_setup_list_flag(capsys: pytest.CaptureFixture[str]) -> None:
-    """setup --list should display supported environments and exit 0."""
+    """setup --list should display supported Antigravity environments and exit 0."""
     code = scifi.cli.main(["setup", "--list"])
     assert code == 0
     captured = capsys.readouterr().out
     assert "Supported AI environments" in captured
-    assert "OpenCode" in captured
-    assert "Claude Code" in captured
-    assert "VS Code Cline" in captured
+    assert "Antigravity" in captured
+    assert "Antigravity (Workspace)" in captured
 
 
 def test_setup_validate_server() -> None:
@@ -95,55 +94,25 @@ def test_setup_validate_server() -> None:
 
 
 def test_setup_detect_environments_when_present(tmp_path: Path) -> None:
-    """Detect environments when target parent directories exist."""
+    """Detect Antigravity global and workspace configurations when directories exist."""
     mock_home = tmp_path / "home"
-    mock_appdata = tmp_path / "appdata"
     mock_project = tmp_path / "project"
 
-    # Create directories indicating installed environments
     (mock_home / ".gemini").mkdir(parents=True)
-    (mock_appdata / "Claude").mkdir(parents=True)
-    (mock_project / ".cursor").mkdir(parents=True)
-    (mock_home / ".claude").mkdir(parents=True)
-    (mock_appdata / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings").mkdir(parents=True)
-    (mock_appdata / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings").mkdir(parents=True)
-    (mock_home / ".config" / "opencode").mkdir(parents=True)
-    (mock_home / ".codeium" / "windsurf").mkdir(parents=True)
+    (mock_project / ".agents").mkdir(parents=True)
 
     envs = scifi.setup_cli.detect_environments(
         home_dir=mock_home,
-        appdata_dir=mock_appdata,
         project_dir=mock_project,
         check_path=False,
     )
 
     names = {e.name: e for e in envs}
-    assert "Antigravity" in names
+    assert set(names.keys()) == {"Antigravity", "Antigravity (Workspace)"}
     assert names["Antigravity"].detected is True
     assert names["Antigravity"].config_path == mock_home / ".gemini" / "config" / "mcp_config.json"
-
-    assert "Claude Desktop" in names
-    assert names["Claude Desktop"].detected is True
-
-    assert "Claude Code (Global)" in names
-    assert names["Claude Code (Global)"].detected is True
-
-    assert "Cursor" in names
-    assert names["Cursor"].detected is True
-    assert names["Cursor"].config_path == mock_project / ".cursor" / "mcp.json"
-
-    assert "VS Code Cline" in names
-    assert names["VS Code Cline"].detected is True
-
-    assert "VS Code Roo Code" in names
-    assert names["VS Code Roo Code"].detected is True
-
-    assert "OpenCode (Global)" in names
-    assert names["OpenCode (Global)"].detected is True
-    assert names["OpenCode (Global)"].format_type == "opencode"
-
-    assert "Windsurf" in names
-    assert names["Windsurf"].detected is True
+    assert names["Antigravity (Workspace)"].detected is True
+    assert names["Antigravity (Workspace)"].config_path == mock_project / ".agents" / "mcp_config.json"
 
 
 def test_setup_detect_environments_when_absent(tmp_path: Path) -> None:
@@ -237,8 +206,7 @@ def test_setup_install_mcp_config_dry_run(tmp_path: Path) -> None:
 
 def test_setup_install_mcp_config_uvx_mode(tmp_path: Path) -> None:
     """install_mcp_config with use_uvx=True must emit zero-install uvx scifi server command."""
-    # Standard format
-    std_cfg = tmp_path / "claude_desktop_config.json"
+    std_cfg = tmp_path / "mcp_config.json"
     ok = scifi.setup_cli.install_mcp_config(
         target=std_cfg,
         use_uvx=True,
@@ -248,70 +216,6 @@ def test_setup_install_mcp_config_uvx_mode(tmp_path: Path) -> None:
     entry = data["mcpServers"]["scifi"]
     assert entry["command"] == "uvx"
     assert entry["args"] == ["scifi", "server"]
-
-    # OpenCode format
-    oc_cfg = tmp_path / "opencode.json"
-    ok = scifi.setup_cli.install_mcp_config(
-        target=oc_cfg,
-        format_type="opencode",
-        use_uvx=True,
-    )
-    assert ok is True
-    oc_data = json.loads(oc_cfg.read_text(encoding="utf-8"))
-    oc_entry = oc_data["mcp"]["scifi"]
-    assert oc_entry["command"] == ["uvx", "scifi", "server"]
-
-
-def test_setup_install_opencode_schema(tmp_path: Path) -> None:
-    """install_mcp_config with format_type='opencode' must format using 'mcp' dict and flat command."""
-    target_cfg = tmp_path / "opencode.json"
-    fake_scifi_root = tmp_path / "scifi_repo"
-    fake_scifi_root.mkdir()
-
-    success = scifi.setup_cli.install_mcp_config(
-        target=target_cfg,
-        scifi_root=fake_scifi_root,
-        dry_run=False,
-        format_type="opencode",
-    )
-
-    assert success is True
-    assert target_cfg.exists()
-    data = json.loads(target_cfg.read_text(encoding="utf-8"))
-    assert "mcp" in data
-    assert "scifi" in data["mcp"]
-    entry = data["mcp"]["scifi"]
-    assert entry["type"] == "local"
-    assert entry["command"] == ["uv", "run", "python", "-m", "scifi.server"]
-    assert entry["cwd"] == str(fake_scifi_root.resolve())
-
-
-def test_setup_install_opencode_preserves_existing(tmp_path: Path) -> None:
-    """install_mcp_config for OpenCode must preserve existing properties and tools."""
-    target_cfg = tmp_path / "opencode.json"
-    initial_data = {
-        "model": "claude-3-5-sonnet",
-        "mcp": {
-            "custom-tool": {
-                "type": "local",
-                "command": ["echo", "hello"],
-            }
-        },
-    }
-    target_cfg.write_text(json.dumps(initial_data, indent=2), encoding="utf-8")
-
-    success = scifi.setup_cli.install_mcp_config(
-        target=target_cfg,
-        scifi_root=tmp_path,
-        dry_run=False,
-        format_type="opencode",
-    )
-
-    assert success is True
-    data = json.loads(target_cfg.read_text(encoding="utf-8"))
-    assert data["model"] == "claude-3-5-sonnet"
-    assert "custom-tool" in data["mcp"]
-    assert "scifi" in data["mcp"]
 
 
 def test_setup_cmd_setup_target_flag(tmp_path: Path) -> None:
@@ -466,7 +370,7 @@ def test_cli_subcommand_aliases(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_rule_sync_new_file(tmp_path: Path) -> None:
     """sync_rule_file on a non-existent file should create it with marker bounds."""
-    target = tmp_path / "CLAUDE.md"
+    target = tmp_path / "AGENTS.md"
     rule_content = "# SciFi Rules\nAlways verify DOIs."
 
     success = scifi.setup_cli.sync_rule_file(target, rule_content)
@@ -482,7 +386,7 @@ def test_rule_sync_new_file(tmp_path: Path) -> None:
 
 def test_rule_sync_preserves_existing_user_instructions(tmp_path: Path) -> None:
     """sync_rule_file on an existing file without markers must append rules without destroying user text."""
-    target = tmp_path / "CLAUDE.md"
+    target = tmp_path / "AGENTS.md"
     user_header = "# Custom User Instructions\n\nAlways use 2 spaces indentation."
     target.write_text(user_header, encoding="utf-8")
 
@@ -500,7 +404,7 @@ def test_rule_sync_preserves_existing_user_instructions(tmp_path: Path) -> None:
 
 def test_rule_sync_idempotent_update(tmp_path: Path) -> None:
     """sync_rule_file on a file with existing markers must update between markers only."""
-    target = tmp_path / ".clinerules"
+    target = tmp_path / "AGENTS.md"
     initial_text = (
         "# Custom Instructions\n\n"
         "<!-- SCIFI-RULES:START -->\n"
@@ -524,16 +428,18 @@ def test_rule_sync_idempotent_update(tmp_path: Path) -> None:
 
 
 def test_sync_all_rules(tmp_path: Path) -> None:
-    """sync_all_rules should generate canonical rule files in the given project."""
+    """sync_all_rules should generate AGENTS.md in workspaces and skip inside the SciFi plugin repo."""
     rule_files = scifi.setup_cli.sync_all_rules(project_root=tmp_path)
     file_names = {p.name for p in rule_files}
+    assert file_names == {"AGENTS.md"}
+    assert not (tmp_path / "CLAUDE.md").exists()
 
-    assert "AGENTS.md" in file_names
-    assert "CLAUDE.md" in file_names
-    assert ".clinerules" in file_names
-    assert ".cursorrules" in file_names
-    assert ".windsurfrules" in file_names
-    assert (tmp_path / ".github" / "copilot-instructions.md").exists()
+    plugin_repo = tmp_path / "plugin_repo"
+    (plugin_repo / "rules").mkdir(parents=True)
+    (plugin_repo / "plugin.json").write_text('{"name": "scifi"}', encoding="utf-8")
+    (plugin_repo / "rules" / "AGENTS.md").write_text("# Rules", encoding="utf-8")
+    assert scifi.setup_cli.sync_all_rules(project_root=plugin_repo) == []
+    assert not (plugin_repo / "AGENTS.md").exists()
 
 
 def test_setup_cmd_rules_flag(tmp_path: Path) -> None:
@@ -550,12 +456,12 @@ def test_setup_cmd_rules_flag(tmp_path: Path) -> None:
     )
     code = scifi.setup_cli.cmd_setup(args)
     assert code == 0
-    assert (tmp_path / "CLAUDE.md").exists()
-    assert (tmp_path / ".clinerules").exists()
+    assert (tmp_path / "AGENTS.md").exists()
+    assert not (tmp_path / "CLAUDE.md").exists()
 
 
 def test_setup_cmd_workspace_flag(tmp_path: Path) -> None:
-    """setup --workspace should configure local MCP files and sync rules."""
+    """setup --workspace should configure .agents/mcp_config.json and sync AGENTS.md."""
     args = argparse.Namespace(
         rules=False,
         workspace=True,
@@ -568,10 +474,8 @@ def test_setup_cmd_workspace_flag(tmp_path: Path) -> None:
     )
     code = scifi.setup_cli.cmd_setup(args)
     assert code == 0
-    assert (tmp_path / ".cursor" / "mcp.json").exists()
-    assert (tmp_path / ".mcp.json").exists()
-    assert (tmp_path / "opencode.json").exists()
-    assert (tmp_path / "CLAUDE.md").exists()
+    assert (tmp_path / ".agents" / "mcp_config.json").exists()
+    assert (tmp_path / "AGENTS.md").exists()
 
 
 def test_cli_routes_to_sync(tmp_path: Path) -> None:

@@ -7,12 +7,14 @@ and cross-references them against Zotero.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
 from typing import Any
 
 from scifi.env import auto_detect_zotero_dir
+from scifi.literature.zotero.sync import bib_entries_to_zotero_items as _bib_entries_to_zotero_items
 
 IGNORE_DIRS = {".git", ".venv", "venv", ".idea", ".vscode", "__pycache__", ".pytest_cache", ".scifi"}
 
@@ -51,72 +53,6 @@ def parse_bib_keys_and_titles(bib_path: Path) -> list[dict[str, str]]:
             }
         )
     return entries
-
-
-_BIB_TO_ZOTERO_TYPE = {
-    "article": ("journalArticle", "publicationTitle"),
-    "inproceedings": ("conferencePaper", "proceedingsTitle"),
-    "conference": ("conferencePaper", "proceedingsTitle"),
-    "book": ("book", None),
-    "incollection": ("bookSection", "bookTitle"),
-    "phdthesis": ("thesis", None),
-    "mastersthesis": ("thesis", None),
-    "techreport": ("report", None),
-    "misc": ("document", None),
-}
-
-
-def _clean_tex(s: str) -> str:
-    s = re.sub(r"\\([&%_#$])", r"\1", s)
-    s = re.sub(r"\{\\['`\"^~]\{?(\w)\}?\}", r"\1", s)
-    s = re.sub(r"\\['`\"^~](\w)", r"\1", s)
-    return re.sub(r"[{}]", "", s).strip()
-
-
-def _bib_entries_to_zotero_items(bib_paths: list[Path], keys: set[str]) -> list[dict[str, Any]]:
-    """Convert selected BibTeX entries to Zotero item JSON."""
-    import bibtexparser
-
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for p in bib_paths:
-        if not p.is_file():
-            continue
-        lib = bibtexparser.parse_string(p.read_text(encoding="utf-8", errors="ignore"))
-        for e in lib.entries:
-            if e.key not in keys or e.key in seen:
-                continue
-            seen.add(e.key)
-            f = {k: _clean_tex(v.value) for k, v in e.fields_dict.items()}
-            item_type, venue_field = _BIB_TO_ZOTERO_TYPE.get(e.entry_type.lower(), ("document", None))
-            item: dict[str, Any] = {"itemType": item_type, "title": f.get("title", e.key)}
-            creators = []
-            for a in re.split(r"\s+and\s+", f.get("author", "")):
-                if "," in a:
-                    last, first = [x.strip() for x in a.split(",", 1)]
-                    creators.append({"creatorType": "author", "firstName": first, "lastName": last})
-                elif a.strip():
-                    creators.append({"creatorType": "author", "name": a.strip()})
-            item["creators"] = creators
-            if f.get("year"):
-                item["date"] = f["year"]
-            if f.get("doi"):
-                item["DOI"] = f["doi"]
-            if f.get("url"):
-                item["url"] = f["url"]
-            if f.get("volume"):
-                item["volume"] = f["volume"]
-            if f.get("number") and item_type == "journalArticle":
-                item["issue"] = f["number"]
-            if f.get("pages"):
-                item["pages"] = f["pages"].replace("--", "–")
-            if f.get("publisher") and item_type in ("book", "bookSection"):
-                item["publisher"] = f["publisher"]
-            venue = f.get("journal") or f.get("booktitle")
-            if venue_field and venue:
-                item[venue_field] = venue
-            items.append(item)
-    return items
 
 
 def adapt_project(
@@ -396,10 +332,19 @@ collection = "{col_str}"
 port = 23119
 sync_bib = "references.bib"
 auto_tag = true
+auto_sync = true
 """
     config_path = scifi_dir / "config.toml"
     if not config_path.exists():
         config_path.write_text(config_text, encoding="utf-8")
+
+    if zotero_dir and not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            from scifi.literature.zotero.sync import register_zotero_project
+
+            register_zotero_project(root)
+        except Exception:
+            pass
 
     return {
         "status": "SUCCESS",

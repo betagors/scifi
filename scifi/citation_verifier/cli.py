@@ -27,6 +27,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         claimed_author=args.claimed_author,
         claimed_venue=args.claimed_venue,
         timeout=args.timeout,
+        strict_consensus=getattr(args, "strict_consensus", False),
     )
 
     fmt = args.format.lower()
@@ -65,7 +66,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
         print(f"Error: BibTeX file '{bib_path}' not found.", file=sys.stderr)
         return 1
 
-    report = audit_bib_file(bib_path, search_missing=not args.no_search)
+    report = audit_bib_file(
+        bib_path,
+        search_missing=not args.no_search,
+        strict_consensus=getattr(args, "strict_consensus", False),
+    )
 
     if args.format == "json":
         data = {
@@ -148,6 +153,11 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--claimed-author", help="Claimed first author to compare against")
     p_verify.add_argument("--claimed-venue", help="Claimed venue/journal to compare against")
     p_verify.add_argument("--timeout", type=int, default=10, help="HTTP request timeout in seconds")
+    p_verify.add_argument(
+        "--strict-consensus",
+        action="store_true",
+        help="Require >=2 independent registries to confirm the reference",
+    )
 
     # audit
     p_audit = subparsers.add_parser("audit", help="Audit an entire .bib file")
@@ -156,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     p_audit.add_argument("--output-report", help="File to write audit report to")
     p_audit.add_argument("--output-bib", help="File to write sanitized and verified .bib to")
     p_audit.add_argument("--no-search", action="store_true", help="Do not search registry for missing DOIs")
+    p_audit.add_argument(
+        "--strict-consensus",
+        action="store_true",
+        help="Require >=2 independent registries to confirm each reference",
+    )
 
     # search
     p_search = subparsers.add_parser("search", help="Search official registries by title")

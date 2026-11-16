@@ -72,6 +72,7 @@ SciFi provides 46 FastMCP tools for AI coding assistants. All tools are register
 | Tool Name | Parameters | Description |
 |---|---|---|
 | `scifi_zotero_status` | *(none)* | Check local Zotero library, data directory detection, and port 23119 server |
+| `scifi_zotero_search` | `query`, `collection`, `has_pdf`, `limit` | Search across the Zotero library or a collection by keyword, author, DOI, or tag |
 | `scifi_zotero_get_collection_papers` | `collection` | Retrieve papers belonging to a Zotero collection with local PDF paths |
 | `scifi_zotero_get_annotations` | `item_key` | Retrieve user PDF highlights, notes, and comments for a Zotero paper |
 | `scifi_zotero_push_audit_note` | `item_key`, `audit_data` | Non-destructively stage or push SciFi audit cards as child notes in Zotero |

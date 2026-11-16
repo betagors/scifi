@@ -42,6 +42,7 @@ dependencies = [
     "pypdf>=4.0.0",
     "scipy>=1.18.1",
     "mcp>=1.0.0,<2",
+    "ladybug>=0.22.0",
 ]
 
 [project.optional-dependencies]

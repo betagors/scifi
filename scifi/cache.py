@@ -15,6 +15,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import scifi
+
 
 class RegistryCache:
     """
@@ -66,6 +68,22 @@ class RegistryCache:
                         """
                     )
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_expires_at ON registry_cache (expires_at)")
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS cache_meta (
+                            key TEXT PRIMARY KEY,
+                            value TEXT NOT NULL
+                        )
+                        """
+                    )
+                    row = conn.execute("SELECT value FROM cache_meta WHERE key = 'scifi_version'").fetchone()
+                    current_ver = scifi.__version__
+                    if row is None or row[0] != current_ver:
+                        conn.execute("DELETE FROM registry_cache")
+                        conn.execute(
+                            "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('scifi_version', ?)",
+                            (current_ver,),
+                        )
                 self._initialized = True
             yield conn
         finally:

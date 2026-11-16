@@ -1,0 +1,17 @@
+{
+  "scifi-dataset-guard": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "read_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python -m scifi.datasets.hook_guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -255,6 +255,22 @@ def split_into_sentence_spans(content: str) -> list[SentenceSpan]:
     return spans
 
 
+_SELF_REF_LEADING_WORDS: set[str] = {
+    "proposed",
+    "our",
+    "this",
+    "section",
+    "table",
+    "figure",
+    "algorithm",
+    "theorem",
+    "lemma",
+    "appendix",
+}
+
+_STOP_LEADING_WORDS: set[str] = {"the", "a", "an", "in", "on", "for", "by", "to", "from", "with", "via", "using"}
+
+
 def extract_potential_methods(text: str) -> list[tuple[str, str]]:
     """
     Extract recognized methods and heuristics from a sentence.
@@ -270,14 +286,19 @@ def extract_potential_methods(text: str) -> list[tuple[str, str]]:
         if re.search(pattern, lower_text):
             found.append((term, canonical_title))
 
-    # 2. Heuristic extraction of capitalized named constructs
-    # Matches patterns like 'Contrastive Divergence algorithm', 'Focal Loss function'
+    # 2. Structural extraction of capitalized named constructs across ML, control, and optimization
+    # Matches patterns like 'Contrastive Divergence algorithm', 'Lyapunov bound', 'WMMSE solver'
     heuristic_pattern = re.findall(
-        r"\b([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)*\s+(?:algorithm|architecture|mechanism|loss|framework|network|method|benchmark|protocol))\b",
+        r"\b([A-Z][A-Za-z0-9\-]*(?:\s+[A-Z][A-Za-z0-9\-]*)*\s+(?:algorithm|architecture|mechanism|loss|framework|network|method|benchmark|protocol|solver|optimizer|bound|inequality|theorem|lemma|criterion|estimator|divergence|schedule|dataset|simulator|filter|relaxation))\b",
         text,
     )
     for h in heuristic_pattern:
-        h_clean = h.strip()
+        words = h.strip().split()
+        while len(words) >= 2 and words[0].lower() in _STOP_LEADING_WORDS:
+            words = words[1:]
+        if len(words) < 2 or words[0].lower() in _SELF_REF_LEADING_WORDS:
+            continue
+        h_clean = " ".join(words)
         h_lower = h_clean.lower()
         # Exclude common knowledge
         if h_lower in COMMON_KNOWLEDGE:

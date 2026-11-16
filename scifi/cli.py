@@ -31,7 +31,16 @@ from pathlib import Path
 from scifi import setup_cli
 from scifi.argus import cli as argus_cli
 from scifi.citation_verifier import cli as citation_cli
-from scifi.commands import cmd_doctor, cmd_math, cmd_stats, cmd_submission, cmd_zotero
+from scifi.commands import (
+    cmd_datasets,
+    cmd_doctor,
+    cmd_kaggle,
+    cmd_math,
+    cmd_stats,
+    cmd_submission,
+    cmd_zenodo,
+    cmd_zotero,
+)
 from scifi.literature.cli import cmd_literature, register_literature_subparsers
 from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
 from scifi.web.server import SciFiWebServer
@@ -104,27 +113,49 @@ def cmd_compile(args: argparse.Namespace) -> int:
     entrypoint = args.tex_file
     engine = getattr(args, "engine", "auto")
     clean = getattr(args, "clean", True)
-    res = compile_latex(entrypoint=entrypoint, engine=engine, clean=clean)
+    render_pages = getattr(args, "render", False)
+    res = compile_latex(entrypoint=entrypoint, engine=engine, clean=clean, render_pages=render_pages)
+
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2))
+        return 0 if res.get("status") == "SUCCESS" else 1
 
     status = res.get("status")
+    dist = res.get("distribution") or "TeX"
+    eng = res.get("engine") or engine
+    eng_path = res.get("engine_path") or ""
+    dur = res.get("duration_seconds")
+    dur_str = f" | {dur}s" if dur is not None else ""
+
     if status == "SUCCESS":
+        pages_str = f" | {res['page_count']} pages" if res.get("page_count") else ""
         print(f"[SUCCESS] Compiled {res.get('pdf_path')}")
-        warnings = res.get("warnings", [])
-        if warnings:
-            print(f"Warnings ({len(warnings)}):")
-            for w in warnings:
-                print(f"  - {w}")
+        print(f"[COMPILER] {dist} | {eng} ({eng_path}){dur_str}{pages_str}")
+        undef_refs = res.get("undefined_references") or []
+        undef_cites = res.get("undefined_citations") or []
+        if undef_refs:
+            print(f"[WARN] Undefined references ({len(undef_refs)}): {', '.join(undef_refs)}")
+        if undef_cites:
+            print(f"[WARN] Undefined citations ({len(undef_cites)}): {', '.join(undef_cites)}")
+        warnings_count = res.get("warnings_count", 0)
+        layout = res.get("layout_warnings") or {}
+        overfull = layout.get("overfull_hbox", 0)
+        if warnings_count or overfull:
+            print(f"[DIAGNOSTICS] warnings={warnings_count}, overfull_hbox={overfull}")
+        if res.get("rendered_pages"):
+            print(f"[EYES] Rendered {len(res['rendered_pages'])} PNG preview(s) via {res.get('render_backend')}:")
+            for rp in res["rendered_pages"]:
+                print(f"  - Page {rp['page']}: {rp['image_path']} ({rp['width']}x{rp['height']})")
         return 0
-    elif status == "ENGINE_MISSING":
-        print(f"[ENGINE_MISSING] {res.get('message')}")
-        hint = res.get("action_required", {}).get("install_command")
-        if hint:
-            print(f"Action required: {hint}")
+    elif status in ("COMPILER_NOT_FOUND", "ENGINE_MISSING"):
+        print(f"[{status}] {res.get('hint') or res.get('message') or 'No LaTeX compiler found.'}")
         return 1
     else:
-        print(f"[{status}] Compilation failed: {res.get('message')}")
+        print(
+            f"[{status}] Compilation failed ({dist} | {eng}{dur_str}): {res.get('error_message') or res.get('error') or ''}"
+        )
         for err in res.get("errors", []):
-            loc = f"{err.get('file', '')}:{err.get('line', '')}"
+            loc = f"{err.get('file') or ''}:{err.get('line') or ''}"
             print(f"  Error at {loc}: {err.get('message', '')}")
         return 1
 
@@ -216,19 +247,69 @@ def cmd_shannon(args: argparse.Namespace) -> int:
     return 0 if res.get("triage_score", {}).get("total_score", 0) >= 70 else 1
 
 
-def cmd_human(args: argparse.Namespace) -> int:
-    """Execute Humanizer & LaTeX Forensic Stylometry Auditor (`sf human`)."""
-    from scifi.human import audit_human_prose
+def cmd_orwell(args: argparse.Namespace) -> int:
+    """Execute Orwell Academic Prose & LaTeX Stylometric Auditor (`sf orwell`)."""
+    from scifi.orwell import audit_orwell_prose, calibrate_orwell_voice, verify_edit_invariants
 
-    res = audit_human_prose(
-        tex_or_dir_path=args.target,
+    positionals: list[str] = list(getattr(args, "target", []) or [])
+    as_json = getattr(args, "format", "markdown") == "json" or getattr(args, "json", False)
+
+    if positionals and positionals[0] == "calibrate":
+        corpus_dir = positionals[1] if len(positionals) > 1 else None
+        res = calibrate_orwell_voice(
+            corpus_dir=corpus_dir,
+            preset=getattr(args, "preset", None),
+            exemplar_dir=getattr(args, "exemplar", None),
+            notation_only=getattr(args, "notation_only", False),
+            blend_preset=getattr(args, "blend_preset", None),
+            output_toml=getattr(args, "toml", None),
+            write_toml=not getattr(args, "no_write", False),
+        )
+        if res.get("status") != "SUCCESS":
+            print(f"[ERROR] {res.get('error_message', 'Orwell calibration failed.')}", file=sys.stderr)
+            return 1
+        if as_json:
+            print(json.dumps(res, indent=2))
+        else:
+            p = res["profile"]
+            print(f"[ORWELL CALIBRATE] source={p.get('source')} preset={p.get('preset')}")
+            print(
+                f"  sentence_length_mean={p.get('sentence_length_mean')}w, "
+                f"cv_target={p.get('sentence_length_cv_target')} (min={p.get('sentence_length_cv_min')}), "
+                f"passive_ratio={p.get('passive_ratio_target')}"
+            )
+            print(f"  transitions={p.get('preferred_transitions')}")
+            print(f"  macros_extracted={len(p.get('macro_conventions', {}))}")
+            for w in res.get("warnings", []):
+                print(f"  [WARN] {w}")
+            if res.get("toml_path"):
+                print(f"  Saved to: {res['toml_path']}")
+        return 0
+
+    if positionals and positionals[0] == "verify-edit":
+        if len(positionals) < 3:
+            print("[ERROR] Usage: sf orwell verify-edit <before> <after>", file=sys.stderr)
+            return 1
+        res = verify_edit_invariants(positionals[1], positionals[2])
+        if as_json:
+            print(json.dumps(res, indent=2))
+        else:
+            status_tag = "PASS" if res["passed"] else "FAIL"
+            print(f"[ORWELL INVARIANT CHECK: {status_tag}] violations={res['violation_count']}")
+            for v in res.get("violations", []):
+                print(f"  - [{v['category']}] {v['change']}: {v['token']} (x{v['count']})")
+        return 0 if res.get("passed") else 1
+
+    target = positionals[0] if positionals else "."
+    res = audit_orwell_prose(
+        tex_or_dir_path=target,
         output_report=getattr(args, "output", None),
     )
     if res.get("status") != "SUCCESS":
-        print(f"[ERROR] {res.get('error_message', 'Humanizer audit failed.')}", file=sys.stderr)
+        print(f"[ERROR] {res.get('error_message', 'Orwell audit failed.')}", file=sys.stderr)
         return 1
 
-    if getattr(args, "format", "markdown") == "json" or getattr(args, "json", False):
+    if as_json:
         out = dict(res)
         out.pop("report_markdown", None)
         print(json.dumps(out, indent=2))
@@ -296,6 +377,12 @@ def cmd_figures(args: argparse.Namespace) -> int:
         tex_path=args.target,
         base_dir=getattr(args, "base_dir", None),
         min_dpi=getattr(args, "dpi", 300),
+        render_previews=not getattr(args, "no_render", False),
+        pdf_path=getattr(args, "pdf", None),
+        render_dpi=getattr(args, "render_dpi", 150),
+        vlm_check=getattr(args, "vlm", False),
+        vlm_provider=getattr(args, "vlm_provider", None),
+        vlm_model=getattr(args, "vlm_model", None),
     )
     if getattr(args, "json", False):
         print(json.dumps(res.to_dict(), indent=2))
@@ -305,6 +392,20 @@ def cmd_figures(args: argparse.Namespace) -> int:
             print(f"- [{iss.severity.value}] `{iss.figure_ref}`: {iss.message}")
             if iss.recommendation:
                 print(f"  * Recommendation: {iss.recommendation}")
+        if res.rendered_previews:
+            print(f"\n## Visual Previews ({len(res.rendered_previews)})")
+            for rp in res.rendered_previews:
+                label = rp.get("figure_ref") or f"Page {rp.get('page')}"
+                print(f"- [{rp.get('kind')}] {label}: {rp.get('image_path')}")
+        if res.vlm_inspection and res.vlm_inspection.get("status") != "DISABLED":
+            vlm_status = res.vlm_inspection.get("status")
+            print(f"\n## VLM Visual Inspection: {vlm_status}")
+            if res.vlm_inspection.get("provider"):
+                print(f"- Provider: `{res.vlm_inspection.get('provider')}` (`{res.vlm_inspection.get('model')}`)")
+            if res.vlm_inspection.get("hint"):
+                print(f"- Note: {res.vlm_inspection.get('hint')}")
+            if res.vlm_inspection.get("error_message"):
+                print(f"- Error: {res.vlm_inspection.get('error_message')}")
     return 0 if res.clean_score >= 70 else 1
 
 
@@ -315,6 +416,13 @@ def cmd_trim(args: argparse.Namespace) -> int:
     res = audit_trim_budget(
         tex_path=args.target,
         bib_path=getattr(args, "bib", None),
+        render_previews=not getattr(args, "no_render", False),
+        pdf_path=getattr(args, "pdf", None),
+        render_dpi=getattr(args, "render_dpi", 150),
+        pages=getattr(args, "pages", None),
+        vlm_check=getattr(args, "vlm", False),
+        vlm_provider=getattr(args, "vlm_provider", None),
+        vlm_model=getattr(args, "vlm_model", None),
     )
     if getattr(args, "json", False):
         print(json.dumps(res.to_dict(), indent=2))
@@ -324,6 +432,19 @@ def cmd_trim(args: argparse.Namespace) -> int:
             print(f"- BibTeX Abbreviation: {res.bibtex_condensed_entries} verbose venues can be condensed.")
         for s in res.suggestions:
             print(f"- [{s.suggestion_type.value}] {s.target}: {s.description}")
+        if res.rendered_pages:
+            print(f"\n## Rendered PDF Pages ({len(res.rendered_pages)})")
+            for rp in res.rendered_pages:
+                print(f"- Page {rp.get('page')}: {rp.get('image_path')}")
+        if res.vlm_inspection and res.vlm_inspection.get("status") != "DISABLED":
+            vlm_status = res.vlm_inspection.get("status")
+            print(f"\n## VLM Layout Inspection: {vlm_status}")
+            if res.vlm_inspection.get("provider"):
+                print(f"- Provider: `{res.vlm_inspection.get('provider')}` (`{res.vlm_inspection.get('model')}`)")
+            if res.vlm_inspection.get("hint"):
+                print(f"- Note: {res.vlm_inspection.get('hint')}")
+            if res.vlm_inspection.get("error_message"):
+                print(f"- Error: {res.vlm_inspection.get('error_message')}")
     return 0
 
 
@@ -342,23 +463,28 @@ def cmd_proofs(args: argparse.Namespace) -> int:
 
 
 def cmd_repro(args: argparse.Namespace) -> int:
-    """Audit conference reproducibility checklist (`sf repro`)."""
+    """Audit conference reproducibility or domain reporting checklist (`sf repro`)."""
     from scifi.reproducibility import audit_reproducibility
 
     res = audit_reproducibility(
         tex_path=args.target,
         venue=getattr(args, "venue", "neurips"),
         double_blind=getattr(args, "double_blind", False),
+        standard=getattr(args, "standard", None),
+        check_pitfalls=not getattr(args, "no_pitfalls", False),
     )
     if getattr(args, "json", False):
         print(json.dumps(res.to_dict(), indent=2))
     else:
-        print(f"# Conference Reproducibility Audit [{res.venue.upper()}] (Score: {res.score}/100)")
+        print(
+            f"# Reproducibility & Reporting Audit [{res.venue.upper()} | {res.standard.upper()}] "
+            f"(Score: {res.score}/100)"
+        )
         for k, v in res.checklist_items.items():
             status_icon = "PASS" if v else "FAIL"
             print(f"- [{status_icon}] {k}")
         for iss in res.issues:
-            print(f"  * Warning: {iss.message}")
+            print(f"  * [{iss.severity}] {iss.message}")
     return 0 if res.score >= 70 else 1
 
 
@@ -461,6 +587,14 @@ def create_parser() -> argparse.ArgumentParser:
         prog="scifi",
         description="SciFi: Scientific Research & Academic Writing Toolkit for literature verification, paper auditing, and proof structuring.",
     )
+    import scifi
+
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"scifi {scifi.__version__}",
+    )
     subparsers = parser.add_subparsers(dest="command", help="Subcommand to execute")
 
     # doctor (end-to-end manuscript audit)
@@ -484,6 +618,11 @@ def create_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
     p_doctor.add_argument("--env", action="store_true", help="Diagnose environment health (Python, uv, LaTeX, Zotero)")
     p_doctor.add_argument("--fix", action="store_true", help="Attempt automatic remediation of environment issues")
+    p_doctor.add_argument(
+        "--history",
+        action="store_true",
+        help="Show Readiness Score ledger across drafts from .scifi/audit_history.json",
+    )
 
     # verify
     p_verify = subparsers.add_parser(
@@ -501,6 +640,11 @@ def create_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--claimed-author", help="Claimed first author to compare against")
     p_verify.add_argument("--claimed-venue", help="Claimed venue/journal to compare against")
     p_verify.add_argument("--timeout", type=int, default=10, help="HTTP request timeout in seconds")
+    p_verify.add_argument(
+        "--strict-consensus",
+        action="store_true",
+        help="Require >=2 independent registries to confirm the reference",
+    )
 
     # audit
     p_audit = subparsers.add_parser(
@@ -511,6 +655,11 @@ def create_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--output-report", help="File to write audit report to")
     p_audit.add_argument("--output-bib", help="File to write sanitized and verified .bib to")
     p_audit.add_argument("--no-search", action="store_true", help="Do not search registry for missing DOIs")
+    p_audit.add_argument(
+        "--strict-consensus",
+        action="store_true",
+        help="Require >=2 independent registries to confirm each reference",
+    )
 
     # search
     p_search = subparsers.add_parser("search", aliases=["s", "find"], help="Search official registries by paper title")
@@ -534,6 +683,16 @@ def create_parser() -> argparse.ArgumentParser:
     )
     p_argus.add_argument("--preprint-doi", help="DOI of author's preprint")
     p_argus.add_argument("--no-search", action="store_true", help="Skip remote registry lookups")
+    p_argus.add_argument(
+        "--entailment",
+        action="store_true",
+        help="Run Hypatia claim-to-citation entailment audit on \\cite{} references",
+    )
+    p_argus.add_argument(
+        "--no-pdf",
+        action="store_true",
+        help="Do not download Unpaywall/arXiv PDFs during entailment audit (use OpenAlex abstract only)",
+    )
 
     # literature
     p_literature = subparsers.add_parser(
@@ -583,6 +742,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     pm_not = math_sub.add_parser("notation", help="Scan single or multi-file LaTeX project for notation consistency")
     pm_not.add_argument("target", help="Path to .tex file, project directory, or LaTeX string")
+    pm_not.add_argument("--manifest", action="store_true", help="Include full cross-section symbol_manifest")
 
     # stats (Gauss)
     p_stats = subparsers.add_parser(
@@ -632,21 +792,38 @@ def create_parser() -> argparse.ArgumentParser:
     )
     p_shannon.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
-    # human
-    p_human = subparsers.add_parser(
-        "human",
-        aliases=["humanize", "deai", "stylometry"],
-        help="Audit LaTeX source code and academic prose across 6 forensic stylometric and structural AI-detection dimensions",
+    # orwell
+    p_orwell = subparsers.add_parser(
+        "orwell",
+        aliases=["stylometry", "prose"],
+        help="Audit LaTeX/prose stylometry, calibrate personal/exemplar voice, and verify edit invariants",
     )
-    p_human.add_argument(
+    p_orwell.add_argument(
         "target",
-        nargs="?",
-        default=".",
-        help="Path to .tex file, multi-file LaTeX directory, Markdown/text file, or inline text (default: .)",
+        nargs="*",
+        help="Target .tex/dir/text, or 'calibrate [<dir>]', or 'verify-edit <before> <after>'",
     )
-    p_human.add_argument("--output", help="Optional path to save the Markdown forensic report")
-    p_human.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
-    p_human.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    p_orwell.add_argument("--output", help="Optional path to save the Markdown forensic report")
+    p_orwell.add_argument("--format", choices=["markdown", "json"], default="markdown", help="Output format")
+    p_orwell.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    p_orwell.add_argument(
+        "--preset",
+        choices=["terse-systems", "formal-theory", "narrative-science", "balanced"],
+        help="Calibrate from a built-in scholarly voice preset",
+    )
+    p_orwell.add_argument("--exemplar", help="Calibrate from an exemplar papers directory (.tex/.pdf)")
+    p_orwell.add_argument(
+        "--notation-only",
+        action="store_true",
+        help="Extract only macro/notation conventions from corpus_dir while using preset/exemplar prose cadence",
+    )
+    p_orwell.add_argument(
+        "--blend-preset",
+        choices=["terse-systems", "formal-theory", "narrative-science", "balanced"],
+        help="Preset to blend with --notation-only",
+    )
+    p_orwell.add_argument("--toml", help="Path to scifi.toml to update (default: ./scifi.toml)")
+    p_orwell.add_argument("--no-write", action="store_true", help="Preview calibration without writing scifi.toml")
 
     # table
     p_table = subparsers.add_parser(
@@ -682,25 +859,46 @@ def create_parser() -> argparse.ArgumentParser:
     p_figures = subparsers.add_parser(
         "figures",
         aliases=["fig", "da-vinci"],
-        help="Audit figures for DPI, vector formats, subfigure parity, and colorblind safety",
+        help="Audit figures for DPI, vector formats, subfigure parity, colorblind safety, and VLM visual defects",
     )
     p_figures.add_argument(
         "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
     )
     p_figures.add_argument("--base-dir", help="Base directory containing figure assets")
     p_figures.add_argument("--dpi", type=int, default=300, help="Minimum acceptable DPI (default: 300)")
+    p_figures.add_argument("--pdf", help="Optional compiled PDF path for page rendering")
+    p_figures.add_argument("--render-dpi", type=int, default=150, help="PNG preview render DPI (default: 150)")
+    p_figures.add_argument("--no-render", action="store_true", help="Skip rendering figure/PDF PNG previews")
+    p_figures.add_argument("--vlm", action="store_true", help="Run VLM visual defect check on rendered PNGs")
+    p_figures.add_argument(
+        "--vlm-provider",
+        choices=["gemini", "openai", "anthropic", "openai_compatible"],
+        help="VLM provider override",
+    )
+    p_figures.add_argument("--vlm-model", help="VLM model identifier override")
     p_figures.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # trim (layout)
     p_trim = subparsers.add_parser(
         "trim",
         aliases=["budget", "layout"],
-        help="Analyze page budget slack, paragraph widow lines, and BibTeX abbreviation savings",
+        help="Analyze page budget slack, paragraph widow lines, BibTeX abbreviations, and VLM layout defects",
     )
     p_trim.add_argument(
         "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
     )
     p_trim.add_argument("--bib", help="Path to BibTeX file (auto-discovered if omitted)")
+    p_trim.add_argument("--pdf", help="Optional compiled PDF path for page rendering")
+    p_trim.add_argument("--pages", help="Page numbers or ranges to render (e.g. '1-4,8')")
+    p_trim.add_argument("--render-dpi", type=int, default=150, help="PNG preview render DPI (default: 150)")
+    p_trim.add_argument("--no-render", action="store_true", help="Skip rendering compiled PDF pages to PNG")
+    p_trim.add_argument("--vlm", action="store_true", help="Run VLM visual layout check on rendered PDF pages")
+    p_trim.add_argument(
+        "--vlm-provider",
+        choices=["gemini", "openai", "anthropic", "openai_compatible"],
+        help="VLM provider override",
+    )
+    p_trim.add_argument("--vlm-model", help="VLM model identifier override")
     p_trim.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # proofs (euclid)
@@ -718,12 +916,19 @@ def create_parser() -> argparse.ArgumentParser:
     p_repro = subparsers.add_parser(
         "repro",
         aliases=["bacon", "reproducibility"],
-        help="Audit conference reproducibility checklist (seeds, error bars, compute budget, anonymization)",
+        help="Audit ML and ML-systems reproducibility checklists and statistical pitfalls",
     )
     p_repro.add_argument(
         "target", nargs="?", default="main.tex", help="Path to .tex file or project root (default: main.tex)"
     )
     p_repro.add_argument("--venue", default="neurips", help="Target venue checklist (default: neurips)")
+    p_repro.add_argument(
+        "--standard",
+        choices=["ml", "ml-systems"],
+        default=None,
+        help="Reproducibility checklist profile (default: inferred from --venue, or ml)",
+    )
+    p_repro.add_argument("--no-pitfalls", action="store_true", help="Skip statistical-pitfall scans")
     p_repro.add_argument("--double-blind", action="store_true", help="Enforce double-blind anonymization")
     p_repro.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
@@ -815,6 +1020,17 @@ def create_parser() -> argparse.ArgumentParser:
     ps_bun.add_argument("--conflicts", help="Declaration of competing interests")
     ps_bun.add_argument("--editor", help="Editor-in-Chief name")
     ps_bun.add_argument("--output", help="Output directory path (default: dist/submission/)")
+    ps_bun.add_argument(
+        "--strict",
+        "--gate",
+        action="store_true",
+        dest="strict",
+        help="Gate bundle generation on zero critical blockers (retractions, double-blind leaks, orphan proofs)",
+    )
+    ps_bun.add_argument(
+        "--double-blind", action="store_true", help="Enforce double-blind anonymization rules during gate check"
+    )
+    ps_bun.add_argument("--live", action="store_true", help="Run live retraction lookups during gate check")
     ps_bun.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # config
@@ -846,9 +1062,217 @@ def create_parser() -> argparse.ArgumentParser:
     zot_sub.add_parser("status", help="Check local Zotero status, collections, and port 23119")
     pz_sync = zot_sub.add_parser("sync", help="Sync collection papers, references.bib, and flush staged writes")
     pz_sync.add_argument("--collection", help="Zotero collection name")
+    pz_watch = zot_sub.add_parser("watch", help="Continuously watch and auto-sync Zotero collection and references.bib")
+    pz_watch.add_argument("--collection", help="Zotero collection name")
+    pz_watch.add_argument("--all", action="store_true", help="Watch all registered Zotero-enabled projects")
+    pz_watch.add_argument("--interval", type=float, default=5.0, help="Polling interval in seconds (default: 5.0)")
     zot_sub.add_parser("flush", help="Flush offline staged notes to Zotero")
+    pz_create = zot_sub.add_parser(
+        "create-collection",
+        aliases=["create", "link"],
+        help="Create/ensure a Zotero collection and link it in .scifi/config.toml",
+    )
+    pz_create.add_argument("name", help="Zotero collection name")
+    pz_create.add_argument("--no-save", action="store_true", help="Do not update .scifi/config.toml")
     pz_ann = zot_sub.add_parser("annotations", help="View user PDF highlights and comments")
     pz_ann.add_argument("--key", required=True, help="Zotero item key")
+
+    # datasets
+    p_datasets = subparsers.add_parser(
+        "datasets", aliases=["ds", "data"], help="Search, download, and manage datasets with a default datasets folder"
+    )
+    ds_sub = p_datasets.add_subparsers(dest="datasets_action", help="Datasets action")
+    pds_dir = ds_sub.add_parser("dir", help="Show or set the default datasets directory")
+    pds_dir.add_argument("--set", dest="set_path", help="Set a new default datasets directory globally")
+    pds_list = ds_sub.add_parser("list", help="List locally downloaded datasets")
+    pds_list.add_argument("--dir", help="Override datasets directory")
+    pds_list.add_argument("--json", action="store_true", help="Output JSON")
+    pds_search = ds_sub.add_parser("search", help="Search datasets across Kaggle, Hugging Face, and Zenodo")
+    pds_search.add_argument("query", help="Search query")
+    pds_search.add_argument("--provider", default="all", choices=["all", "kaggle", "hf", "huggingface", "zenodo"])
+    pds_search.add_argument("--limit", type=int, default=15, help="Max results per provider")
+    pds_search.add_argument("--json", action="store_true", help="Output JSON")
+    pds_dl = ds_sub.add_parser("download", help="Download a dataset from Kaggle, Hugging Face, Zenodo, or URL")
+    pds_dl.add_argument("source", help="Provider (kaggle, hf, zenodo, url, or auto)")
+    pds_dl.add_argument("identifier", help="Dataset identifier (owner/slug, repo_id, Zenodo ID/DOI, or URL)")
+    pds_dl.add_argument("--dir", help="Override target directory")
+    pds_dl.add_argument("--file", help="Download a specific file only")
+    pds_dl.add_argument("--no-unzip", action="store_true", help="Keep archive compressed without extracting")
+    pds_dl.add_argument("--json", action="store_true", help="Output JSON")
+    pds_rm = ds_sub.add_parser("remove", help="Remove a dataset from the local manifest")
+    pds_rm.add_argument("identifier", help="Dataset identifier or provider:identifier key")
+    pds_rm.add_argument("--delete", action="store_true", help="Also delete files from disk")
+    pds_rm.add_argument("--dir", help="Override datasets directory")
+    pds_insp = ds_sub.add_parser("inspect", help="Inspect dataset schema and bounded sample without wasting tokens")
+    pds_insp.add_argument("target", help="Local file/directory path or tracked dataset identifier")
+    pds_insp.add_argument("--rows", type=int, default=5, help="Max sample rows to display (default: 5)")
+    pds_insp.add_argument("--max-chars", type=int, default=80, help="Max characters per cell/value (default: 80)")
+    pds_insp.add_argument("--max-columns", type=int, default=30, help="Max columns to display (default: 30)")
+    pds_insp.add_argument("--max-files", type=int, default=20, help="Max files to list for directories (default: 20)")
+    pds_insp.add_argument("--dir", help="Override datasets directory")
+    pds_insp.add_argument("--json", action="store_true", help="Output JSON")
+
+    # kaggle
+    p_kaggle = subparsers.add_parser("kaggle", help="Control Kaggle datasets, competitions, and kernels/notebooks")
+    kg_sub = p_kaggle.add_subparsers(dest="kaggle_section", help="Kaggle section")
+    pkg_st = kg_sub.add_parser("status", help="Check Kaggle authentication and default datasets folder")
+    pkg_st.add_argument("--json", action="store_true", help="Output JSON")
+    pkg_login = kg_sub.add_parser("login", help="Configure and verify Kaggle API credentials")
+    pkg_login.add_argument("--username", help="Kaggle username")
+    pkg_login.add_argument("--key", help="Kaggle API key")
+    pkg_login.add_argument("--from-file", help="Path to downloaded kaggle.json")
+    pkg_login.add_argument(
+        "--scifi-config", action="store_true", help="Save to ~/.scifi/config.json instead of ~/.kaggle/kaggle.json"
+    )
+    pkg_login.add_argument("--no-verify", action="store_true", help="Skip live API verification")
+    pkg_login.add_argument("--json", action="store_true", help="Output JSON")
+
+    pkg_ds = kg_sub.add_parser("datasets", help="Manage Kaggle datasets")
+    pkg_ds_sub = pkg_ds.add_subparsers(dest="kaggle_ds_action", help="Kaggle dataset action")
+    pkg_ds_s = pkg_ds_sub.add_parser("search", help="Search Kaggle datasets")
+    pkg_ds_s.add_argument("query", nargs="?", default="", help="Search query")
+    pkg_ds_s.add_argument("--sort-by", default="hottest", help="Sort order")
+    pkg_ds_s.add_argument("--page", type=int, default=1)
+    pkg_ds_s.add_argument("--limit", type=int, default=20)
+    pkg_ds_s.add_argument("--json", action="store_true")
+    pkg_ds_f = pkg_ds_sub.add_parser("files", help="List files in a Kaggle dataset")
+    pkg_ds_f.add_argument("dataset", help="Dataset ref (owner/slug)")
+    pkg_ds_f.add_argument("--json", action="store_true")
+    pkg_ds_d = pkg_ds_sub.add_parser("download", help="Download a Kaggle dataset")
+    pkg_ds_d.add_argument("dataset", help="Dataset ref (owner/slug)")
+    pkg_ds_d.add_argument("--dir", help="Override target directory")
+    pkg_ds_d.add_argument("--file", help="Download specific file")
+    pkg_ds_d.add_argument("--no-unzip", action="store_true")
+    pkg_ds_p = pkg_ds_sub.add_parser("push", help="Create or update a Kaggle dataset from a local folder")
+    pkg_ds_p.add_argument("folder", help="Local folder containing dataset files")
+    pkg_ds_p.add_argument("--title", help="Dataset title")
+    pkg_ds_p.add_argument("--slug", help="Dataset slug")
+    pkg_ds_p.add_argument("--public", action="store_true", help="Make dataset public (default: private)")
+    pkg_ds_p.add_argument("--notes", default="Uploaded via SciFi", help="Version notes")
+    pkg_ds_p.add_argument("--create", action="store_true", help="Create a new dataset instead of new version")
+
+    pkg_comp = kg_sub.add_parser("competitions", help="Manage Kaggle competitions")
+    pkg_comp_sub = pkg_comp.add_subparsers(dest="kaggle_comp_action", help="Competition action")
+    pkg_c_l = pkg_comp_sub.add_parser("list", help="List competitions")
+    pkg_c_l.add_argument("--search", help="Search filter")
+    pkg_c_l.add_argument("--category", help="Category filter")
+    pkg_c_l.add_argument("--page", type=int, default=1)
+    pkg_c_l.add_argument("--json", action="store_true")
+    pkg_c_f = pkg_comp_sub.add_parser("files", help="List competition files")
+    pkg_c_f.add_argument("competition", help="Competition slug")
+    pkg_c_d = pkg_comp_sub.add_parser("download", help="Download competition data")
+    pkg_c_d.add_argument("competition", help="Competition slug")
+    pkg_c_d.add_argument("--dir", help="Override target directory")
+    pkg_c_d.add_argument("--file", help="Download specific file")
+    pkg_c_d.add_argument("--no-unzip", action="store_true")
+    pkg_c_subs = pkg_comp_sub.add_parser("submissions", help="List your competition submissions")
+    pkg_c_subs.add_argument("competition", help="Competition slug")
+    pkg_c_subs.add_argument("--json", action="store_true")
+    pkg_c_sub = pkg_comp_sub.add_parser("submit", help="Submit a prediction file to a competition")
+    pkg_c_sub.add_argument("competition", help="Competition slug")
+    pkg_c_sub.add_argument("file", help="Path to submission CSV/file")
+    pkg_c_sub.add_argument("-m", "--message", default="Submitted via SciFi", help="Submission description")
+
+    pkg_kern = kg_sub.add_parser("kernels", help="Control Kaggle kernels/notebooks")
+    pkg_kern_sub = pkg_kern.add_subparsers(dest="kaggle_kernel_action", help="Kernel action")
+    pkg_k_l = pkg_kern_sub.add_parser("list", help="List kernels")
+    pkg_k_l.add_argument("--search", help="Search filter")
+    pkg_k_l.add_argument("--user", help="Filter by author")
+    pkg_k_l.add_argument("--page", type=int, default=1)
+    pkg_k_l.add_argument("--json", action="store_true")
+    pkg_k_pull = pkg_kern_sub.add_parser("pull", help="Pull a kernel's code and metadata")
+    pkg_k_pull.add_argument("kernel", help="Kernel ref (owner/slug)")
+    pkg_k_pull.add_argument("--dir", help="Override target directory")
+    pkg_k_push = pkg_kern_sub.add_parser("push", help="Push and run a kernel from a local folder")
+    pkg_k_push.add_argument("folder", help="Folder containing kernel-metadata.json and code")
+    pkg_k_st = pkg_kern_sub.add_parser("status", help="Check kernel execution status")
+    pkg_k_st.add_argument("kernel", help="Kernel ref (owner/slug)")
+    pkg_k_out = pkg_kern_sub.add_parser("output", help="Download kernel output files and logs")
+    pkg_k_out.add_argument("kernel", help="Kernel ref (owner/slug)")
+    pkg_k_out.add_argument("--dir", help="Override output directory")
+
+    # zenodo
+    p_zenodo = subparsers.add_parser(
+        "zenodo", aliases=["zen"], help="Connect to Zenodo, manage depositions, reserve DOIs, and upload artifacts"
+    )
+    zen_sub = p_zenodo.add_subparsers(dest="zenodo_action", help="Zenodo action")
+    pzen_st = zen_sub.add_parser("status", help="Check Zenodo token configuration and connectivity")
+    pzen_st.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_st.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_login = zen_sub.add_parser("login", help="Save and verify a Zenodo Personal Access Token")
+    pzen_login.add_argument("--token", required=True, help="Zenodo Personal Access Token")
+    pzen_login.add_argument("--sandbox", action="store_true", help="Verify against sandbox.zenodo.org")
+    pzen_login.add_argument("--no-verify", action="store_true", help="Skip live API verification")
+    pzen_login.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_list = zen_sub.add_parser("list", help="List your Zenodo depositions")
+    pzen_list.add_argument("--status", choices=["draft", "published"], help="Filter by status")
+    pzen_list.add_argument("--limit", type=int, default=20, help="Max depositions to return")
+    pzen_list.add_argument("-q", "--query", help="Search query")
+    pzen_list.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_list.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_show = zen_sub.add_parser("show", help="Show details of a Zenodo deposition")
+    pzen_show.add_argument("deposition_id", help="Zenodo deposition ID")
+    pzen_show.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_show.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_create = zen_sub.add_parser("create", help="Create a new Zenodo draft deposition")
+    pzen_create.add_argument("--title", required=True, help="Deposition title")
+    pzen_create.add_argument(
+        "--type", dest="upload_type", default="software", help="Upload type (software, dataset, publication, other)"
+    )
+    pzen_create.add_argument("--description", help="Deposition description")
+    pzen_create.add_argument("--creators", help="Semicolon-separated creator names (e.g., 'Doe, Jane; Smith, John')")
+    pzen_create.add_argument("--keywords", help="Comma-separated keywords")
+    pzen_create.add_argument("--license", help="License ID (e.g., MIT, cc-by-4.0)")
+    pzen_create.add_argument("--no-reserve-doi", action="store_true", help="Do not pre-reserve a DOI")
+    pzen_create.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_create.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_upd = zen_sub.add_parser("update", help="Update metadata on a draft Zenodo deposition")
+    pzen_upd.add_argument("deposition_id", help="Zenodo deposition ID")
+    pzen_upd.add_argument("--title", help="New title")
+    pzen_upd.add_argument("--description", help="New description")
+    pzen_upd.add_argument("--keywords", help="Comma-separated keywords")
+    pzen_upd.add_argument("--license", help="License ID")
+    pzen_upd.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_upd.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_up = zen_sub.add_parser("upload", help="Upload one or more files to a draft Zenodo deposition")
+    pzen_up.add_argument("deposition_id", help="Zenodo deposition ID")
+    pzen_up.add_argument("files", nargs="+", help="Local file path(s) to upload")
+    pzen_up.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_up.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_doi = zen_sub.add_parser("reserve-doi", help="Pre-reserve a DOI for a draft Zenodo deposition")
+    pzen_doi.add_argument("deposition_id", help="Zenodo deposition ID")
+    pzen_doi.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_doi.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_pub = zen_sub.add_parser("publish", help="Publish a draft Zenodo deposition (mints permanent DOI)")
+    pzen_pub.add_argument("deposition_id", help="Zenodo deposition ID")
+    pzen_pub.add_argument("--yes", action="store_true", help="Confirm permanent publication")
+    pzen_pub.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_pub.add_argument("--json", action="store_true", help="Output JSON")
+
+    pzen_push = zen_sub.add_parser("push-submission", help="Upload SciFi submission artifacts/code bundle to Zenodo")
+    pzen_push.add_argument("--deposition-id", help="Existing draft deposition ID (creates a new draft if omitted)")
+    pzen_push.add_argument(
+        "--bundle-dir", default="submission_bundle", help="Directory containing submission bundle artifacts"
+    )
+    pzen_push.add_argument("--code-dir", default=".", help="Code directory to package if no bundle files are found")
+    pzen_push.add_argument("--files", nargs="*", help="Explicit file path(s) to upload")
+    pzen_push.add_argument("--title", help="Title for new deposition")
+    pzen_push.add_argument("--description", help="Description for new deposition")
+    pzen_push.add_argument("--creators", help="Semicolon-separated creator names")
+    pzen_push.add_argument("--type", dest="upload_type", default="software", help="Upload type")
+    pzen_push.add_argument("--keywords", help="Comma-separated keywords")
+    pzen_push.add_argument("--license", help="License ID (e.g., MIT)")
+    pzen_push.add_argument("--publish", action="store_true", help="Publish immediately after uploading")
+    pzen_push.add_argument("--sandbox", action="store_true", help="Use sandbox.zenodo.org")
+    pzen_push.add_argument("--json", action="store_true", help="Output JSON")
 
     # scaffold
     p_scaffold = subparsers.add_parser(
@@ -883,7 +1307,7 @@ def create_parser() -> argparse.ArgumentParser:
     p_setup = subparsers.add_parser(
         "setup",
         aliases=["init", "i"],
-        help="Configure SciFi FastMCP server in OpenCode, Claude Code, VS Code (Cline/Roo), Cursor, Windsurf, Antigravity, and Claude Desktop",
+        help="Configure SciFi FastMCP server for Google Antigravity (global ~/.gemini/config/mcp_config.json or workspace .agents/mcp_config.json)",
     )
     p_setup.add_argument(
         "--auto", action="store_true", help="Non-interactive setup; install to all detected environments"
@@ -895,21 +1319,19 @@ def create_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--scifi-root", type=str, help="Custom root directory for scifi repository")
     p_setup.add_argument("--list", action="store_true", help="List all supported and detected AI environments")
     p_setup.add_argument(
-        "--rules", action="store_true", help="Synchronize SciFi scientific rules to project instruction files"
+        "--rules", action="store_true", help="Synchronize SciFi scientific rules to workspace AGENTS.md"
     )
     p_setup.add_argument(
         "--workspace",
         action="store_true",
-        help="Configure workspace MCP manifests (.cursor, .mcp.json, opencode.json) and sync rules",
+        help="Configure workspace Antigravity MCP manifest (.agents/mcp_config.json) and sync AGENTS.md",
     )
     p_setup.add_argument(
         "--use-uvx", action="store_true", help="Configure MCP client to execute via zero-install 'uvx scifi server'"
     )
 
     # sync
-    p_sync = subparsers.add_parser(
-        "sync", help="Synchronize SciFi scientific rules to CLAUDE.md, .clinerules, .cursorrules, etc."
-    )
+    p_sync = subparsers.add_parser("sync", help="Synchronize SciFi scientific rules to workspace AGENTS.md")
     p_sync.add_argument(
         "--dry-run", action="store_true", help="Print planned rule synchronization without modifying files"
     )
@@ -922,11 +1344,22 @@ def create_parser() -> argparse.ArgumentParser:
         "tex_file", nargs="?", default="main.tex", help="Path to main LaTeX (.tex) file (default: main.tex)"
     )
     p_compile.add_argument(
-        "--engine", choices=["auto", "latexmk", "pdflatex"], default="auto", help="LaTeX engine to use (default: auto)"
+        "--engine",
+        choices=["auto", "latexmk", "pdflatex", "xelatex", "lualatex"],
+        default="auto",
+        help="LaTeX engine to use (default: auto)",
     )
     p_compile.add_argument(
         "--no-clean", dest="clean", action="store_false", default=True, help="Do not remove auxiliary files"
     )
+    p_compile.add_argument(
+        "--render",
+        "--render-pages",
+        dest="render",
+        action="store_true",
+        help="Render compiled PDF pages to PNG screenshots for visual inspection",
+    )
+    p_compile.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     # server
     p_server = subparsers.add_parser("server", aliases=["mcp", "serve"], help="Run the SciFi FastMCP server daemon")
@@ -957,6 +1390,15 @@ def create_parser() -> argparse.ArgumentParser:
     p_package.add_argument("--plugin-only", action="store_true", help="Build only the AI Agent Plugin zip bundle")
     p_package.add_argument("--python-only", action="store_true", help="Build only Python wheel and source distribution")
 
+    # upgrade (self-update)
+    p_upgrade = subparsers.add_parser(
+        "upgrade", aliases=["self-update"], help="Check for updates or upgrade SciFi using its detected install method"
+    )
+    p_upgrade.add_argument("--check", action="store_true", help="Check PyPI for a newer version without installing")
+    p_upgrade.add_argument(
+        "--dry-run", action="store_true", help="Print the planned upgrade command without executing it"
+    )
+
     return parser
 
 
@@ -982,6 +1424,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     actual_argv = list(sys.argv[1:] if argv is None else argv)
 
+    try:
+        from scifi.lifecycle import ensure_migrated_on_startup
+
+        ensure_migrated_on_startup()
+    except Exception:
+        pass
+
     # Support nested Argus subcommands: `scifi argus scan ...` or `scifi argus search ...` or `scifi argus audit ...`
     if (
         len(actual_argv) > 1
@@ -1006,6 +1455,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.command:
         parser.print_help()
         return 0
+
+    if args.command not in (
+        "doctor",
+        "doc",
+        "check-paper",
+        "setup",
+        "init",
+        "i",
+        "upgrade",
+        "zotero",
+        "zot",
+        "scaffold",
+        "new",
+        "bootstrap",
+        "adapt",
+        "migrate",
+        "config",
+        "cfg",
+        "server",
+    ):
+        from scifi.literature.zotero.sync import run_auto_sync_once
+
+        run_auto_sync_once()
 
     if args.command in ("doctor", "doc", "check-paper"):
         return cmd_doctor(args)
@@ -1049,8 +1521,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_review(args)
     elif args.command in ("shannon", "seo", "abstract"):
         return cmd_shannon(args)
-    elif args.command in ("human", "humanize", "deai", "stylometry"):
-        return cmd_human(args)
+    elif args.command in ("orwell", "stylometry", "prose"):
+        return cmd_orwell(args)
     elif args.command in ("table", "tab", "booktabs"):
         return cmd_table(args)
     elif args.command in ("venue", "blind"):
@@ -1073,6 +1545,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_compile(args)
     elif args.command in ("zotero", "zot"):
         return cmd_zotero(args)
+    elif args.command in ("datasets", "ds", "data"):
+        return cmd_datasets(args)
+    elif args.command == "kaggle":
+        return cmd_kaggle(args)
+    elif args.command in ("zenodo", "zen"):
+        return cmd_zenodo(args)
     elif args.command in ("scaffold", "new", "bootstrap"):
         return cmd_scaffold(args)
     elif args.command in ("adapt", "migrate"):
@@ -1089,6 +1567,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         from scifi.packaging import cmd_package
 
         return cmd_package(args)
+    elif args.command in ("upgrade", "self-update"):
+        from scifi.lifecycle import perform_upgrade
+
+        return perform_upgrade(
+            dry_run=getattr(args, "dry_run", False),
+            check_only=getattr(args, "check", False),
+        )
 
     return 0
 

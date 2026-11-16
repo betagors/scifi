@@ -162,20 +162,52 @@ def compute_abstract_keyword_density(abstract: str, keywords: List[str]) -> Dict
     }
 
 
-def evaluate_accessibility(abstract: str) -> Dict[str, Any]:
+VENUE_ABSTRACT_LIMITS: Dict[str, Dict[str, Any]] = {
+    "ieee": {"min": 150, "recommended_max": 200, "hard_max": 250, "label": "IEEE (150-200w recommended, 250w max)"},
+    "acm": {"min": 150, "recommended_max": 200, "hard_max": 250, "label": "ACM (150-200w recommended, 250w max)"},
+    "elsevier": {"min": 150, "recommended_max": 250, "hard_max": 250, "label": "Elsevier (150-250w)"},
+    "springer": {"min": 150, "recommended_max": 250, "hard_max": 250, "label": "Springer (150-250w)"},
+    "general": {"min": 150, "recommended_max": 220, "hard_max": 250, "label": "General (150-220w)"},
+}
+
+
+def evaluate_accessibility(abstract: str, target_venue: Optional[str] = None) -> Dict[str, Any]:
     """
     Evaluate accessibility and cognitive load for non-technical or interdisciplinary readers:
-    1. Sentence count & sentence length distribution.
-    2. Flags run-on sentences (>35 words).
-    3. Analyzes opening sentence for intuitive framing vs hyper-dense nested clauses.
+    1. Abstract word count against venue-specific limits.
+    2. Sentence count & sentence length distribution.
+    3. Flags run-on sentences (>35 words).
+    4. Analyzes opening sentence for intuitive framing vs hyper-dense nested clauses.
     """
+    abstract_word_count = len(re.findall(r"\S+", abstract))
+    venue_key = (target_venue or "general").strip().lower()
+    limits = VENUE_ABSTRACT_LIMITS.get(venue_key, VENUE_ABSTRACT_LIMITS["general"])
+
+    if abstract_word_count < limits["min"]:
+        word_count_status = "TOO_SHORT"
+    elif abstract_word_count > limits["hard_max"]:
+        word_count_status = "OVER_LIMIT"
+    elif abstract_word_count > limits["recommended_max"]:
+        word_count_status = "OVER_RECOMMENDED"
+    else:
+        word_count_status = "OPTIMAL"
+
     # Split sentences cleanly on punctuation
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", abstract) if s.strip()]
     sentence_lengths = [len(re.findall(r"\b[A-Za-z0-9-]+\b", s)) for s in sentences]
 
     max_len = max(sentence_lengths) if sentence_lengths else 0
     avg_len = sum(sentence_lengths) / len(sentence_lengths) if sentence_lengths else 0
-    has_runon = any(length > 35 for length in sentence_lengths)
+    runon_sentences = [
+        {
+            "index": idx + 1,
+            "word_count": length,
+            "preview": s[:100] + ("..." if len(s) > 100 else ""),
+        }
+        for idx, (s, length) in enumerate(zip(sentences, sentence_lengths))
+        if length > 35
+    ]
+    has_runon = bool(runon_sentences)
 
     # Lead sentence readability check
     lead_sentence = sentences[0] if sentences else ""
@@ -183,11 +215,15 @@ def evaluate_accessibility(abstract: str) -> Dict[str, Any]:
     lead_accessible = (lead_words <= 30) and not bool(re.search(r"(\$|\\|\bO\([nN\d]\)|\bsuch that\b)", lead_sentence))
 
     return {
+        "abstract_word_count": abstract_word_count,
+        "word_count_status": word_count_status,
+        "venue_word_limit": limits,
         "sentence_count": len(sentences),
         "sentence_lengths": sentence_lengths,
         "max_sentence_length": max_len,
         "avg_sentence_length": round(avg_len, 1),
         "has_runon_sentences": has_runon,
+        "runon_sentences": runon_sentences,
         "lead_accessible": lead_accessible,
         "lead_sentence": lead_sentence,
     }
@@ -391,6 +427,38 @@ def score_experimental_quantification(abstract: str) -> Dict[str, Any]:
     }
 
 
+RE_LARGE_NUMBER_WORDS = re.compile(
+    r"\b(?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)(?:-[a-z]+)?\b",
+    re.IGNORECASE,
+)
+RE_SMALL_NUMBER_BEFORE_EXP_NOUN = re.compile(
+    r"\b(two|three|four|five|six|seven|eight|nine)\s+(?:[a-z]+\s+){0,2}"
+    r"(?:seeds?|episodes?|trials?|runs?|agents?|uavs?|nodes?|layers?|baselines?|"
+    r"datasets?|folds?|epochs?|iterations?|steps?|slots?|metrics?|scenarios?|cases?)\b",
+    re.IGNORECASE,
+)
+
+
+def detect_spelled_out_numbers(abstract: str) -> List[str]:
+    """
+    Detect spelled-out numbers that violate technical/IEEE numerical consistency:
+    - Numbers >= 10 (e.g., 'thirty', 'twenty-five') should be digits.
+    - Small counts (2-9) before experimental nouns (e.g., 'five training seeds')
+      when the abstract already reports quantitative digits.
+    """
+    found: List[str] = []
+    for m in RE_LARGE_NUMBER_WORDS.finditer(abstract):
+        found.append(m.group(0))
+
+    has_digits = bool(re.search(r"\b\d+(?:\.\d+)?\b", abstract))
+    if has_digits:
+        for m in RE_SMALL_NUMBER_BEFORE_EXP_NOUN.finditer(abstract):
+            found.append(m.group(1))
+
+    return list(dict.fromkeys(found))
+
+
 def score_style_and_debiasing(title: str, abstract: str) -> Dict[str, Any]:
     """Score style, accessibility, and strip AI clichés and punctuation flaws (20 points max)."""
     combined_text = f"{title} {abstract}"
@@ -399,8 +467,8 @@ def score_style_and_debiasing(title: str, abstract: str) -> Dict[str, Any]:
     penalties: List[str] = []
     flagged_words: List[str] = []
 
-    # Em dash penalty
-    if "—" in combined_text or "--" in combined_text:
+    # Em dash penalty (match Unicode em dash '—' or LaTeX '---', not LaTeX en-dash '--')
+    if re.search(r"(?<!-)---(?!-)|—", combined_text):
         points -= 8
         penalties.append("em_dash")
 
@@ -421,11 +489,18 @@ def score_style_and_debiasing(title: str, abstract: str) -> Dict[str, Any]:
         points -= 4
         penalties.append("runon_sentences")
 
+    # Numerical style consistency: flag spelled-out numbers in quantitative abstracts
+    spelled_numbers = detect_spelled_out_numbers(abstract)
+    if spelled_numbers:
+        points -= 3
+        penalties.append("mixed_number_style")
+
     return {
         "points": max(0, points),
         "max_points": 20,
         "penalties": penalties,
         "flagged_words": flagged_words,
+        "spelled_out_numbers": spelled_numbers,
     }
 
 
@@ -673,6 +748,9 @@ def generate_diagnostic_report(evaluation: Dict[str, Any]) -> str:
         lines.append(f"    - Flag   : {p}")
     for f in scores['style_debiasing'].get('flagged_words', []):
         lines.append(f"    - Trope  : '{f}'")
+    if scores['style_debiasing'].get('spelled_out_numbers'):
+        nums = ", ".join(f"'{n}'" for n in scores['style_debiasing']['spelled_out_numbers'])
+        lines.append(f"    - Numbers: Use digits instead of {nums} for numerical consistency")
 
     # 2. Academic SEO & Discoverability
     lines.append("\n📈 ACADEMIC SEO & DISCOVERABILITY HACKS")
@@ -691,8 +769,15 @@ def generate_diagnostic_report(evaluation: Dict[str, Any]) -> str:
     # 3. Dual-Audience Accessibility
     lines.append("\n👥 DUAL-AUDIENCE ACCESSIBILITY & COGNITIVE LOAD")
     lines.append("-" * 78)
+    wc = access.get("abstract_word_count")
+    wc_status = access.get("word_count_status", "OPTIMAL")
+    venue_label = access.get("venue_word_limit", {}).get("label", "General (150-220w)")
+    if wc is not None:
+        lines.append(f"  • Abstract Word Count       : {wc} words [{wc_status}] ({venue_label})")
     lines.append(f"  • Sentence Count            : {access['sentence_count']} sentences (avg {access['avg_sentence_length']} words/sentence)")
     lines.append(f"  • Maximum Sentence Length   : {access['max_sentence_length']} words {'[WARN >35]' if access['has_runon_sentences'] else '[OPTIMAL]'}")
+    for ro in access.get("runon_sentences", []):
+        lines.append(f"    - Sentence {ro['index']} ({ro['word_count']}w): \"{ro['preview']}\"")
     lines.append(f"  • Lead Sentence Clarity     : {'[ACCESSIBLE]' if access['lead_accessible'] else '[DENSE - consider simplifying opening hook]'}")
 
     # 4. Metadata Vocabulary Expansion & Density
@@ -742,7 +827,7 @@ def run_cli(args: Optional[List[str]] = None) -> int:
     # Run evaluations
     triage = evaluate_triage_score(parsed.title, parsed.abstract, raw_keywords)
     seo = evaluate_academic_seo(parsed.title, parsed.abstract, raw_keywords)
-    accessibility = evaluate_accessibility(parsed.abstract)
+    accessibility = evaluate_accessibility(parsed.abstract, target_venue=parsed.target_venue)
     overlap = compute_title_keyword_overlap(parsed.title, raw_keywords)
     density = compute_abstract_keyword_density(parsed.abstract, raw_keywords)
     collision = check_title_collision(parsed.title, live=parsed.live)

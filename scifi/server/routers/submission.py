@@ -130,9 +130,13 @@ def scifi_prepare_submission_bundle(
     conflicts: str | None = None,
     editor_name: str | None = None,
     output_dir: str | None = None,
+    strict: bool = False,
+    double_blind: bool | None = None,
+    live: bool = False,
 ) -> dict[str, Any]:
     """
     Generate all four submission artifacts (cover letter, highlights, title page, anonymous code zip) and packaging manifest in one shot.
+    Optionally gate bundle generation on zero critical blockers when strict=True.
     """
     res = prepare_submission_bundle(
         target_dir_or_tex=target_dir_or_tex,
@@ -148,5 +152,8 @@ def scifi_prepare_submission_bundle(
         conflicts=conflicts,
         editor_name=editor_name,
         output_dir=output_dir,
+        strict=strict,
+        double_blind=double_blind,
+        live=live,
     )
     return res.to_dict()

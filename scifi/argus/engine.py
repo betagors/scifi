@@ -5,8 +5,10 @@ Coordinates detector, searcher, and reporting across single files or multi-file 
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+from scifi.cache import RegistryCache
 from scifi.latex.project import resolve_latex_project
 
 from .detector import (
@@ -43,8 +45,9 @@ class ArgusEngine:
         preprint_doi: str | None = None,
         timeout: int = 10,
         enable_search: bool = True,
+        cache: RegistryCache | None = None,
     ):
-        self.searcher = ArgusSearcher(author_whitelist, preprint_doi)
+        self.searcher = ArgusSearcher(author_whitelist, preprint_doi, cache=cache)
         self.timeout = timeout
         self.enable_search = enable_search
 
@@ -81,15 +84,23 @@ class ArgusEngine:
         source_file: str | None = None,
         start_idx: int = 1,
     ) -> AttributionReport:
+        # Identify line ranges inside \begin{abstract}...\end{abstract} (citations are typically disallowed in abstracts)
+        abstract_ranges: list[tuple[int, int]] = []
+        for m_abs in re.finditer(r"\\begin\{abstract\}(.*?)\\end\{abstract\}", text, re.DOTALL):
+            start_ln = text[: m_abs.start()].count("\n") + 1
+            end_ln = text[: m_abs.end()].count("\n") + 1
+            abstract_ranges.append((start_ln, end_ln))
+
         spans = split_into_sentence_spans(text)
         findings: list[AttributionFinding] = []
         finding_idx = start_idx
 
         for span in spans:
+            in_abstract = any(s_ln <= span.line_number <= e_ln for s_ln, e_ln in abstract_ranges)
             has_local_citation = len(span.citations) > 0
 
-            # 1. Audit named methods and algorithms
-            methods = extract_potential_methods(span.text)
+            # 1. Audit named methods and algorithms (skip CITE flags inside abstract)
+            methods = [] if in_abstract else extract_potential_methods(span.text)
             for entity_term, canonical_query in methods:
                 lower_term = entity_term.lower()
 

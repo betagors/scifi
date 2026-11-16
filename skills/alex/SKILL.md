@@ -1,6 +1,6 @@
 ---
 name: alex
-description: Verify academic citations via DOI, web links (arXiv, PubMed, OpenAlex, publisher URLs), or audit entire .bib files against authoritative registries (Crossref, OpenAlex, arXiv, DataCite). Detects retracted papers, errata, publisher notices, title/author/year discrepancies, and generates standardized BibTeX and APA citations.
+description: Verify academic citations via DOI, web links (arXiv, OpenAlex, publisher URLs), or audit entire .bib files against authoritative registries (Crossref, OpenAlex, arXiv, DataCite). Detects retracted papers, errata, publisher notices, title/author/year discrepancies, and generates standardized BibTeX citations.
 ---
 
 # Alex: Academic Literature & Citation Verifier
@@ -9,10 +9,10 @@ The `alex` skill validates scientific references and literature citations agains
 
 ## Core Capabilities
 
-1. **Identifier & Link Resolution**: Resolves DOIs, arXiv URLs/IDs, PubMed links/PMIDs, and publisher URLs via official registries.
+1. **Identifier & Link Resolution**: Resolves DOIs, arXiv URLs/IDs, and publisher URLs via official registries.
 2. **Retraction & Errata Screening**: Queries Crossref Crossmark updates and OpenAlex retraction indices to alert if a work was retracted, withdrawn, or amended.
 3. **Discrepancy Auditing**: Compares claimed author, title, publication year, and venue against official registry data to detect citation hallucination and drift.
-4. **Standardized Citation Formatting**: Generates normalized BibTeX entries (`[Author][Year][Word]`) and APA 7th edition references.
+4. **Standardized Citation Formatting**: Generates normalized BibTeX entries (`[Author][Year][Word]`) for LaTeX bibliographies.
 5. **Batch `.bib` File Auditing & Sanitization**: Audits entire bibliographies, reports status counts, and exports sanitized clean `.bib` files.
 
 ---
@@ -71,6 +71,9 @@ Search OpenAlex and academic registries for canonical literature by title, keywo
 |---|---|---|---|
 | `query` | string | Yes | Title, author, or research topic search query |
 | `limit` | integer | No | Maximum number of results (default: 5) |
+
+### 4. Local Zotero Library Cross-Check (`scifi_zotero_search` / `scifi_zotero_status`)
+Before requesting reprints or fetching remote copies, check `scifi_zotero_status` and `scifi_zotero_search(query=...)` to see whether a paper, its verified DOI/metadata, or its local PDF is already in the user's Zotero library.
 
 ---
 

@@ -43,7 +43,7 @@ def cmd_math(args: argparse.Namespace) -> int:
     elif sub == "convexity":
         res = check_convexity(args.expression, args.variables)
     elif sub == "notation":
-        res = check_notation(args.target)
+        res = check_notation(args.target, include_manifest=getattr(args, "manifest", False))
     else:
         print(
             "[ERROR] Specify a math subcommand: derivative, step, units, shapes, limits, convexity, notation",
@@ -71,14 +71,24 @@ def cmd_stats(args: argparse.Namespace) -> int:
         )
     elif sub == "audit":
         raw = args.values
-        try:
-            if raw.strip().startswith("[") or raw.strip().startswith("{") or Path(raw).exists():
-                parsed_input = json.loads(raw) if raw.strip().startswith(("[", "{")) else raw
-            else:
-                parsed_input = [float(x.strip()) for x in raw.split(",") if x.strip()]
-        except Exception:
-            parsed_input = raw
-        res = audit_statistics(parsed_input, confidence=args.confidence)
+        raw_path = Path(raw)
+        if raw_path.suffix.lower() in {".tex", ".bib", ".cls", ".sty", ".md", ".txt"}:
+            res = {
+                "status": "ERROR",
+                "error_message": (
+                    f"Unsupported input '{raw}' for `sf stats audit`. "
+                    "Provide comma-separated numbers, a JSON array, or a .csv/.json data file."
+                ),
+            }
+        else:
+            try:
+                if raw.strip().startswith("[") or raw.strip().startswith("{") or raw_path.exists():
+                    parsed_input = json.loads(raw) if raw.strip().startswith(("[", "{")) else raw
+                else:
+                    parsed_input = [float(x.strip()) for x in raw.split(",") if x.strip()]
+            except Exception:
+                parsed_input = raw
+            res = audit_statistics(parsed_input, confidence=args.confidence)
     else:
         print("[ERROR] Specify a stats subcommand: curve, audit", file=sys.stderr)
         return 1

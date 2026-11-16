@@ -7,10 +7,12 @@ from skills.shannon.scripts.test_keywords import (
     compute_abstract_keyword_density,
     compute_title_keyword_overlap,
     compute_title_similarity,
+    detect_spelled_out_numbers,
     evaluate_academic_seo,
     evaluate_accessibility,
     evaluate_triage_score,
     run_cli,
+    score_style_and_debiasing,
     tokenize,
 )
 
@@ -202,3 +204,32 @@ def test_cli_human_readable_report(capsys):
     assert "REVIEWER TRIAGE SCORECARD" in captured.out
     assert "ACADEMIC SEO & DISCOVERABILITY" in captured.out
     assert exit_code == 0
+
+
+def test_evaluate_accessibility_venue_word_limits():
+    abstract_210 = " ".join(["word"] * 210) + "."
+    res_ieee = evaluate_accessibility(abstract_210, target_venue="ieee")
+    assert res_ieee["abstract_word_count"] == 210
+    assert res_ieee["word_count_status"] == "OVER_RECOMMENDED"
+
+    res_elsevier = evaluate_accessibility(abstract_210, target_venue="elsevier")
+    assert res_elsevier["word_count_status"] == "OPTIMAL"
+
+    abstract_260 = " ".join(["word"] * 260) + "."
+    res_over = evaluate_accessibility(abstract_260, target_venue="ieee")
+    assert res_over["word_count_status"] == "OVER_LIMIT"
+
+
+def test_spelled_out_numbers_and_endash_handling():
+    abstract = (
+        "We apply Karush--Kuhn--Tucker conditions and analyze energy--backlog trade-offs. "
+        "Over thirty paired episodes from five training seeds, the controller achieves 2.35% gap."
+    )
+    flagged = detect_spelled_out_numbers(abstract)
+    assert "thirty" in flagged
+    assert "five" in flagged
+
+    style = score_style_and_debiasing("Test Title", abstract)
+    assert "em_dash" not in style["penalties"]
+    assert "mixed_number_style" in style["penalties"]
+    assert style["spelled_out_numbers"] == ["thirty", "five"]

@@ -24,15 +24,33 @@ _SPECIAL_LIMIT_POINTS: dict[str, Any] = {
 }
 
 
+_SYMPY_COLLISION_LOCALS: dict[str, sp.Symbol] = {
+    name: sp.Symbol(name)
+    for name in ("Q", "S", "N", "O", "E", "I", "beta", "gamma", "zeta", "eta", "chi", "Ci", "Si", "Ei", "Li")
+}
+
+
+def _normalize_mixed_latex(s: str) -> str:
+    """Convert Python power syntax (`**`) into LaTeX (`^{...}`) when LaTeX commands are present."""
+    normalized = re.sub(r"\*\*\s*\(([^()]+)\)", r"^{\1}", s)
+    normalized = re.sub(r"\*\*\s*([A-Za-z0-9_.]+)", r"^{\1}", normalized)
+    return normalized
+
+
 def _parse_latex_or_expr(text: str) -> sp.Expr:
     """Parse LaTeX string, falling back to sympify for python-style expressions."""
     s = text.strip()
     if "**" in s:
-        return sp.sympify(s)
+        if "\\" in s:
+            try:
+                return parse_latex(_normalize_mixed_latex(s))
+            except Exception:
+                pass
+        return sp.sympify(s, locals=_SYMPY_COLLISION_LOCALS)
     try:
         return parse_latex(s)
     except Exception:
-        return sp.sympify(s)
+        return sp.sympify(s, locals=_SYMPY_COLLISION_LOCALS)
 
 
 def _apply_assumptions(expr: sp.Expr, assumptions: list[str] | None) -> sp.Expr:

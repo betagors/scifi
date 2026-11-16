@@ -7,18 +7,8 @@ from __future__ import annotations
 from typing import Any
 
 import sympy as sp
-from sympy.parsing.latex import parse_latex
 
-
-def _parse_latex_or_expr(text: str) -> sp.Expr:
-    """Parse LaTeX scalar function, falling back to sympify."""
-    s = text.strip()
-    if "**" in s:
-        return sp.sympify(s)
-    try:
-        return parse_latex(s)
-    except Exception:
-        return sp.sympify(s)
+from scifi.math.calculus import _parse_latex_or_expr
 
 
 def _sylvester_criterion(H: sp.Matrix) -> bool:

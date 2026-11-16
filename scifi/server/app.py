@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from scifi.argus.searcher import DEFAULT_USER_AGENT
 from scifi.cache import RegistryCache
+from scifi.literature.kg import DEFAULT_KG_PATH, KnowledgeGraphStore
 from scifi.literature.models import ProjectRecord
 from scifi.literature.store import DEFAULT_CENTRAL_STORE_PATH, LiteratureStore
 from scifi.logging import get_logger
@@ -17,18 +18,32 @@ from scifi.logging import get_logger
 __all__ = [
     "mcp",
     "get_cache",
+    "get_knowledge_graph",
     "get_literature_store",
     "_resolve_project",
+    "DEFAULT_KG_DB_PATH",
     "DEFAULT_LITERATURE_DB_PATH",
     "DEFAULT_USER_AGENT",
 ]
 
 logger = get_logger(__name__)
 
-mcp = FastMCP("scifi", instructions="Scientific Research & Academic Writing Toolkit")
+mcp = FastMCP(
+    "scifi",
+    instructions=(
+        "Scientific Research & Academic Writing Toolkit for Google Antigravity. "
+        "Execution hierarchy: (1) Delegate multi-step paper audits, literature reviews, prose humanization, "
+        "math derivations, or title/abstract optimization to native subagents (@scholar, @argus, @scribe, "
+        "@theorist, @auditor, @shannon) via invoke_subagent; (2) Read the relevant skill (skills/<name>/SKILL.md) "
+        "before executing specialized workflows inline; (3) Prefer structured scifi_* MCP tools for LaTeX, SymPy, "
+        "BibTeX, Zotero, Zenodo, and Knowledge Graph payloads, and use `sf` CLI (`sf doctor`, `sf datasets inspect`) "
+        "for workspace-wide batch commands."
+    ),
+)
 
 _cache_instance: RegistryCache | None = None
 DEFAULT_LITERATURE_DB_PATH = DEFAULT_CENTRAL_STORE_PATH
+DEFAULT_KG_DB_PATH = DEFAULT_KG_PATH
 
 
 def get_cache() -> RegistryCache:
@@ -43,6 +58,12 @@ def get_literature_store(db_path: Path | str | None = None) -> LiteratureStore:
     """Return a LiteratureStore instance for literature intelligence."""
     path = db_path or DEFAULT_CENTRAL_STORE_PATH
     return LiteratureStore(path)
+
+
+def get_knowledge_graph(kg_path: Path | str | None = None) -> KnowledgeGraphStore:
+    """Return a KnowledgeGraphStore instance backed by LadybugDB."""
+    path = kg_path or DEFAULT_KG_DB_PATH
+    return KnowledgeGraphStore(path)
 
 
 def _resolve_project(
@@ -80,6 +101,13 @@ def _resolve_project(
                     return p
             except Exception as e:
                 logger.debug("Failed checking workspace equality for project %s: %s", p.id, e)
+
+        # 4. Auto-register if target_path is an existing local directory
+        if target_path.is_dir():
+            return store.register_project(
+                name=target_path.name,
+                workspace_path=str(target_path),
+            )
         return None
 
     # Omitted or None: auto-discover from Path.cwd()

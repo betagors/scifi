@@ -306,18 +306,56 @@ def create_reprint_record(
     )
 
 
+def _paper_to_zotero_item(paper_id: str, paper: PaperRecord | None) -> dict[str, Any]:
+    """Build a minimal Zotero journalArticle payload from a PaperRecord or identifier."""
+    raw_doi = None
+    if paper and getattr(paper, "identifiers", None):
+        for ident in paper.identifiers:
+            if (getattr(ident, "provider", "") or "").lower() == "doi":
+                raw_doi = getattr(ident, "external_id", None)
+                break
+    doi = clean_doi(raw_doi or paper_id)
+    title = (paper.title if paper and paper.title else None) or paper_id
+    item: dict[str, Any] = {
+        "itemType": "journalArticle",
+        "title": title,
+    }
+    if doi:
+        item["DOI"] = doi
+    if paper and paper.year:
+        item["date"] = str(paper.year)
+    if paper and paper.venue_name:
+        item["publicationTitle"] = paper.venue_name
+    if paper and paper.authors:
+        creators = []
+        for author in paper.authors:
+            name = getattr(author, "display_name", None) or getattr(author, "name", None) or str(author)
+            parts = str(name).strip().rsplit(" ", 1)
+            if len(parts) == 2:
+                creators.append({"creatorType": "author", "firstName": parts[0], "lastName": parts[1]})
+            elif parts and parts[0]:
+                creators.append({"creatorType": "author", "name": parts[0]})
+        if creators:
+            item["creators"] = creators
+    return item
+
+
 def ingest_paper_copy(
     store: LiteratureStore,
     project_id: str | None,
     paper_id: str,
     pdf_path: str | Path,
     storage_dir: Path | str | None = None,
+    save_to_zotero: bool = True,
+    zotero_collection: str | None = None,
+    responder_email: str | None = None,
+    zotero_writer: Any | None = None,
 ) -> dict[str, Any]:
     """
-    Ingest an acquired PDF copy into the content-addressed central store.
-    Saves PDF as ~/.scifi/storage/pdfs/<sha256>.pdf, registers PaperLocationRecord
-    with is_oa=True, is_accessible=True, links paper to project, and transitions
-    any associated reprint requests to RECEIVED.
+    Ingest an acquired PDF copy into the content-addressed central store and,
+    when Zotero is available (or zotero_collection is specified), import the item
+    and attach the PDF directly in Zotero. Marks associated reprint requests
+    as RECEIVED and optionally records responder_email for future publish notifications.
     """
     source_path = Path(pdf_path).resolve()
     if not source_path.exists() or not source_path.is_file():
@@ -335,8 +373,10 @@ def ingest_paper_copy(
     dest_path.write_bytes(data)
 
     # Defensively ensure paper stub exists to satisfy foreign key constraints
-    if store.get_paper(paper_id) is None:
-        store.upsert_paper(PaperRecord(id=paper_id, title=paper_id))
+    paper = store.get_paper(paper_id)
+    if paper is None:
+        paper = PaperRecord(id=paper_id, title=paper_id)
+        store.upsert_paper(paper)
 
     loc_id = f"loc-{hashlib.sha256(f'{paper_id}:{file_hash}'.encode()).hexdigest()[:12]}"
     location = PaperLocationRecord(
@@ -355,14 +395,44 @@ def ingest_paper_copy(
 
     # Transition pending reprint requests (DRAFT_READY or SENT) to RECEIVED
     pending = store.get_reprint_requests(paper_id=paper_id)
+    updated_any = False
     for req in pending:
         if (project_id is None or req.project_id is None or req.project_id == project_id) and req.status in (
             "DRAFT_READY",
             "SENT",
         ):
-            store.update_reprint_status(req.id, "RECEIVED")
+            if responder_email and not req.author_email:
+                store.update_reprint_request(req.id, author_email=responder_email, status="RECEIVED")
+            else:
+                store.update_reprint_status(req.id, "RECEIVED")
+            updated_any = True
 
-    return {
+    if responder_email and not updated_any:
+        store.create_reprint_request(
+            project_id=project_id,
+            paper_id=paper_id,
+            author_name="Corresponding Author",
+            author_email=responder_email,
+            status="RECEIVED",
+        )
+
+    zotero_result: dict[str, Any] | None = None
+    if save_to_zotero:
+        try:
+            from scifi.literature.zotero.writer import ZoteroLocalWriter
+
+            writer = zotero_writer or ZoteroLocalWriter()
+            if zotero_writer is not None or zotero_collection is not None or writer.is_server_available():
+                item_payload = _paper_to_zotero_item(paper_id, paper)
+                zotero_result = writer.import_paper_with_pdf(
+                    item_payload=item_payload,
+                    pdf_path=dest_path,
+                    collection_name=zotero_collection,
+                )
+        except Exception as e:
+            zotero_result = {"status": "ERROR", "message": str(e)}
+
+    result: dict[str, Any] = {
         "status": "SUCCESS",
         "stored_path": str(dest_path),
         "sha256": file_hash,
@@ -370,6 +440,9 @@ def ingest_paper_copy(
         "project_id": project_id,
         "file_size": len(data),
     }
+    if zotero_result is not None:
+        result["zotero"] = zotero_result
+    return result
 
 
 __all__ = [

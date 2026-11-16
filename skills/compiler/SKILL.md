@@ -15,26 +15,47 @@ The `compiler` skill autonomously compiles LaTeX manuscripts into PDF, isolates 
 
 ---
 
-## Native MCP Tools
+## Native MCP Tools & Standalone Mode
 
-Invoke the native SciFi MCP tool directly:
+Invoke `scifi_compile_latex` (or `scifi compile <entrypoint>`) directly. Both work on **standalone `.tex` files with zero project setup**—no `scifi init`, `scifi.toml`, or `.scifi/` directory is required, and `~/.scifi/config.json` is auto-created silently when caching `latex_bin_dir`.
+
+### `scifi_compiler_info`
+Inspect the active LaTeX toolchain and PDF visual renderer without running a build (reports `distribution`, `engine`, `engine_path`, `bin_dir`, `version`, `available_engines`, `cached`, and `pdf_renderer`).
 
 ### `scifi_compile_latex`
-Autonomously compile LaTeX manuscripts with automated log error parsing and engine diagnostics.
+Autonomously compile LaTeX manuscripts with cached toolchain discovery, automated log error parsing, compiler metadata, and optional PDF-to-PNG rendering.
+
+---
+
+## Self-Recovery (`COMPILER_NOT_FOUND` / Off-PATH TeX)
+
+If `scifi_compile_latex` returns `COMPILER_NOT_FOUND` (for example, when the MCP server is running an older build or TeX is installed off-`PATH`), **do not stop or tell the user LaTeX is missing** without running these automatic recovery steps:
+
+1. **Try the local `scifi` CLI:** Run `scifi compile "<entrypoint>"` (or `uv run scifi compile "<entrypoint>"` from the `scifi` repo). It uses `discover_tex_toolchain()`, auto-creates `~/.scifi/config.json` if needed, and caches `latex_bin_dir`.
+2. **Probe standard off-`PATH` TeX directories directly:** If the CLI is unavailable or still returns `COMPILER_NOT_FOUND`, check standard installation paths without user interaction:
+   - **Windows:** `%LOCALAPPDATA%\Programs\MiKTeX\miktex\bin\x64`, `C:\Program Files\MiKTeX\miktex\bin\x64`, `C:\texlive\*\bin\windows`, `%APPDATA%\TinyTeX\bin\windows`
+   - **macOS:** `/Library/TeX/texbin`, `~/Library/TinyTeX/bin/universal-darwin`, `/usr/local/texlive/*/bin/universal-darwin`
+   - **Linux:** `/usr/local/texlive/*/bin/*`, `~/.TinyTeX/bin/*`
+3. **Compile & cache:** Prepend the discovered `bin_dir` to `PATH` for the compile command, run `latexmk`/`xelatex`/`pdflatex` in the `.tex` file's directory, and persist it with `scifi config set latex_bin_dir "<bin_dir>"` (if `scifi` is available).
+4. **Report missing only after exhausting fallbacks:** Only ask the user to install MiKTeX/TeX Live if all checks above find no TeX binaries.
 
 ```json
 {
   "entrypoint": "path/to/main.tex",
-  "engine": "latexmk",
-  "clean": true
+  "engine": "auto",
+  "clean": true,
+  "render_pages": false
 }
 ```
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `entrypoint` | string | Yes | Path to the root `.tex` manuscript file |
-| `engine` | string | No | Compiler engine: `"latexmk"` (default), `"pdflatex"`, `"xelatex"`, or `"lualatex"` |
+| `engine` | string | No | Compiler engine: `"auto"`, `"latexmk"` (default), `"pdflatex"`, `"xelatex"`, or `"lualatex"` |
 | `clean` | boolean | No | Whether to clean auxiliary files (`.aux`, `.log`, `.out`, etc.) upon completion (default: `true`) |
+| `render_pages` | boolean | No | Render compiled PDF pages to PNG screenshots for visual inspection (default: `false`) |
+| `render_dpi` | integer | No | DPI for rendered PNGs when `render_pages=true` (default: `150`) |
+| `max_render_pages` | integer | No | Max pages to render when `render_pages=true` (default: `10`) |
 
 ---
 
@@ -42,9 +63,14 @@ Autonomously compile LaTeX manuscripts with automated log error parsing and engi
 
 ```json
 {
-  "status": "SUCCESS | ERROR",
+  "status": "SUCCESS | COMPILATION_ERROR | COMPILER_NOT_FOUND",
   "pdf_path": "path/to/main.pdf",
   "engine": "latexmk",
+  "engine_path": "C:/Users/.../MiKTeX/miktex/bin/x64/latexmk.exe",
+  "distribution": "MiKTeX",
+  "compiler_version": "Latexmk, John Collins, ...",
+  "duration_seconds": 2.14,
+  "page_count": 8,
   "errors": [
     {"file": "main.tex", "line": 42, "message": "Undefined control sequence."}
   ],
@@ -52,9 +78,13 @@ Autonomously compile LaTeX manuscripts with automated log error parsing and engi
   "undefined_citations": ["Smith2020"],
   "undefined_references": ["fig:overview"],
   "layout_warnings": {"overfull_hbox": 3, "underfull_hbox": 1},
-  "log_tail": "..."
+  "rendered_pages": [
+    {"page": 1, "image_path": ".../.scifi_renders/main/main_page-1.png", "width": 1275, "height": 1650}
+  ]
 }
 ```
+
+Always report the compiler used (`distribution`, `engine`, `engine_path`, `duration_seconds`, `page_count`) to the user.
 
 ---
 

@@ -3,8 +3,7 @@ Release & Distribution Packaging Engine for SciFi.
 
 Handles building:
 1. Python wheel and sdist distributions for PyPI via uv/build.
-2. Standalone AI Agent Plugin bundles (scifi-plugin-vX.Y.Z.zip) for Antigravity,
-   Claude Code, Cursor, Windsurf, Cline, and Gemini CLI.
+2. Standalone Google Antigravity Plugin bundles (scifi-plugin-vX.Y.Z.zip).
 """
 
 from __future__ import annotations
@@ -39,10 +38,10 @@ def write_sha256_file(file_path: Path) -> Path:
 
 def build_plugin_bundle(repo_root: Path, output_dir: Path) -> Path:
     """
-    Build a standalone AI Agent Plugin distribution archive (.zip).
+    Build a standalone Google Antigravity Plugin distribution archive (.zip).
 
-    Includes plugin.json, gemini-extension.json, mcp_config.json, skills/,
-    agents/, commands/, rules/, assets/, LICENSE, and README.md.
+    Includes plugin.json, mcp_config.json, hooks.json, skills/,
+    agents/, rules/, assets/, LICENSE, README.md, and CITATION.cff.
 
     Args:
         repo_root: Path to the repository root.
@@ -62,8 +61,8 @@ def build_plugin_bundle(repo_root: Path, output_dir: Path) -> Path:
     # Files to include directly at the root of the archive if present
     root_files = [
         "plugin.json",
-        "gemini-extension.json",
         "mcp_config.json",
+        "hooks.json",
         "LICENSE",
         "README.md",
         "CITATION.cff",
@@ -73,7 +72,6 @@ def build_plugin_bundle(repo_root: Path, output_dir: Path) -> Path:
     include_dirs = [
         "skills",
         "agents",
-        "commands",
         "rules",
         "assets",
     ]
@@ -150,10 +148,9 @@ def verify_plugin_bundle(bundle_path: Path) -> dict[str, Any]:
     except Exception as exc:
         return {"valid": False, "error": f"Invalid zip archive: {exc}"}
 
-    if "plugin.json" not in files:
-        errors.append("Missing plugin.json manifest")
-    if "rules/AGENTS.md" not in files:
-        errors.append("Missing rules/AGENTS.md")
+    for required in ("plugin.json", "mcp_config.json", "hooks.json", "rules/AGENTS.md"):
+        if required not in files:
+            errors.append(f"Missing {required}")
 
     return {
         "valid": len(errors) == 0,

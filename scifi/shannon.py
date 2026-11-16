@@ -128,7 +128,7 @@ def extract_latex_metadata(path_or_tex: str | Path) -> dict[str, Any]:
         cleaned_kw = _clean_latex_markup(raw_kw)
         # Split on comma, semicolon, or \sep / \and
         parts = re.split(r"[,;•·]|\bsep\b|\band\b", cleaned_kw)
-        keywords = [p.strip() for p in parts if p.strip()]
+        keywords = [p.strip().rstrip(".").strip() for p in parts if p.strip().rstrip(".").strip()]
 
     return {
         "title": title,
@@ -188,7 +188,7 @@ def evaluate_manuscript_metadata(
 
     triage = evaluate_triage_score(final_title, final_abstract, final_keywords)
     seo = evaluate_academic_seo(final_title, final_abstract, final_keywords)
-    accessibility = evaluate_accessibility(final_abstract)
+    accessibility = evaluate_accessibility(final_abstract, target_venue=target_venue)
     overlap = compute_title_keyword_overlap(final_title, final_keywords)
     density = compute_abstract_keyword_density(final_abstract, final_keywords)
     collision = check_title_collision(final_title, live=live)

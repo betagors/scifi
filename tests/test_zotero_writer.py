@@ -130,3 +130,108 @@ def test_flush_staged_writes_retains_failed_items(tmp_path):
         retained = json.loads(queue_file.read_text(encoding="utf-8"))
         assert len(retained) == 1
         assert retained[0]["item_key"] == "ITEM2"
+
+
+def test_create_collection_and_items_idempotent(tmp_path):
+    queue_file = tmp_path / "zotero_write_queue.json"
+    writer = ZoteroLocalWriter(port=23119, stage_file=queue_file)
+
+    with (
+        patch.object(writer, "is_server_available", return_value=True),
+        patch.object(writer, "get_collection_key", return_value="COL123"),
+        patch("scifi.literature.zotero.writer.requests.post") as mock_post,
+    ):
+        res = writer.create_collection("UAV")
+        assert res["status"] == "EXISTS"
+        assert res["collection_key"] == "COL123"
+        mock_post.assert_not_called()
+
+    with (
+        patch.object(
+            writer,
+            "get_collection_items_live",
+            return_value=[{"DOI": "10.1109/TEST.1", "title": "Existing UAV Paper"}],
+        ),
+        patch("scifi.literature.zotero.writer.requests.post") as mock_post,
+    ):
+        created = writer.create_items(
+            [
+                {"title": "Existing UAV Paper", "DOI": "10.1109/TEST.1"},
+                {"title": "Existing UAV Paper"},  # same title, no DOI
+            ],
+            "COL123",
+        )
+        assert created == 0
+        mock_post.assert_not_called()
+
+
+def test_attach_linked_pdf_offline_and_online(tmp_path):
+    queue_file = tmp_path / "zotero_write_queue.json"
+    pdf_file = tmp_path / "sample.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 sample")
+    writer = ZoteroLocalWriter(port=23119, stage_file=queue_file)
+
+    with patch.object(writer, "is_server_available", return_value=False):
+        res = writer.attach_linked_pdf("PARENT1", pdf_file)
+        assert res["status"] == "STAGED"
+        assert writer.pending_count() == 1
+
+    with (
+        patch.object(writer, "is_server_available", return_value=True),
+        patch.object(writer, "_headers", return_value={"Content-Type": "application/json"}),
+        patch("scifi.literature.zotero.writer.requests.get") as mock_get,
+        patch("scifi.literature.zotero.writer.requests.post") as mock_post,
+    ):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: [])
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"successful": {"0": {"key": "ATT123"}}},
+        )
+        res = writer.attach_linked_pdf("PARENT1", pdf_file)
+        assert res["status"] == "CREATED"
+        assert res["attachment_key"] == "ATT123"
+
+
+def test_import_paper_with_pdf_and_ingest_reciprocity(tmp_path):
+    from scifi.literature.reprint import ingest_paper_copy
+    from scifi.literature.store import LiteratureStore
+    from scifi.server.app import _resolve_project
+
+    proj_dir = tmp_path / "my-project"
+    proj_dir.mkdir()
+    store = LiteratureStore(tmp_path / "lit.db")
+
+    # _resolve_project auto-registers an existing workspace directory
+    proj = _resolve_project(store, str(proj_dir))
+    assert proj is not None
+    assert proj.name == "my-project"
+
+    pdf_file = tmp_path / "paper.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 content")
+
+    mock_writer = MagicMock()
+    mock_writer.import_paper_with_pdf.return_value = {
+        "status": "PUSHED",
+        "item_key": "ITEM1",
+        "attachment": {"status": "CREATED", "attachment_key": "ATT1"},
+    }
+
+    res = ingest_paper_copy(
+        store=store,
+        project_id=proj.id,
+        paper_id="10.1016/j.comnet.2024.110615",
+        pdf_path=pdf_file,
+        storage_dir=tmp_path / "pdfs",
+        save_to_zotero=True,
+        zotero_collection="my-project",
+        responder_email="author@univ.edu",
+        zotero_writer=mock_writer,
+    )
+    assert res["status"] == "SUCCESS"
+    assert res["zotero"]["status"] == "PUSHED"
+    mock_writer.import_paper_with_pdf.assert_called_once()
+
+    reqs = store.get_reprint_requests(paper_id="10.1016/j.comnet.2024.110615")
+    assert len(reqs) == 1
+    assert reqs[0].status == "RECEIVED"
+    assert reqs[0].author_email == "author@univ.edu"

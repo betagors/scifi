@@ -10,6 +10,7 @@ from typing import Any
 
 import requests
 
+from scifi.cache import RegistryCache
 from scifi.citation_verifier.discrepancy import string_similarity
 from scifi.citation_verifier.models import Author, CitationMetadata, VerificationStatus
 from scifi.network import get_session
@@ -43,9 +44,16 @@ class ArgusSearcher:
     OPENALEX_BASE = "https://api.openalex.org/works"
     CROSSREF_BASE = "https://api.crossref.org/works"
 
-    def __init__(self, author_whitelist: list[str] | None = None, preprint_doi: str | None = None):
+    def __init__(
+        self,
+        author_whitelist: list[str] | None = None,
+        preprint_doi: str | None = None,
+        cache: RegistryCache | None = None,
+        use_cache: bool = False,
+    ):
         self.author_whitelist: set[str] = {a.lower().strip() for a in (author_whitelist or []) if a.strip()}
         self.preprint_doi: str | None = preprint_doi.lower().strip() if preprint_doi else None
+        self.cache: RegistryCache | None = cache if cache is not None else (RegistryCache() if use_cache else None)
 
     def search_canonical_work(self, query: str, timeout: int = 10) -> tuple[CitationMetadata, float, bool] | None:
         """
@@ -55,6 +63,15 @@ class ArgusSearcher:
         clean_query = query.strip()
         if not clean_query:
             return None
+
+        cache_key = f"argus:{clean_query.lower()}"
+        if self.cache is not None:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached.get("metadata"), dict):
+                metadata = CitationMetadata.from_dict(cached["metadata"])
+                confidence = float(cached.get("confidence", 0.5))
+                is_self_alignment = self._check_self_alignment(metadata)
+                return metadata, confidence, is_self_alignment
 
         # 1. Try OpenAlex first
         result = self._search_openalex(clean_query, timeout=timeout)
@@ -66,6 +83,9 @@ class ArgusSearcher:
             return None
 
         metadata, confidence = result
+        if self.cache is not None:
+            self.cache.set(cache_key, {"metadata": metadata.to_dict(), "confidence": confidence})
+
         is_self_alignment = self._check_self_alignment(metadata)
 
         return metadata, confidence, is_self_alignment

@@ -30,6 +30,7 @@ class FigureIssueCategory(StrEnum):
         COLORBLIND_RISK: Confusable red-green palettes without secondary visual distinctions.
         MISSING_FIGURE_FILE: Graphic file path referenced in `\includegraphics` not found.
         LABEL_READABILITY: Inconsistent, unreadable, or missing figure axis labels.
+        LABEL_CONSISTENCY: Stale, invented, or mismatched algorithm/abbreviation labels inside figures.
     """
 
     LOW_DPI = "LOW_DPI"
@@ -38,6 +39,12 @@ class FigureIssueCategory(StrEnum):
     COLORBLIND_RISK = "COLORBLIND_RISK"
     MISSING_FIGURE_FILE = "MISSING_FIGURE_FILE"
     LABEL_READABILITY = "LABEL_READABILITY"
+    LABEL_CONSISTENCY = "LABEL_CONSISTENCY"
+    CLIPPED_CONTENT = "CLIPPED_CONTENT"
+    OVERLAPPING_ELEMENTS = "OVERLAPPING_ELEMENTS"
+    SUBFIGURE_LAYOUT = "SUBFIGURE_LAYOUT"
+    MARGIN_OVERFLOW = "MARGIN_OVERFLOW"
+    VISUAL_DEFECT = "VISUAL_DEFECT"
 
 
 @dataclass
@@ -78,6 +85,8 @@ class FigureAuditResult:
     total_figures_inspected: int
     issues: list[FigureIssue] = field(default_factory=list)
     clean_score: int = 100
+    rendered_previews: list[dict[str, Any]] = field(default_factory=list)
+    vlm_inspection: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -86,4 +95,6 @@ class FigureAuditResult:
             "total_issues": len(self.issues),
             "clean_score": self.clean_score,
             "issues": [i.to_dict() for i in self.issues],
+            "rendered_previews": self.rendered_previews,
+            "vlm_inspection": self.vlm_inspection,
         }

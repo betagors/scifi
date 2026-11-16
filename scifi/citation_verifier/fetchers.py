@@ -10,9 +10,10 @@ from typing import Any
 
 import requests
 
+from scifi.cache import RegistryCache
 from scifi.network import get_session
 
-from .models import Author, CitationMetadata, VerificationStatus
+from .models import Author, CitationMetadata, Discrepancy, Severity, VerificationStatus
 
 DEFAULT_USER_AGENT = "SciFi-CitationVerifier/1.0 (https://github.com/scifi-toolkit; mailto:scifi-toolkit@gmail.com)"
 
@@ -376,28 +377,46 @@ def resolve_citation(
     identifier_value: str,
     extra_info: dict[str, Any] | None = None,
     timeout: int = 10,
+    cache: RegistryCache | None = None,
+    use_cache: bool = False,
+    strict_consensus: bool = False,
 ) -> CitationMetadata:
     """
     Composite resolution pipeline:
     1. Crossref / OpenAlex / arXiv / DataCite.
     2. Cross-checks OpenAlex for retraction status and citation counts.
-    3. Returns unified CitationMetadata.
+    3. When strict_consensus=True, requires >=2 independent registries to confirm the reference.
+    4. Returns unified CitationMetadata (cached in RegistryCache when use_cache=True).
     """
+    active_cache = cache if cache is not None else (RegistryCache() if use_cache else None)
+    cache_suffix = ":strict" if strict_consensus else ""
+    cache_key = f"cv:{identifier_type}:{identifier_value}{cache_suffix}"
+    if active_cache is not None and identifier_type != "url":
+        cached = active_cache.get(cache_key)
+        if cached is not None:
+            return CitationMetadata.from_dict(cached)
+
     meta: CitationMetadata | None = None
+    confirmed_registries: list[str] = []
 
     if identifier_type == "doi":
         # 1. Query Crossref first
         cr_data = CrossRefFetcher.fetch(identifier_value, timeout=timeout)
         if cr_data:
             meta = CrossRefFetcher.parse_metadata(cr_data, identifier_value)
+            confirmed_registries.append("Crossref")
 
-        # 2. Fallback to DataCite if not found in Crossref
+        # 2. Fallback to DataCite if not found in Crossref (or if strict consensus needs another source)
         if not meta:
-            meta = DataCiteFetcher.fetch(identifier_value, timeout=timeout)
+            dc_meta = DataCiteFetcher.fetch(identifier_value, timeout=timeout)
+            if dc_meta:
+                meta = dc_meta
+                confirmed_registries.append("DataCite")
 
-        # 3. Always cross-check with OpenAlex for retraction status and citation count
+        # 3. Always cross-check with OpenAlex for retraction status, citation count, and consensus
         oa_data = OpenAlexFetcher.fetch(identifier_value, timeout=timeout)
         if oa_data:
+            confirmed_registries.append("OpenAlex")
             if not meta:
                 meta = OpenAlexFetcher.parse_metadata(oa_data)
             else:
@@ -409,12 +428,23 @@ def resolve_citation(
                 if meta.citation_count is None and "cited_by_count" in oa_data:
                     meta.citation_count = oa_data.get("cited_by_count")
 
+        # 4. Under strict consensus, try DataCite if we still have < 2 registries
+        if strict_consensus and len(confirmed_registries) < 2 and "DataCite" not in confirmed_registries:
+            dc_meta = DataCiteFetcher.fetch(identifier_value, timeout=timeout)
+            if dc_meta:
+                confirmed_registries.append("DataCite")
+                if not meta:
+                    meta = dc_meta
+
     elif identifier_type == "arxiv":
         meta = ArXivFetcher.fetch(identifier_value, timeout=timeout)
+        if meta:
+            confirmed_registries.append("arXiv")
         # If arXiv entry points to a published peer-reviewed DOI, augment it
         if meta and meta.canonical_doi:
             oa_data = OpenAlexFetcher.fetch(meta.canonical_doi, timeout=timeout)
             if oa_data:
+                confirmed_registries.append("OpenAlex")
                 oa_meta = OpenAlexFetcher.parse_metadata(oa_data)
                 if oa_meta.venue:
                     meta.venue = oa_meta.venue
@@ -423,11 +453,27 @@ def resolve_citation(
                 if oa_meta.is_retracted:
                     meta.is_retracted = True
                     meta.status = VerificationStatus.RETRACTED
+            if strict_consensus and len(confirmed_registries) < 2:
+                cr_data = CrossRefFetcher.fetch(meta.canonical_doi, timeout=timeout)
+                if cr_data:
+                    confirmed_registries.append("Crossref")
+        elif meta and strict_consensus and len(confirmed_registries) < 2:
+            arxiv_base = meta.identifier_value.split("v")[0]
+            oa_data = OpenAlexFetcher.fetch(f"https://doi.org/10.48550/arXiv.{arxiv_base}", timeout=timeout)
+            if oa_data:
+                confirmed_registries.append("OpenAlex")
 
     elif identifier_type in ("openalex", "pubmed"):
         oa_data = OpenAlexFetcher.fetch(identifier_value, timeout=timeout)
         if oa_data:
             meta = OpenAlexFetcher.parse_metadata(oa_data)
+            confirmed_registries.append("OpenAlex")
+        if meta and strict_consensus and len(confirmed_registries) < 2 and meta.canonical_doi:
+            cr_data = CrossRefFetcher.fetch(meta.canonical_doi, timeout=timeout)
+            if cr_data:
+                confirmed_registries.append("Crossref")
+            elif DataCiteFetcher.fetch(meta.canonical_doi, timeout=timeout):
+                confirmed_registries.append("DataCite")
 
     elif identifier_type == "url":
         # If we have extracted metadata from HTML head
@@ -454,6 +500,7 @@ def resolve_citation(
                 venue=extra_info.get("venue"),
                 source_registry="HTML-Meta",
             )
+            confirmed_registries.append("HTML-Meta")
 
     if not meta:
         return CitationMetadata(
@@ -463,5 +510,25 @@ def resolve_citation(
             title="Could not resolve metadata",
             source_registry="None",
         )
+
+    meta.confirmed_registries = confirmed_registries
+    if strict_consensus and len(confirmed_registries) < 2:
+        meta.discrepancies.append(
+            Discrepancy(
+                field="consensus",
+                claimed=">=2 registries",
+                verified=f"{len(confirmed_registries)} ({', '.join(confirmed_registries) or 'none'})",
+                severity=Severity.ERROR,
+                message=(
+                    f"Strict consensus failed: only {len(confirmed_registries)} registry confirmed "
+                    f"({', '.join(confirmed_registries) or 'none'}); >=2 required."
+                ),
+            )
+        )
+        if meta.status != VerificationStatus.RETRACTED:
+            meta.status = VerificationStatus.UNRESOLVED
+
+    if active_cache is not None and identifier_type != "url" and meta.status != VerificationStatus.UNRESOLVED:
+        active_cache.set(cache_key, meta.to_dict())
 
     return meta

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
+from typing import Any
 
 from scifi.literature.models import (
     CitationContextRecord,
@@ -73,7 +75,13 @@ _CATEGORY_PATTERNS: dict[str, list[tuple[str, int]]] = {
         (r"\bfull\s+(?:state|knowledge|information|channel)\b", 3),
         (r"\brequires?\s+full\b", 3),
         (r"\bonly\s+holds?\s+(?:in|when|under|if)\b", 3),
-        (r"\bunder\s+(?:the\s+)?(?:assumption|ideal)\b", 3),
+        (r"\bunder\s+(?:the\s+)?(?:assumption|ideal|regime)\b", 3),
+        (r"\bwe\s+restrict\s+(?:our\s+)?(?:attention|analysis|scope|focus)\s+to\b", 4),
+        (r"\bwe\s+only\s+consider\b", 4),
+        (r"\bfor\s+(?:simplicity|tractability),?\s+we\b", 4),
+        (r"\bwithout\s+loss\s+of\s+generality\b", 3),
+        (r"\bbeyond\s+the\s+scope\s+of\b", 3),
+        (r"\bassuming\s+known\b", 4),
     ],
     "empirical_limitation": [
         (r"\bfails?\s+to\b", 3),
@@ -408,8 +416,15 @@ class GapExtractor:
     """
     Multi-stage evidence-based research gap extractor.
     Mines limitations and system assumptions from abstracts, full-text sections,
-    and citation contexts, classifies claims, and corroborates findings across sources.
+    peer reviews, and citation contexts, classifies claims, and corroborates
+    findings across sources.
     """
+
+    def __init__(
+        self,
+        llm_extractor: Callable[[PaperRecord, dict[str, str]], list[dict[str, Any]]] | None = None,
+    ) -> None:
+        self.llm_extractor = llm_extractor
 
     def extract_abstract_gaps(self, paper: PaperRecord) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
         """
@@ -675,20 +690,140 @@ class GapExtractor:
 
         return gaps_with_evidence
 
+    def extract_review_gaps(
+        self,
+        paper: PaperRecord,
+        reviews: list[dict[str, Any]],
+    ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
+        """
+        Extract peer-reviewed research gaps from structured review fields (e.g. OpenReview
+        weaknesses, limitations, and critical questions).
+        """
+        if not reviews:
+            return []
+
+        results: list[tuple[EvidenceRecord, PaperGapRecord]] = []
+        for r_idx, review in enumerate(reviews):
+            note_id = str(review.get("note_id") or f"review_{r_idx + 1}")
+            for field_name in ("weaknesses", "limitations", "questions"):
+                raw_text = (review.get(field_name) or "").strip()
+                if not raw_text:
+                    continue
+                for s_idx, sentence in enumerate(_split_into_sentences(raw_text)):
+                    gap_type, score = _classify_gap_sentence(sentence)
+                    if gap_type is None:
+                        if field_name in ("weaknesses", "limitations"):
+                            gap_type = "empirical_limitation"
+                        else:
+                            continue
+                    elif score < 1 and field_name == "questions":
+                        continue
+
+                    ev_id = f"ev-{uuid.uuid4().hex[:12]}"
+                    gap_id = f"gap-{uuid.uuid4().hex[:12]}"
+                    evidence = EvidenceRecord(
+                        id=ev_id,
+                        paper_id=paper.id,
+                        evidence_type="openreview_review",
+                        extracted_text=sentence,
+                        extraction_method="openreview_peer_review_mining",
+                        reporting_paper_id=f"openreview:{note_id}",
+                        source_section=f"Peer Review ({field_name})",
+                        source_location=f"note_{note_id}_s{s_idx + 1}",
+                        confidence=0.93,
+                    )
+                    gap = PaperGapRecord(
+                        id=gap_id,
+                        paper_id=paper.id,
+                        gap_type=gap_type,
+                        claim_summary=_generate_claim_summary(sentence, gap_type),
+                        primary_evidence_id=ev_id,
+                        verification_status="candidate",
+                        corroborating_count=0,
+                        contradicting_count=0,
+                    )
+                    results.append((evidence, gap))
+
+        return results
+
+    def extract_llm_gaps(
+        self,
+        paper: PaperRecord,
+        sections: dict[str, str],
+    ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
+        """
+        Run optional semantic LLM gap extractor and verify that every returned
+        evidence_quote is grounded verbatim (modulo whitespace) in the paper text.
+        """
+        if self.llm_extractor is None:
+            return []
+
+        corpus = " ".join(part for part in [paper.abstract or "", *(sections or {}).values()] if part)
+        norm_corpus = re.sub(r"\s+", " ", corpus).lower()
+        if not norm_corpus:
+            return []
+
+        raw_items = self.llm_extractor(paper, sections) or []
+        results: list[tuple[EvidenceRecord, PaperGapRecord]] = []
+        for idx, item in enumerate(raw_items):
+            quote = str(item.get("evidence_quote") or "").strip()
+            if not quote:
+                continue
+            norm_quote = re.sub(r"\s+", " ", quote).lower()
+            # Zero-hallucination grounding check: quote must appear in source text
+            if norm_quote not in norm_corpus:
+                continue
+
+            gap_type = str(item.get("gap_type") or "empirical_limitation")
+            if gap_type not in GAP_TYPES:
+                gap_type = "empirical_limitation"
+            claim = str(item.get("claim_summary") or _generate_claim_summary(quote, gap_type))
+            source_section = str(item.get("source_section") or "Full Text")
+
+            ev_id = f"ev-{uuid.uuid4().hex[:12]}"
+            gap_id = f"gap-{uuid.uuid4().hex[:12]}"
+            evidence = EvidenceRecord(
+                id=ev_id,
+                paper_id=paper.id,
+                evidence_type="llm_semantic_gap",
+                extracted_text=quote,
+                extraction_method="llm_grounded_extraction",
+                reporting_paper_id=None,
+                source_section=source_section,
+                source_location=f"llm_item_{idx + 1}",
+                confidence=float(item.get("confidence", 0.88)),
+            )
+            gap = PaperGapRecord(
+                id=gap_id,
+                paper_id=paper.id,
+                gap_type=gap_type,
+                claim_summary=claim,
+                primary_evidence_id=ev_id,
+                verification_status="candidate",
+                corroborating_count=0,
+                contradicting_count=0,
+            )
+            results.append((evidence, gap))
+        return results
+
     def extract_all_gaps(
         self,
         target_paper: PaperRecord,
         contexts: list[CitationContextRecord],
         sections: dict[str, str] | None = None,
+        reviews: list[dict[str, Any]] | None = None,
     ) -> list[tuple[EvidenceRecord, PaperGapRecord]]:
         """
         End-to-end multi-stage pipeline: extracts abstract gaps, full-text section gaps,
-        citation context gaps, and corroborates findings across sources.
+        peer-review gaps, optional grounded LLM gaps, citation context gaps, and
+        corroborates findings across sources.
         """
         abstract_gaps = self.extract_abstract_gaps(target_paper)
         fulltext_gaps = self.extract_fulltext_gaps(target_paper, sections) if sections else []
+        review_gaps = self.extract_review_gaps(target_paper, reviews) if reviews else []
+        llm_gaps = self.extract_llm_gaps(target_paper, sections or {}) if self.llm_extractor else []
         citation_gaps = self.extract_citation_context_gaps(target_paper, contexts)
-        return self.corroborate_gaps(abstract_gaps + fulltext_gaps + citation_gaps)
+        return self.corroborate_gaps(abstract_gaps + fulltext_gaps + review_gaps + llm_gaps + citation_gaps)
 
     def _cluster_by_tokens(
         self, items: list[tuple[EvidenceRecord, PaperGapRecord]]

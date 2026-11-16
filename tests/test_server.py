@@ -41,6 +41,7 @@ EXPECTED_TOOLS = {
     "scifi_audit_bib",
     "scifi_search_literature",
     "scifi_audit_attribution",
+    "scifi_audit_claim_entailment",
     "scifi_verify_derivative",
     "scifi_verify_derivation_step",
     "scifi_check_units",
@@ -49,10 +50,15 @@ EXPECTED_TOOLS = {
     "scifi_check_convexity",
     "scifi_check_notation",
     "scifi_compile_latex",
+    "scifi_compiler_info",
+    "scifi_render_pdf",
     "scifi_verify_curve",
     "scifi_audit_statistics",
     "scifi_audit_claims",
     "scifi_fetch_paper_pdf",
+    "scifi_fetch_structured_paper",
+    "scifi_fetch_openreview_gaps",
+    "scifi_synthesize_gaps",
     "scifi_extract_pdf_text",
     "scifi_map_literature",
     "scifi_query_store",
@@ -62,7 +68,9 @@ EXPECTED_TOOLS = {
     "scifi_evaluate_title_abstract",
     "scifi_generate_latex_table",
     "scifi_check_venue_compliance",
-    "scifi_audit_human",
+    "scifi_audit_orwell",
+    "scifi_calibrate_orwell",
+    "scifi_verify_edit_invariants",
     "scifi_audit_figures",
     "scifi_trim_budget",
     "scifi_audit_proofs",
@@ -80,9 +88,42 @@ EXPECTED_TOOLS = {
     "scifi_list_pending_reprints",
     "scifi_ingest_paper_pdf",
     "scifi_zotero_status",
+    "scifi_zotero_sync",
     "scifi_zotero_get_collection_papers",
+    "scifi_zotero_search",
     "scifi_zotero_get_annotations",
     "scifi_zotero_push_audit_note",
+    "scifi_kg_status",
+    "scifi_kg_rebuild",
+    "scifi_kg_query",
+    "scifi_kg_trace_assumptions",
+    "scifi_kg_delta_novelty",
+    "scifi_kg_find_contradictions",
+    "scifi_kg_upsert_fact",
+    "scifi_datasets_dir",
+    "scifi_datasets_list",
+    "scifi_datasets_inspect",
+    "scifi_datasets_search",
+    "scifi_datasets_download",
+    "scifi_kaggle_status",
+    "scifi_kaggle_push_dataset",
+    "scifi_kaggle_competition_list",
+    "scifi_kaggle_competition_download",
+    "scifi_kaggle_competition_submit",
+    "scifi_kaggle_kernel_list",
+    "scifi_kaggle_kernel_pull",
+    "scifi_kaggle_kernel_push",
+    "scifi_kaggle_kernel_status",
+    "scifi_kaggle_kernel_output",
+    "scifi_zenodo_status",
+    "scifi_zenodo_list_depositions",
+    "scifi_zenodo_get_deposition",
+    "scifi_zenodo_create_deposition",
+    "scifi_zenodo_update_metadata",
+    "scifi_zenodo_upload_file",
+    "scifi_zenodo_reserve_doi",
+    "scifi_zenodo_publish_deposition",
+    "scifi_zenodo_push_submission",
 }
 
 
@@ -179,16 +220,22 @@ class TestDirectToolExecution(unittest.TestCase):
             mock_compile.return_value = {"status": "SUCCESS", "pdf_generated": True}
             res = scifi_compile_latex("main.tex")
             self.assertEqual(res["status"], "SUCCESS")
-            mock_compile.assert_called_once_with(entrypoint="main.tex", engine="latexmk", clean=True)
+            mock_compile.assert_called_once_with(entrypoint="main.tex", engine="auto", clean=True)
 
     def test_fetch_paper_pdf_mock(self):
         with patch("scifi.server.fetch_paper_pdf") as mock_fetch:
             mock_fetch.return_value = {"status": "SUCCESS", "file_path": "workspace/paper.pdf"}
-            res = scifi_fetch_paper_pdf("1706.03762")
+            res = scifi_fetch_paper_pdf("1706.03762", output_dir="workspace")
             self.assertEqual(res["status"], "SUCCESS")
             mock_fetch.assert_called_once_with(
                 identifier="1706.03762", output_dir="workspace", email="researcher@scifi.org"
             )
+
+            mock_fetch.reset_mock()
+            res_default = scifi_fetch_paper_pdf("1706.03762")
+            self.assertEqual(res_default["status"], "SUCCESS")
+            self.assertEqual(mock_fetch.call_args.kwargs["identifier"], "1706.03762")
+            self.assertNotEqual(mock_fetch.call_args.kwargs["output_dir"], "workspace")
 
     def test_extract_pdf_text_mock(self):
         with patch("scifi.server.extract_pdf_text") as mock_extract:

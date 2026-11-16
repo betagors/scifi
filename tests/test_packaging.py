@@ -15,7 +15,7 @@ from scifi.setup_cli import load_canonical_rules
 
 
 def test_version_consistency():
-    """Verify that Python package, plugin.json, and gemini-extension.json versions match."""
+    """Verify that Python package and plugin.json versions match."""
     root = Path(__file__).resolve().parent.parent
     py_version = scifi.__version__
 
@@ -23,13 +23,6 @@ def test_version_consistency():
     if plugin_file.exists():
         data = json.loads(plugin_file.read_text(encoding="utf-8"))
         assert data.get("version") == py_version, f"plugin.json version mismatch: {data.get('version')} != {py_version}"
-
-    gemini_file = root / "gemini-extension.json"
-    if gemini_file.exists():
-        data = json.loads(gemini_file.read_text(encoding="utf-8"))
-        assert data.get("version") == py_version, (
-            f"gemini-extension.json version mismatch: {data.get('version')} != {py_version}"
-        )
 
 
 def test_rules_file_parity():
@@ -47,16 +40,16 @@ def test_rules_file_parity():
 
 
 def test_load_canonical_rules_from_packaged_resource(monkeypatch, tmp_path):
-    """Verify load_canonical_rules loads all 12 rules even without any repository root."""
+    """Verify load_canonical_rules loads all 15 compact rules under 4000 bytes even without repo root."""
     monkeypatch.chdir(tmp_path)
     rules_text = load_canonical_rules(project_root=tmp_path)
 
-    # Must contain full 12 rules, not the 4-rule stub
     assert "## 12. Academic Paper Packaging & Submission Suite" in rules_text
-    assert "Master Academic Humanizer Protocol" in rules_text
+    assert "Orwell Academic Prose & Stylometry Protocol" in rules_text
+    assert len(rules_text.encode("utf-8")) < 4000
 
     rule_headers = re.findall(r"^## \d+\.", rules_text, flags=re.MULTILINE)
-    assert len(rule_headers) == 12, f"Expected 12 rules, got {len(rule_headers)}"
+    assert len(rule_headers) == 15, f"Expected 15 rules, got {len(rule_headers)}"
 
 
 def test_wheel_package_hygiene():
@@ -99,5 +92,32 @@ def test_build_and_verify_plugin_bundle(tmp_path):
     assert verification["skills_count"] >= 17
     assert verification["agents_count"] >= 6
     assert "plugin.json" in verification["files"]
+    assert "mcp_config.json" in verification["files"]
+    assert "hooks.json" in verification["files"]
     assert "rules/AGENTS.md" in verification["files"]
     assert "assets/logo.svg" in verification["files"]
+    assert "gemini-extension.json" not in verification["files"]
+    assert not any(f.startswith("commands/") for f in verification["files"])
+
+
+def test_hook_guard_allows_tex_and_denies_csv(tmp_path):
+    """Verify Antigravity PreToolUse dataset hook allows .tex/.json<=32KB and denies raw datasets."""
+    from scifi.datasets.hook_guard import evaluate_hook
+
+    tex_path = tmp_path / "main.tex"
+    tex_path.write_text(r"\documentclass{article}", encoding="utf-8")
+    assert evaluate_hook({"toolCall": {"args": {"Path": str(tex_path)}}}) == {"decision": "allow"}
+
+    csv_path = tmp_path / "results.csv"
+    csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+    res_csv = evaluate_hook({"toolCall": {"args": {"Path": str(csv_path)}}})
+    assert res_csv["decision"] == "deny"
+    assert "scifi_datasets_inspect" in res_csv["reason"]
+
+    small_json = tmp_path / "small.json"
+    small_json.write_text('{"ok": true}', encoding="utf-8")
+    assert evaluate_hook({"toolCall": {"args": {"Path": str(small_json)}}}) == {"decision": "allow"}
+
+    big_json = tmp_path / "big.json"
+    big_json.write_text("x" * 40_000, encoding="utf-8")
+    assert evaluate_hook({"toolCall": {"args": {"Path": str(big_json)}}})["decision"] == "deny"

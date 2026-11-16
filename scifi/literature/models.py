@@ -510,12 +510,80 @@ class ReprintRequestRecord:
         )
 
 
+@dataclass
+class EntityRecord:
+    id: str
+    entity_type: str  # Method, Assumption, Claim, Dataset, Metric
+    canonical_name: str
+    aliases: list[str] = field(default_factory=list)
+    category: str | None = None
+    statement: str | None = None
+    formal_expr: str | None = None
+    scope: str | None = None
+    complexity: str | None = None
+    created_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EntityRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class EntityAliasRecord:
+    alias_norm: str
+    entity_id: str
+    entity_type: str
+    raw_alias: str
+    confidence: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EntityAliasRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
+@dataclass
+class SemanticEdgeRecord:
+    id: str
+    source_id: str
+    source_type: str
+    relation_type: str  # PROPOSES, USES, EXTENDS, ASSUMES, PROVES, FALSIFIES, CONTRADICTS, ADDRESSES
+    target_id: str
+    target_type: str
+    evidence_id: str
+    confidence: float = 1.0
+    is_implicit: bool = False
+    regime: str | None = None
+    delta_summary: str | None = None
+    created_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SemanticEdgeRecord:
+        known = {f.name for f in dataclasses.fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+
 __all__ = [
     "AuthorRecord",
     "BenchmarkRecord",
     "BenchmarkResultRecord",
     "CitationContextRecord",
     "CitationRecord",
+    "EntityAliasRecord",
+    "EntityRecord",
     "EvaluationConditionRecord",
     "EvaluationMetricRecord",
     "EvidenceRecord",
@@ -527,4 +595,5 @@ __all__ = [
     "PaperVersionRecord",
     "ProjectRecord",
     "ReprintRequestRecord",
+    "SemanticEdgeRecord",
 ]

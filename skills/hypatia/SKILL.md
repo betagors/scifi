@@ -21,13 +21,21 @@ The `hypatia` skill enables deep literature synthesis, competitive benchmarking,
 
 Invoke the native SciFi MCP tools directly:
 
+### 0. Zotero-First Literature Discovery & Annotation Mining (Run First!)
+Before running stateless web/OpenAlex searches (`scifi_search_literature`, `scifi_map_literature`), fetching remote PDFs (`scifi_fetch_paper_pdf`), or drafting reprint requests, **always check the user's local Zotero library**:
+1. `scifi_zotero_status` — verify if local Zotero is available and list existing collections (e.g., topic-specific collections the user already curated).
+2. `scifi_zotero_search(query=..., collection=..., has_pdf=..., limit=20)` — search across the user's Zotero library (or a specific collection) by topic, title, author, DOI, or tag without dumping thousands of items into context.
+3. `scifi_zotero_get_annotations(item_key)` — retrieve the user's own PDF highlights and margin comments for relevant Zotero papers and incorporate them into your gap analysis and synthesis.
+4. `scifi_zotero_push_audit_note(item_key, audit_data)` — persist structured audit cards, extracted benchmarks, flagged assumptions, or research verdicts back into Zotero as child notes.
+
 ### 1. `scifi_fetch_paper_pdf`
-Download an open-access research PDF by DOI or arXiv ID.
+Download an open-access research PDF by DOI or arXiv ID and automatically store it in SciFi's central store + Zotero (avoiding legacy `workspace/papers/` folders).
 
 ```json
 {
   "identifier": "1706.03762",
-  "output_dir": "workspace/papers",
+  "save_to_zotero": true,
+  "zotero_collection": "project-beta",
   "email": "researcher@university.edu"
 }
 ```
@@ -35,7 +43,10 @@ Download an open-access research PDF by DOI or arXiv ID.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `identifier` | string | Yes | DOI (e.g. `"10.1109/TWC.2023.3291234"`) or arXiv ID (e.g. `"1706.03762"` or `"2301.12345"`) |
-| `output_dir` | string | No | Destination directory for downloaded PDF (default: `"workspace"`) |
+| `save_to_zotero` | boolean | No | Automatically import the paper and attach the PDF in Zotero (default: `true`) |
+| `zotero_collection` | string | No | Target Zotero collection name (auto-detected from project config if omitted) |
+| `project_dir` | string | No | Project directory for resolving Zotero collection and project linking |
+| `output_dir` | string | No | Optional legacy directory override; omit to use central store + Zotero |
 | `email` | string | No | Contact email for polite OpenAlex/Unpaywall registry requests |
 
 ### 2. `scifi_extract_pdf_text`
@@ -63,6 +74,14 @@ Returns structured sections:
 
 ### 3. `scifi_map_literature` with Full-Text Gap Mining
 Crawl lineage while automatically resolving full-text PDFs (locally or via OA) to mine grounded research gaps.
+
+### 4. Persistent Novelty & Benchmark Checks (Use Before Stateless Search!)
+When asked to check **novelty**, **research gaps**, or **SOTA benchmarks** for an ongoing project, do **not** start from scratch with repeated `scifi_search_literature` calls across conversations. Instead, persist and query the project Knowledge Graph:
+1. `scifi_kg_rebuild` — build or refresh the project's Knowledge Graph from `paper/` and ingested PDFs.
+2. `scifi_ingest_paper_pdf` — add key competing baseline PDFs into the store/KG.
+3. `scifi_kg_delta_novelty` — compute the exact technical delta between your manuscript and the ingested literature.
+4. `scifi_kg_find_contradictions` & `scifi_kg_trace_assumptions` — surface conflicting claims or unstated assumptions.
+5. `scifi_query_sota_benchmarks` — check reported SOTA metrics and baselines in the store.
 
 ```json
 {
@@ -114,6 +133,8 @@ When contrasting the proposed paper with a baseline, never settle for superficia
 | **Objective Function** | Throughput maximisation | Age-of-Information + energy | Jointly captures freshness and sustainability trade-offs |
 
 *Rule:* Populate every cell directly from extracted paper sections—never from assumptions.
+*Benchmarking Hygiene:* Never compare raw environment-dependent metrics (`ms`, `s`, wall-clock throughput) copied from disparate papers with different hardware, datasets, or software stacks in a literature comparison table without an explicit disparate-setup caveat; compare **Algorithmic Paradigm / Asymptotic Complexity** or hardware-agnostic structural properties instead, reserving raw runtime timings for controlled same-environment evaluations. When mapping a modular ablation suite to baselines, cite recent SOTA formulations (last 1–2 years) alongside foundational citations so reviewers do not perceive the baselines as outdated.
+*Guarantee-Level Novelty Rule:* When a manuscript combines established building blocks across a pipeline, a feature-checkmark comparison table alone cannot defend novelty against recent same-year works. Explicitly contrast **what the closest SOTA papers cannot guarantee or resolve, what the proposed method guarantees instead, and under which exact assumptions**.
 
 ### 2. Gap-to-Contribution Narrative
 Structure Related Work narratives into three precise transitions:

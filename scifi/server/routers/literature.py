@@ -30,23 +30,67 @@ logger = get_logger(__name__)
 @mcp.tool()
 def scifi_fetch_paper_pdf(
     identifier: str,
-    output_dir: str = "workspace",
+    output_dir: str | None = None,
     email: str = "researcher@scifi.org",
+    save_to_zotero: bool = True,
+    zotero_collection: str | None = None,
+    project_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Fetch an open-access PDF for a paper by DOI or arXiv ID from arXiv, Unpaywall, or OpenAlex.
+    When output_dir is omitted, stores the PDF in SciFi's central store and imports/attaches
+    it directly into Zotero (instead of creating a local workspace/papers folder).
 
     Args:
         identifier: DOI (e.g. '10.1038/nature14539') or arXiv ID (e.g. '1706.03762').
-        output_dir: Directory where the downloaded PDF should be stored.
+        output_dir: Optional directory where the PDF should be saved. If omitted, uses central store + Zotero.
         email: Contact email for polite OpenAlex/Unpaywall registry requests.
+        save_to_zotero: Automatically import the paper and attach the PDF in Zotero (default: True).
+        zotero_collection: Target Zotero collection name (auto-detected from project config if omitted).
+        project_dir: Optional project directory for resolving Zotero collection and project linking.
 
     Returns:
-        Dictionary with status, identifier, file_path, source, and file size.
+        Dictionary with status, identifier, file_path, source, pdf_url, and optional zotero import status.
     """
+    import tempfile
+
     import scifi.server as srv
 
-    return srv.fetch_paper_pdf(identifier=identifier, output_dir=output_dir, email=email)
+    if output_dir is not None:
+        return srv.fetch_paper_pdf(identifier=identifier, output_dir=output_dir, email=email)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        res = srv.fetch_paper_pdf(identifier=identifier, output_dir=tmp_dir, email=email)
+        if res.get("status") != "SUCCESS" or not res.get("file_path") or not Path(res["file_path"]).is_file():
+            return res
+
+        store = srv.get_literature_store()
+        proj = _resolve_project(store, project_dir)
+        proj_id = proj.id if proj else None
+
+        col = zotero_collection
+        if not col and proj is not None:
+            try:
+                from scifi.literature.zotero.sync import load_zotero_project_config
+
+                z_cfg = load_zotero_project_config(Path(proj.workspace_path))
+                col = z_cfg.collection or proj.name
+            except Exception:
+                col = proj.name
+
+        ingest_res = ingest_paper_copy(
+            store=store,
+            project_id=proj_id,
+            paper_id=identifier,
+            pdf_path=res["file_path"],
+            save_to_zotero=save_to_zotero,
+            zotero_collection=col,
+        )
+        res["file_path"] = ingest_res.get("stored_path", res["file_path"])
+        res["sha256"] = ingest_res.get("sha256")
+        if "zotero" in ingest_res:
+            res["zotero"] = ingest_res["zotero"]
+        return res
 
 
 @mcp.tool()
@@ -71,7 +115,10 @@ def scifi_extract_pdf_text(
     kwargs: dict[str, Any] = {"pdf_path": pdf_path, "max_pages": max_pages}
     if max_section_length is not None:
         kwargs["max_section_length"] = max_section_length
-    return srv.extract_pdf_text(**kwargs)
+    res = srv.extract_pdf_text(**kwargs)
+    if isinstance(res, dict) and "sections" in res and "abstract" in res:
+        res = {k: v for k, v in res.items() if k != "sections"}
+    return res
 
 
 @mcp.tool()
@@ -88,6 +135,7 @@ def scifi_map_literature(
     extract_fulltext: bool = True,
     pdf_dir: str | None = None,
     auto_fetch_pdf: bool = False,
+    compact: bool = True,
 ) -> dict[str, Any]:
     """
     Discover intellectual lineage and construct an interactive literature graph from a seed paper or query.
@@ -204,6 +252,23 @@ def scifi_map_literature(
             "bibtex": str(bib_path.resolve()),
         }
 
+    papers_payload = (
+        [
+            {
+                "id": p.id,
+                "title": p.title,
+                "year": p.year,
+                "venue_name": p.venue_name,
+                "citation_count": p.citation_count,
+                "is_retracted": p.is_retracted,
+                "authors": [a.name for a in p.authors[:5]],
+            }
+            for p in papers
+        ]
+        if compact
+        else [p.to_dict() for p in papers]
+    )
+
     return {
         "status": "SUCCESS",
         "graph_id": assigned_graph_id,
@@ -216,7 +281,7 @@ def scifi_map_literature(
         "benchmark_results_count": total_results,
         "sota_leaders": [r.to_dict() for r in sota_leaders],
         "benchmarks": [b.to_dict() for b in benchmarks_map.values()],
-        "papers": [p.to_dict() for p in papers],
+        "papers": papers_payload,
         "files": files_dict,
     }
 
@@ -414,6 +479,7 @@ def scifi_query_sota_benchmarks(
 @mcp.tool()
 def scifi_query_store(
     query_sql: str,
+    max_rows: int = 100,
 ) -> list[dict[str, Any]]:
     """
     Execute a read-only SQL SELECT query against the SciFi literature intelligence SQLite store.
@@ -421,6 +487,7 @@ def scifi_query_store(
 
     Args:
         query_sql: Read-only SQL SELECT statement.
+        max_rows: Maximum number of rows to return (default: 100; 0 for unlimited).
 
     Returns:
         List of dictionaries representing rows returned by the query.
@@ -431,7 +498,7 @@ def scifi_query_store(
     import scifi.server as srv
 
     store = srv.get_literature_store()
-    return store.execute_read_query(query_sql)
+    return store.execute_read_query(query_sql, max_rows=max_rows)
 
 
 @mcp.tool()
@@ -626,23 +693,30 @@ def scifi_ingest_paper_pdf(
     identifier: str,
     pdf_path: str,
     project_name: str | None = None,
+    zotero_collection: str | None = None,
+    save_to_zotero: bool = True,
+    responder_email: str | None = None,
 ) -> dict[str, Any]:
     """
-    Ingest an acquired paper PDF copy into the content-addressed central store.
-    Marks the paper location as accessible OA and transitions associated reprint
-    requests to RECEIVED.
+    Ingest an acquired paper PDF copy into the content-addressed central store and Zotero.
+    Marks the paper location as accessible OA, transitions associated reprint requests to
+    RECEIVED (recording responder_email if provided), and attaches the PDF in Zotero.
 
     Args:
         identifier: DOI or paper identifier.
         pdf_path: Local filesystem path to the PDF file.
         project_name: Optional project name, ID, or workspace path to link paper to.
+        zotero_collection: Target Zotero collection name (auto-detected from project if omitted).
+        save_to_zotero: Automatically import/attach the PDF into Zotero (default: True).
+        responder_email: Optional email of the author who sent the PDF (for publish-time follow-up).
 
     Returns:
-        Dictionary with status ('SUCCESS' or 'ERROR'), stored_path, sha256, and paper_id.
+        Dictionary with status ('SUCCESS' or 'ERROR'), stored_path, sha256, paper_id, and zotero status.
     """
     import scifi.server as srv
 
     store = srv.get_literature_store()
+    proj = None
     if project_name:
         if str(project_name).strip().lower() == "all":
             proj_id = None
@@ -659,12 +733,25 @@ def scifi_ingest_paper_pdf(
         proj = _resolve_project(store, None)
         proj_id = proj.id if proj else None
 
+    col = zotero_collection
+    if not col and proj is not None:
+        try:
+            from scifi.literature.zotero.sync import load_zotero_project_config
+
+            z_cfg = load_zotero_project_config(Path(proj.workspace_path))
+            col = z_cfg.collection or proj.name
+        except Exception:
+            col = proj.name
+
     try:
         return ingest_paper_copy(
             store=store,
             project_id=proj_id,
             paper_id=identifier,
             pdf_path=pdf_path,
+            save_to_zotero=save_to_zotero,
+            zotero_collection=col,
+            responder_email=responder_email,
         )
     except Exception as e:
         logger.error("Failed ingesting paper PDF %s: %s", pdf_path, e)
@@ -674,3 +761,220 @@ def scifi_ingest_paper_pdf(
             "identifier": identifier,
             "pdf_path": pdf_path,
         }
+
+
+@mcp.tool()
+def scifi_kg_status() -> dict[str, Any]:
+    """
+    Return node and relationship counts and sync state for the LadybugDB Knowledge Graph.
+    """
+    import scifi.server as srv
+
+    store = srv.get_literature_store()
+    kg = srv.get_knowledge_graph()
+    info = kg.stats()
+    info["last_rebuild_utc"] = store.get_kg_sync_state("last_rebuild_utc")
+    return info
+
+
+@mcp.tool()
+def scifi_kg_rebuild() -> dict[str, Any]:
+    """
+    Deterministically rebuild the LadybugDB semantic Knowledge Graph from the SQLite store.
+    """
+    import scifi.server as srv
+
+    store = srv.get_literature_store()
+    kg = srv.get_knowledge_graph()
+    counts = kg.rebuild_from_sqlite(store)
+    return {
+        "status": "SUCCESS",
+        "kg_path": str(kg.kg_path),
+        "counts": counts,
+    }
+
+
+@mcp.tool()
+def scifi_kg_query(
+    cypher: str,
+    max_rows: int = 100,
+) -> list[dict[str, Any]]:
+    """
+    Execute a read-only Cypher query against the SciFi LadybugDB Knowledge Graph.
+    Rejects any mutating or administrative keyword (CREATE, MERGE, SET, DELETE, DETACH, DROP, COPY, CALL).
+    """
+    import scifi.server as srv
+
+    kg = srv.get_knowledge_graph()
+    return kg.execute_read_query(cypher, max_rows=max_rows)
+
+
+@mcp.tool()
+def scifi_kg_trace_assumptions(
+    target: str,
+    max_hops: int = 3,
+) -> dict[str, Any]:
+    """
+    Trace direct and inherited assumptions for a Method or Paper up to max_hops,
+    and flag any upstream assumption that has been falsified in the Knowledge Graph.
+    """
+    import scifi.server as srv
+
+    kg = srv.get_knowledge_graph()
+    return kg.trace_assumptions(target=target, max_hops=max_hops)
+
+
+@mcp.tool()
+def scifi_kg_delta_novelty(
+    method_name_or_id: str,
+    peer_method_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Compute structural delta-novelty for a Method against peer Methods in the Knowledge Graph
+    (assumptions removed/added, gaps addressed, and extension lineage).
+    """
+    import scifi.server as srv
+
+    kg = srv.get_knowledge_graph()
+    return kg.delta_novelty(method_name_or_id=method_name_or_id, peer_method_ids=peer_method_ids)
+
+
+@mcp.tool()
+def scifi_kg_find_contradictions(paper_id: str | None = None) -> list[dict[str, Any]]:
+    """
+    Find all FALSIFIES and CONTRADICTS paths in the Knowledge Graph with supporting Evidence quotes.
+    """
+    import scifi.server as srv
+
+    kg = srv.get_knowledge_graph()
+    return kg.find_contradictions(paper_id=paper_id)
+
+
+@mcp.tool()
+def scifi_kg_upsert_fact(
+    paper_id: str,
+    source_id: str,
+    source_type: str,
+    relation_type: str,
+    target_name: str,
+    target_type: str,
+    evidence_quote: str,
+    source_section: str | None = None,
+    confidence: float = 0.9,
+    is_implicit: bool = False,
+    regime: str | None = None,
+    delta_summary: str | None = None,
+) -> dict[str, Any]:
+    """
+    Record a provenance-backed semantic fact into SQLite and project it into LadybugDB.
+    """
+    import hashlib
+
+    import scifi.server as srv
+    from scifi.literature.kg_extractor import record_semantic_fact
+    from scifi.literature.models import EntityRecord
+
+    store = srv.get_literature_store()
+    kg = srv.get_knowledge_graph()
+    digest = hashlib.sha256(f"{target_type}:{target_name.lower()}".encode()).hexdigest()[:16]
+    target_entity = EntityRecord(
+        id=f"{target_type[:4].lower()}_{digest}",
+        entity_type=target_type,
+        canonical_name=target_name,
+        aliases=[target_name],
+        statement=target_name if target_type in {"Assumption", "Claim"} else None,
+    )
+    res = record_semantic_fact(
+        store,
+        kg,
+        paper_id=paper_id,
+        source_id=source_id,
+        source_type=source_type,
+        relation_type=relation_type,
+        target_entity=target_entity,
+        evidence_quote=evidence_quote,
+        source_section=source_section,
+        confidence=confidence,
+        is_implicit=is_implicit,
+        regime=regime,
+        delta_summary=delta_summary,
+    )
+    return {"status": "SUCCESS", **res}
+
+
+@mcp.tool()
+def scifi_fetch_structured_paper(
+    identifier: str,
+    max_section_length: int = 15000,
+) -> dict[str, Any]:
+    """
+    Fetch structured full-text sections for an arXiv paper without PDF layout corruption.
+    Uses arXiv HTML, ar5iv HTML, or LaTeX e-print source tarballs.
+    """
+    from scifi.literature.resolver import clean_arxiv_id
+    from scifi.literature.sources import fetch_arxiv_structured_text
+
+    ident = identifier.strip()
+    arxiv_id = clean_arxiv_id(ident)
+    if arxiv_id:
+        return fetch_arxiv_structured_text(arxiv_id, max_section_length=max_section_length)
+    return {
+        "status": "NOT_FOUND",
+        "error_message": (
+            f"Could not resolve an arXiv identifier from '{ident}'. "
+            "Provide an arXiv ID/URL or use scifi_fetch_paper_pdf + scifi_extract_pdf_text."
+        ),
+    }
+
+
+@mcp.tool()
+def scifi_fetch_openreview_gaps(
+    title: str | None = None,
+    forum_id: str | None = None,
+    paper_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Fetch official OpenReview peer-review weaknesses/limitations and extract structured research gaps.
+    """
+    from scifi.literature.gaps import GapExtractor
+    from scifi.literature.models import PaperRecord
+    from scifi.literature.sources import fetch_openreview_reviews
+
+    review_res = fetch_openreview_reviews(title=title, forum_id=forum_id)
+    if review_res.get("status") != "SUCCESS":
+        return review_res
+
+    paper = PaperRecord(id=paper_id or f"openreview:{review_res.get('forum_id', '')}", title=title or "")
+    extracted = GapExtractor().extract_review_gaps(paper, review_res.get("reviews", []))
+    return {
+        "status": "SUCCESS",
+        "forum_id": review_res.get("forum_id"),
+        "review_count": review_res.get("review_count", 0),
+        "gap_count": len(extracted),
+        "gaps": [{"evidence": ev.to_dict(), "gap": g.to_dict()} for ev, g in extracted],
+    }
+
+
+@mcp.tool()
+def scifi_synthesize_gaps(graph_id: str) -> dict[str, Any]:
+    """
+    Synthesize a cross-paper comparison matrix and structural research gaps
+    (unexplored method-benchmark combinations, shared unrelaxed assumptions,
+    contradictory claims, and evaluation blind spots) for a literature graph.
+    """
+    import scifi.server as srv
+    from scifi.literature.gap_matrix import GapMatrixBuilder
+
+    store = srv.get_literature_store()
+    papers = store.get_graph_papers(graph_id) if hasattr(store, "get_graph_papers") else []
+    gaps = store.get_graph_gaps(graph_id) if hasattr(store, "get_graph_gaps") else []
+    benchmarks = store.list_benchmarks() if hasattr(store, "list_benchmarks") else []
+    results = store.get_graph_benchmark_results(graph_id) if hasattr(store, "get_graph_benchmark_results") else []
+
+    report = GapMatrixBuilder().build(
+        papers=papers,
+        gaps=gaps,
+        benchmarks=benchmarks,
+        benchmark_results=results,
+    )
+    return {"status": "SUCCESS", "graph_id": graph_id, "markdown": report.to_markdown(), **report.to_dict()}

@@ -245,3 +245,76 @@ def test_highlights_count_validation():
     res = generate_highlights(few_bullets, venue="elsevier")
     assert res.all_valid is False
     assert any("fewer than 3" in (h.issue or "") for h in res.highlights)
+
+
+def test_submission_bundle_strict_gatekeeping(tmp_path):
+    """Verify strict=True gates submission bundle on critical blockers (orphan proofs, double-blind leaks)."""
+    import json
+
+    import scifi.cli
+    from scifi.submission.bundler import prepare_submission_bundle
+
+    tex_file = tmp_path / "main.tex"
+    # Contains an orphan theorem (critical blocker)
+    tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\title{Deep Kernel Learning for Scientific Dynamical Systems}\n"
+        "\\author{Anonymous Authors}\n"
+        "\\begin{document}\n"
+        "\\begin{abstract}This paper proposes deep kernels for scientific dynamical systems.\n"
+        "\\end{abstract}\n"
+        "\\begin{theorem}\\label{thm:kernel}\nKernel convergence holds.\n\\end{theorem}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+
+    out_dir = tmp_path / "dist" / "submission"
+    blocked = prepare_submission_bundle(
+        target_dir_or_tex=tmp_path,
+        journal_name="NeurIPS",
+        venue="neurips",
+        no_code=True,
+        output_dir=out_dir,
+        strict=True,
+        double_blind=True,
+    )
+    assert blocked.status == "BLOCKED"
+    assert any(b["type"] == "orphan_proof" for b in blocked.blockers)
+    assert not (out_dir / "submission_manifest.json").exists()
+
+    # CLI with --strict should also return exit code 1 when blocked
+    assert (
+        scifi.cli.main(
+            ["submission", "bundle", "--target", str(tmp_path), "--venue", "neurips", "--no-code", "--strict"]
+        )
+        == 1
+    )
+
+    # Fix the orphan proof by adding an inline proof
+    tex_file.write_text(
+        "\\documentclass{article}\n"
+        "\\title{Deep Kernel Learning for Scientific Dynamical Systems}\n"
+        "\\author{Anonymous Authors}\n"
+        "\\begin{document}\n"
+        "\\begin{abstract}This paper proposes deep kernels for scientific dynamical systems.\n"
+        "\\end{abstract}\n"
+        "\\begin{theorem}\\label{thm:kernel}\nKernel convergence holds.\n\\end{theorem}\n"
+        "\\begin{proof}\nStandard RKHS argument.\n\\end{proof}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+
+    passed = prepare_submission_bundle(
+        target_dir_or_tex=tmp_path,
+        journal_name="NeurIPS",
+        venue="neurips",
+        no_code=True,
+        output_dir=out_dir,
+        strict=True,
+        double_blind=True,
+    )
+    assert passed.status == "SUCCESS"
+    assert passed.blockers == []
+    manifest = json.loads((out_dir / "submission_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["gate_passed"] is True
+    assert isinstance(manifest["readiness_score"], int)

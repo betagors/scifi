@@ -6,10 +6,13 @@ with BEGIN IMMEDIATE, multi-graph session isolation, and read-only authorizer gu
 
 from __future__ import annotations
 
+import json
+import re
+import shutil
 import sqlite3
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,7 @@ from scifi.literature.models import (
     BenchmarkResultRecord,
     CitationContextRecord,
     CitationRecord,
+    EntityRecord,
     EvaluationConditionRecord,
     EvaluationMetricRecord,
     EvidenceRecord,
@@ -31,6 +35,7 @@ from scifi.literature.models import (
     PaperVersionRecord,
     ProjectRecord,
     ReprintRequestRecord,
+    SemanticEdgeRecord,
 )
 
 DEFAULT_CENTRAL_STORE_PATH: Path = Path.home() / ".scifi" / "literature_store.db"
@@ -301,6 +306,55 @@ CREATE INDEX IF NOT EXISTS idx_reprint_project ON reprint_requests(project_id);
 CREATE INDEX IF NOT EXISTS idx_reprint_paper ON reprint_requests(paper_id);
 CREATE INDEX IF NOT EXISTS idx_project_papers_proj ON project_papers(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_papers_paper ON project_papers(paper_id);
+
+-- 17. Semantic Knowledge Graph Entities & Alias Canonicalization
+CREATE TABLE IF NOT EXISTS kg_entities (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    aliases_json TEXT NOT NULL DEFAULT '[]',
+    category TEXT,
+    statement TEXT,
+    formal_expr TEXT,
+    scope TEXT,
+    complexity TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS kg_entity_aliases (
+    alias_norm TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL REFERENCES kg_entities(id) ON DELETE CASCADE,
+    raw_alias TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    PRIMARY KEY (alias_norm, entity_type)
+);
+
+CREATE TABLE IF NOT EXISTS kg_semantic_edges (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    evidence_id TEXT NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    is_implicit BOOLEAN DEFAULT 0,
+    regime TEXT,
+    delta_summary TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS kg_sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_kg_entities_type ON kg_entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_semantic_edges(source_id, relation_type);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_semantic_edges(target_id, relation_type);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_evidence ON kg_semantic_edges(evidence_id);
 """
 
 
@@ -337,27 +391,71 @@ class LiteratureStore:
         # Initialize schema tables and indexes
         self._init_db()
 
+    LATEST_SCHEMA_VERSION = 2
+
+    @staticmethod
+    def _migrate_v0_to_v1(conn: sqlite3.Connection) -> None:
+        """Drop legacy prototype benchmark tables lacking canonical_url."""
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='benchmarks'")
+        if cursor.fetchone():
+            cursor.execute("PRAGMA table_info(benchmarks)")
+            cols = {row[1] for row in cursor.fetchall()}
+            if "canonical_url" not in cols:
+                conn.execute("DROP TABLE IF EXISTS benchmark_results")
+                conn.execute("DROP TABLE IF EXISTS benchmarks")
+
+    @staticmethod
+    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+        """Add venue_name and venue_tier columns to papers if missing."""
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='papers'")
+        if cursor.fetchone():
+            cursor.execute("PRAGMA table_info(papers)")
+            pcols = {row[1] for row in cursor.fetchall()}
+            if "venue_name" not in pcols:
+                conn.execute("ALTER TABLE papers ADD COLUMN venue_name TEXT")
+            if "venue_tier" not in pcols:
+                conn.execute("ALTER TABLE papers ADD COLUMN venue_tier TEXT")
+
     def _init_db(self) -> None:
-        """Create tables, foreign keys, and indexes if not already existing."""
+        """Create tables, foreign keys, and indexes, running versioned migrations if needed."""
+        migrations: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
+            (1, self._migrate_v0_to_v1),
+            (2, self._migrate_v1_to_v2),
+        ]
         with self._lock:
-            # Upgrade legacy prototype benchmarks/benchmark_results tables if present
             cursor = self.conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='benchmarks'")
-            if cursor.fetchone():
-                cursor.execute("PRAGMA table_info(benchmarks)")
-                cols = {row[1] for row in cursor.fetchall()}
-                if "canonical_url" not in cols:
-                    self.conn.execute("DROP TABLE IF EXISTS benchmark_results")
-                    self.conn.execute("DROP TABLE IF EXISTS benchmarks")
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='papers'")
-            if cursor.fetchone():
-                cursor.execute("PRAGMA table_info(papers)")
-                pcols = {row[1] for row in cursor.fetchall()}
-                if "venue_name" not in pcols:
-                    self.conn.execute("ALTER TABLE papers ADD COLUMN venue_name TEXT")
-                if "venue_tier" not in pcols:
-                    self.conn.execute("ALTER TABLE papers ADD COLUMN venue_tier TEXT")
+            cursor.execute("PRAGMA user_version")
+            current_version = int(cursor.fetchone()[0])
+
+            if current_version < self.LATEST_SCHEMA_VERSION:
+                cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1")
+                has_tables = cursor.fetchone() is not None
+                if (
+                    has_tables
+                    and isinstance(self.db_path, Path)
+                    and self.db_path.is_file()
+                    and self.db_path.stat().st_size > 0
+                ):
+                    backup_path = self.db_path.with_name(f"{self.db_path.name}.bak.v{current_version}")
+                    if not backup_path.exists():
+                        shutil.copy2(self.db_path, backup_path)
+
+                for target_ver, migrate_fn in migrations:
+                    if target_ver > current_version:
+                        self.conn.execute("BEGIN IMMEDIATE")
+                        try:
+                            migrate_fn(self.conn)
+                            self.conn.execute(f"PRAGMA user_version = {target_ver}")
+                            self.conn.execute("COMMIT")
+                        except Exception:
+                            self.conn.execute("ROLLBACK")
+                            raise
+
             self.conn.executescript(SCHEMA_SQL)
+            if current_version < self.LATEST_SCHEMA_VERSION:
+                self.conn.execute(f"PRAGMA user_version = {self.LATEST_SCHEMA_VERSION}")
 
     _init_schema = _init_db
 
@@ -1803,7 +1901,7 @@ class LiteratureStore:
         """Convenience method to transition the status of a reprint request."""
         return self.update_reprint_request(request_id, status=status)
 
-    def execute_read_query(self, query_sql: str) -> list[dict[str, Any]]:
+    def execute_read_query(self, query_sql: str, max_rows: int | None = None) -> list[dict[str, Any]]:
         """
         Execute a read-only SQL query against the knowledge store.
         Strictly permits only SELECT / READ operations using SQLite's authorizer callback.
@@ -1834,7 +1932,8 @@ class LiteratureStore:
                 if not cursor.description:
                     return []
                 cols = [desc[0] for desc in cursor.description]
-                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+                rows = cursor.fetchmany(max_rows) if (max_rows is not None and max_rows > 0) else cursor.fetchall()
+                return [dict(zip(cols, row)) for row in rows]
             except (sqlite3.DatabaseError, sqlite3.ProgrammingError) as e:
                 err_str = str(e).lower()
                 if "not authorized" in err_str or "one statement at a time" in err_str:
@@ -1842,6 +1941,263 @@ class LiteratureStore:
                 raise
             finally:
                 self.conn.set_authorizer(None)
+
+    # ── Semantic Knowledge Graph Registry (System of Record) ──────────────────
+
+    @staticmethod
+    def normalize_entity_alias(name: str) -> str:
+        """Normalize an entity name or alias for canonical matching."""
+        cleaned = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+        return re.sub(r"\s+", " ", cleaned)
+
+    def resolve_entity_by_alias(
+        self,
+        name: str,
+        entity_type: str | None = None,
+    ) -> EntityRecord | None:
+        """Resolve an entity via its normalized alias (or exact canonical name)."""
+        norm = self.normalize_entity_alias(name)
+        if not norm:
+            return None
+        with self._lock:
+            cursor = self.conn.cursor()
+            if entity_type:
+                cursor.execute(
+                    """
+                    SELECT e.id, e.entity_type, e.canonical_name, e.aliases_json,
+                           e.category, e.statement, e.formal_expr, e.scope, e.complexity, e.created_at
+                    FROM kg_entity_aliases a
+                    JOIN kg_entities e ON e.id = a.entity_id
+                    WHERE a.alias_norm = ? AND a.entity_type = ?
+                    LIMIT 1
+                    """,
+                    (norm, entity_type),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT e.id, e.entity_type, e.canonical_name, e.aliases_json,
+                           e.category, e.statement, e.formal_expr, e.scope, e.complexity, e.created_at
+                    FROM kg_entity_aliases a
+                    JOIN kg_entities e ON e.id = a.entity_id
+                    WHERE a.alias_norm = ?
+                    LIMIT 1
+                    """,
+                    (norm,),
+                )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return EntityRecord(
+                id=str(row[0]),
+                entity_type=str(row[1]),
+                canonical_name=str(row[2]),
+                aliases=json.loads(row[3] or "[]"),
+                category=row[4],
+                statement=row[5],
+                formal_expr=row[6],
+                scope=row[7],
+                complexity=row[8],
+                created_at=str(row[9]) if row[9] is not None else None,
+            )
+
+    def upsert_entity(
+        self,
+        entity: EntityRecord,
+        aliases: list[str] | None = None,
+    ) -> str:
+        """
+        Insert or update a canonical KG entity and register its normalized aliases.
+        If an existing entity matches the canonical_name alias for the same entity_type,
+        merges into that canonical ID to prevent entity fragmentation.
+        """
+        all_aliases = list(dict.fromkeys([entity.canonical_name, *(entity.aliases or []), *(aliases or [])]))
+        with self._lock, self.transaction():
+            existing = self.resolve_entity_by_alias(entity.canonical_name, entity_type=entity.entity_type)
+            target_id = existing.id if existing is not None else entity.id
+            if existing is not None:
+                all_aliases = list(dict.fromkeys([*existing.aliases, *all_aliases]))
+
+            self.conn.execute(
+                """
+                INSERT INTO kg_entities (
+                    id, entity_type, canonical_name, aliases_json,
+                    category, statement, formal_expr, scope, complexity
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    canonical_name = COALESCE(NULLIF(excluded.canonical_name, ''), kg_entities.canonical_name),
+                    aliases_json = excluded.aliases_json,
+                    category = COALESCE(excluded.category, kg_entities.category),
+                    statement = COALESCE(excluded.statement, kg_entities.statement),
+                    formal_expr = COALESCE(excluded.formal_expr, kg_entities.formal_expr),
+                    scope = COALESCE(excluded.scope, kg_entities.scope),
+                    complexity = COALESCE(excluded.complexity, kg_entities.complexity)
+                """,
+                (
+                    target_id,
+                    entity.entity_type,
+                    existing.canonical_name if existing is not None else entity.canonical_name,
+                    json.dumps(all_aliases),
+                    entity.category,
+                    entity.statement,
+                    entity.formal_expr,
+                    entity.scope,
+                    entity.complexity,
+                ),
+            )
+
+            for alias in all_aliases:
+                norm = self.normalize_entity_alias(alias)
+                if not norm:
+                    continue
+                self.conn.execute(
+                    """
+                    INSERT INTO kg_entity_aliases (alias_norm, entity_type, entity_id, raw_alias, confidence)
+                    VALUES (?, ?, ?, ?, 1.0)
+                    ON CONFLICT(alias_norm, entity_type) DO NOTHING
+                    """,
+                    (norm, entity.entity_type, target_id, alias),
+                )
+            return target_id
+
+    def list_entities(self, entity_type: str | None = None) -> list[EntityRecord]:
+        """List all canonical KG entities, optionally filtered by entity_type."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            if entity_type:
+                cursor.execute(
+                    """
+                    SELECT id, entity_type, canonical_name, aliases_json,
+                           category, statement, formal_expr, scope, complexity, created_at
+                    FROM kg_entities WHERE entity_type = ? ORDER BY canonical_name
+                    """,
+                    (entity_type,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, entity_type, canonical_name, aliases_json,
+                           category, statement, formal_expr, scope, complexity, created_at
+                    FROM kg_entities ORDER BY entity_type, canonical_name
+                    """
+                )
+            return [
+                EntityRecord(
+                    id=str(r[0]),
+                    entity_type=str(r[1]),
+                    canonical_name=str(r[2]),
+                    aliases=json.loads(r[3] or "[]"),
+                    category=r[4],
+                    statement=r[5],
+                    formal_expr=r[6],
+                    scope=r[7],
+                    complexity=r[8],
+                    created_at=str(r[9]) if r[9] is not None else None,
+                )
+                for r in cursor.fetchall()
+            ]
+
+    def upsert_semantic_edge(self, edge: SemanticEdgeRecord) -> str:
+        """
+        Persist a provenance-backed semantic edge.
+        Enforces the red-team invariant: `evidence_id` MUST exist in `evidence`.
+        """
+        if not edge.evidence_id:
+            raise ValueError("SemanticEdgeRecord requires a non-empty evidence_id for provenance.")
+        with self._lock, self.transaction():
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1 FROM evidence WHERE id = ? LIMIT 1", (edge.evidence_id,))
+            if cursor.fetchone() is None:
+                raise ValueError(f"Provenance violation: evidence_id '{edge.evidence_id}' does not exist in evidence.")
+
+            self.conn.execute(
+                """
+                INSERT INTO kg_semantic_edges (
+                    id, source_id, source_type, relation_type, target_id, target_type,
+                    evidence_id, confidence, is_implicit, regime, delta_summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    confidence = MAX(kg_semantic_edges.confidence, excluded.confidence),
+                    is_implicit = excluded.is_implicit,
+                    regime = COALESCE(excluded.regime, kg_semantic_edges.regime),
+                    delta_summary = COALESCE(excluded.delta_summary, kg_semantic_edges.delta_summary)
+                """,
+                (
+                    edge.id,
+                    edge.source_id,
+                    edge.source_type,
+                    edge.relation_type,
+                    edge.target_id,
+                    edge.target_type,
+                    edge.evidence_id,
+                    edge.confidence,
+                    1 if edge.is_implicit else 0,
+                    edge.regime,
+                    edge.delta_summary,
+                ),
+            )
+            return edge.id
+
+    def list_semantic_edges(self, relation_type: str | None = None) -> list[SemanticEdgeRecord]:
+        """List all provenance-backed semantic edges."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            if relation_type:
+                cursor.execute(
+                    """
+                    SELECT id, source_id, source_type, relation_type, target_id, target_type,
+                           evidence_id, confidence, is_implicit, regime, delta_summary, created_at
+                    FROM kg_semantic_edges WHERE relation_type = ?
+                    """,
+                    (relation_type,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, source_id, source_type, relation_type, target_id, target_type,
+                           evidence_id, confidence, is_implicit, regime, delta_summary, created_at
+                    FROM kg_semantic_edges
+                    """
+                )
+            return [
+                SemanticEdgeRecord(
+                    id=str(r[0]),
+                    source_id=str(r[1]),
+                    source_type=str(r[2]),
+                    relation_type=str(r[3]),
+                    target_id=str(r[4]),
+                    target_type=str(r[5]),
+                    evidence_id=str(r[6]),
+                    confidence=float(r[7]),
+                    is_implicit=bool(r[8]),
+                    regime=r[9],
+                    delta_summary=r[10],
+                    created_at=str(r[11]) if r[11] is not None else None,
+                )
+                for r in cursor.fetchall()
+            ]
+
+    def set_kg_sync_state(self, key: str, value: str) -> None:
+        """Persist a KG synchronization watermark or metadata value."""
+        with self._lock, self.transaction():
+            self.conn.execute(
+                """
+                INSERT INTO kg_sync_state (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (key, value),
+            )
+
+    def get_kg_sync_state(self, key: str) -> str | None:
+        """Retrieve a KG synchronization metadata value."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT value FROM kg_sync_state WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return str(row[0]) if row is not None else None
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
