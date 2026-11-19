@@ -21,13 +21,55 @@ _AUTH_LOCK = threading.Lock()
 _LAST_AUTH_FAILURE_TS: float = 0.0
 _AUTH_RETRY_COOLDOWN_S: float = 30.0
 
-SCIFI_STATUS_TAGS = {
+SCIFI_PDF_TAGS = {
+    "#scifi-pdf-published",
+    "#scifi-pdf-preprint",
+    "#scifi-pdf-aam",
+    "#scifi-pdf-missing",
+}
+
+SCIFI_PUB_STATUS_TAGS = {
+    "#scifi-status-published",
+    "#scifi-status-preprint",
+}
+
+SCIFI_AUDIT_TAGS = {
     "#scifi-audited",
     "#scifi-verified",
     "#unstated-assumption",
     "#retraction-or-concern",
     "#benchmark-sota",
+    "#scifi-citation-verified",
+    "#scifi-retracted",
+    "#scifi-erratum",
+    "#scifi-claims-checked",
+    "#scifi-kg-digested",
+    "#scifi-contradiction",
+    "#scifi-claim-disputed",
+    "#scifi-abstract-missing",
 }
+
+SCIFI_STATUS_TAGS = (
+    SCIFI_PDF_TAGS
+    | SCIFI_PUB_STATUS_TAGS
+    | SCIFI_AUDIT_TAGS
+    | {
+        "#scifi-reprint-requested",
+        "#scifi-ingested",
+    }
+)
+
+
+def infer_pdf_provenance_tag(pdf_url: str | None = None, source: str | None = None) -> str:
+    """Infer the SciFi PDF provenance tag from a download URL or source."""
+    if not pdf_url and not source:
+        return "#scifi-pdf-missing"
+    combined = f"{pdf_url or ''} {source or ''}".lower()
+    if any(host in combined for host in ("arxiv.org", "biorxiv.org", "medrxiv.org", "preprint")):
+        return "#scifi-pdf-preprint"
+    if "aam" in combined or "accepted manuscript" in combined:
+        return "#scifi-pdf-aam"
+    return "#scifi-pdf-published"
 
 
 class ZoteroLocalWriter:
@@ -158,10 +200,83 @@ class ZoteroLocalWriter:
     def format_audit_card_html(self, card: ZoteroAuditCard) -> str:
         """Generate formatted HTML for a SciFi audit card child note."""
         lines = [
-            '<div class="scifi-audit-card" data-scifi-version="1.0">',
+            '<div class="scifi-audit-card" data-scifi-version="2.0">',
             "<h3>SciFi Scientific Audit Card</h3>",
-            f"<p><strong>Primary Contribution:</strong> {card.contribution}</p>",
         ]
+
+        if card.pdf_source or card.reprint_status or card.kg_digested_at:
+            prov_parts = []
+            if card.pdf_source:
+                prov_parts.append(f"<strong>PDF Source:</strong> {card.pdf_source}")
+            if card.reprint_status:
+                prov_parts.append(f"<strong>Reprint Status:</strong> {card.reprint_status}")
+            if card.kg_digested_at:
+                prov_parts.append(f"<strong>KG Digested:</strong> {card.kg_digested_at}")
+            lines.append(f"<p>{' | '.join(prov_parts)}</p>")
+
+        if card.summary:
+            lines.append(f"<p><strong>Résumé:</strong> {card.summary}</p>")
+
+        lines.append(f"<p><strong>Primary Contribution:</strong> {card.contribution}</p>")
+
+        if card.authors_info:
+            lines.append(
+                f"<details open><summary><strong>Authors &amp; Contacts ({len(card.authors_info)})</strong></summary><ul>"
+            )
+            for auth in card.authors_info:
+                name = auth.get("name", "Unknown")
+                parts = [f"<strong>{name}</strong>"]
+                inst = auth.get("latest_institution") or auth.get("institution")
+                if inst:
+                    parts.append(f"({inst})")
+                orcid = auth.get("orcid")
+                if orcid:
+                    parts.append(f'ORCID: <a href="https://orcid.org/{orcid}">{orcid}</a>')
+                email = auth.get("email")
+                if email:
+                    parts.append(f"Email: {email}")
+                h_idx = auth.get("h_index")
+                if h_idx is not None:
+                    parts.append(f"h-index: {h_idx}")
+                lines.append(f"<li>👤 {' — '.join(parts)}</li>")
+            lines.append("</ul></details>")
+
+        if card.methods:
+            lines.append(
+                f"<details open><summary><strong>Extracted Methods ({len(card.methods)})</strong></summary><ul>"
+            )
+            for m in card.methods:
+                lines.append(f"<li>⚙️ {m}</li>")
+            lines.append("</ul></details>")
+
+        if card.claims:
+            lines.append(
+                f"<details open><summary><strong>Key Claims ({len(card.claims)})</strong></summary><ul>"
+            )
+            for cl in card.claims:
+                lines.append(f"<li>📌 {cl}</li>")
+            lines.append("</ul></details>")
+
+        if card.claims_checked:
+            lines.append(
+                f"<details open><summary><strong>Claim Verification ({len(card.claims_checked)})</strong></summary><ul>"
+            )
+            for c in card.claims_checked:
+                verdict = str(c.get("verdict", "UNCHECKED")).upper()
+                icon = "✅" if verdict in ("ENTAILED", "SUPPORTED") else ("⚠️" if "PARTIAL" in verdict else "❌")
+                claim_txt = c.get("claim", "")
+                evidence = c.get("evidence", "")
+                ev_str = f" — <em>{evidence}</em>" if evidence else ""
+                lines.append(f"<li>{icon} <strong>[{verdict}]</strong> {claim_txt}{ev_str}</li>")
+            lines.append("</ul></details>")
+
+        if card.contradictions:
+            lines.append(
+                f"<details open><summary><strong>Contradictions / Falsifications ({len(card.contradictions)})</strong></summary><ul>"
+            )
+            for ctr in card.contradictions:
+                lines.append(f"<li>⚡ {ctr}</li>")
+            lines.append("</ul></details>")
 
         if card.assumptions_flagged:
             lines.append(
@@ -173,6 +288,22 @@ class ZoteroLocalWriter:
         else:
             lines.append("<p><em>No unstated assumptions flagged.</em></p>")
 
+        if card.gaps:
+            lines.append(
+                f"<details open><summary><strong>Research Gaps ({len(card.gaps)})</strong></summary><ul>"
+            )
+            for g in card.gaps:
+                lines.append(f"<li>🔍 {g}</li>")
+            lines.append("</ul></details>")
+
+        if card.limitations:
+            lines.append(
+                f"<details open><summary><strong>Limitations &amp; Failure Modes ({len(card.limitations)})</strong></summary><ul>"
+            )
+            for lim in card.limitations:
+                lines.append(f"<li>🔸 {lim}</li>")
+            lines.append("</ul></details>")
+
         if card.benchmarks_extracted:
             lines.append(
                 f"<details open><summary><strong>Extracted SOTA Benchmarks ({len(card.benchmarks_extracted)})</strong></summary><ul>"
@@ -182,6 +313,13 @@ class ZoteroLocalWriter:
                 val = b.get("value", "")
                 lines.append(f"<li>📊 <strong>{metric}:</strong> {val}</li>")
             lines.append("</ul></details>")
+
+        if card.relevance_notes:
+            lines.append(f"<p><strong>AI Project Notes:</strong> {card.relevance_notes}</p>")
+
+        if card.citation_verified is not None:
+            cit_status = "✅ Verified" if card.citation_verified else "⚠️ Unverified"
+            lines.append(f"<p><strong>Citation Verification:</strong> {cit_status}</p>")
 
         math_status = "✅ Verified" if card.math_verified else "⚪ Unaudited / Not applicable"
         lines.append(f"<p><strong>Symbolic Math Verification:</strong> {math_status}</p>")
@@ -201,13 +339,7 @@ class ZoteroLocalWriter:
                 {
                     "type": "audit_note",
                     "item_key": item_key,
-                    "card": {
-                        "contribution": card.contribution,
-                        "assumptions_flagged": card.assumptions_flagged,
-                        "benchmarks_extracted": card.benchmarks_extracted,
-                        "math_verified": card.math_verified,
-                        "retraction_status": card.retraction_status,
-                    },
+                    "card": card.to_dict(),
                 }
             )
             return {"status": "STAGED", "message": "Zotero is offline; audit note staged in local queue."}
@@ -217,20 +349,25 @@ class ZoteroLocalWriter:
             resp = requests.get(f"{self.base_url}/items/{item_key}/children", headers=self._headers(), timeout=3)
             if resp.status_code == 200:
                 children = resp.json()
-                for child in children:
-                    c_data = child.get("data", child)
-                    if c_data.get("itemType") == "note" and "scifi-audit-card" in c_data.get("note", ""):
-                        note_key = child.get("key", c_data.get("key"))
-                        ver = child.get("version", c_data.get("version"))
-                        patch_payload = {"note": html_content}
-                        patch_resp = requests.patch(
-                            f"{self.base_url}/items/{note_key}",
-                            headers=self._headers(version=ver, require_auth=True),
-                            json=patch_payload,
-                            timeout=3,
-                        )
-                        if patch_resp.status_code in (200, 204):
-                            return {"status": "UPDATED", "note_key": note_key}
+                if isinstance(children, list):
+                    for child in children:
+                        if not isinstance(child, dict):
+                            continue
+                        c_data = child.get("data", child)
+                        if not isinstance(c_data, dict):
+                            continue
+                        if c_data.get("itemType") == "note" and "scifi-audit-card" in str(c_data.get("note", "")):
+                            note_key = child.get("key", c_data.get("key"))
+                            ver = child.get("version", c_data.get("version"))
+                            patch_payload = {"note": html_content}
+                            patch_resp = requests.patch(
+                                f"{self.base_url}/items/{note_key}",
+                                headers=self._headers(version=ver, require_auth=True),
+                                json=patch_payload,
+                                timeout=3,
+                            )
+                            if patch_resp.status_code in (200, 204):
+                                return {"status": "UPDATED", "note_key": note_key}
 
             # Create new child note
             post_payload: list[dict[str, Any]] = [
@@ -255,21 +392,22 @@ class ZoteroLocalWriter:
                 {
                     "type": "audit_note",
                     "item_key": item_key,
-                    "card": {
-                        "contribution": card.contribution,
-                        "assumptions_flagged": card.assumptions_flagged,
-                        "benchmarks_extracted": card.benchmarks_extracted,
-                        "math_verified": card.math_verified,
-                        "retraction_status": card.retraction_status,
-                    },
+                    "card": card.to_dict(),
                 }
             )
             return {"status": "STAGED", "error": str(e)}
 
-    def apply_tags(self, item_key: str, tags: list[str], replace_scifi_tags: bool = True) -> dict[str, Any]:
+    def apply_tags(
+        self,
+        item_key: str,
+        tags: list[str],
+        replace_scifi_tags: bool = True,
+        replace_tags: set[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Apply tags to parent item while preserving user-authored tags.
         """
+        tags_to_replace = replace_tags if replace_tags is not None else SCIFI_STATUS_TAGS
         if not self.is_server_available():
             self._stage_write(
                 {
@@ -295,7 +433,7 @@ class ZoteroLocalWriter:
             merged_tags: list[dict[str, str]] = []
             for t_obj in existing_tags:
                 tag_name = t_obj.get("tag", "")
-                if replace_scifi_tags and tag_name in SCIFI_STATUS_TAGS:
+                if replace_scifi_tags and tag_name in tags_to_replace:
                     continue
                 merged_tags.append(t_obj)
 
@@ -398,23 +536,32 @@ class ZoteroLocalWriter:
         return None
 
     def get_collection_items_live(self, collection_key: str) -> list[dict[str, Any]]:
-        """Retrieve item data dicts in a collection via the live local HTTP API."""
+        """Retrieve all item data dicts in a collection via the live local HTTP API."""
+        items: list[dict[str, Any]] = []
+        start = 0
+        limit = 100
         try:
-            resp = requests.get(
-                f"{self.base_url}/collections/{collection_key}/items?limit=500",
-                headers=self._headers(),
-                timeout=5,
-            )
-            if resp.status_code == 200:
-                items = []
-                for entry in resp.json():
+            while True:
+                resp = requests.get(
+                    f"{self.base_url}/collections/{collection_key}/items?limit={limit}&start={start}",
+                    headers=self._headers(),
+                    timeout=5,
+                )
+                if resp.status_code != 200:
+                    break
+                batch = resp.json()
+                if not isinstance(batch, list) or not batch:
+                    break
+                for entry in batch:
                     data = entry.get("data", {})
                     if data.get("itemType") not in ("attachment", "note", "annotation"):
                         items.append(data)
-                return items
+                if len(batch) < limit:
+                    break
+                start += limit
         except Exception:
             pass
-        return []
+        return items
 
     def add_items_to_collection(self, collection_key: str, item_keys: list[str]) -> int:
         """Add existing library items to a collection (PATCH preserving other memberships)."""
@@ -706,6 +853,54 @@ class ZoteroLocalWriter:
                 continue
         return created
 
+    def update_item_metadata(self, item_key: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """Update bibliographic metadata fields on an existing Zotero item (PATCH), staging if offline."""
+        if not fields:
+            return {"status": "SKIPPED", "item_key": item_key}
+        if not self.is_server_available():
+            self._stage_write({"type": "update_metadata", "item_key": item_key, "fields": fields})
+            return {"status": "STAGED", "item_key": item_key}
+        try:
+            g = requests.get(f"{self.base_url}/items/{item_key}", headers=self._headers(), timeout=5)
+            if g.status_code != 200:
+                self._stage_write({"type": "update_metadata", "item_key": item_key, "fields": fields})
+                return {"status": "STAGED", "item_key": item_key, "code": g.status_code}
+            data = g.json().get("data", {})
+            version = data.get("version")
+            patch_payload = {k: v for k, v in fields.items() if v is not None}
+            p = requests.patch(
+                f"{self.base_url}/items/{item_key}",
+                headers=self._headers(version=version, require_auth=True),
+                json=patch_payload,
+                timeout=10,
+            )
+            if p.status_code in (200, 204):
+                return {"status": "UPDATED", "item_key": item_key, "fields": list(patch_payload.keys())}
+            return {"status": "ERROR", "item_key": item_key, "code": p.status_code}
+        except Exception as e:
+            self._stage_write({"type": "update_metadata", "item_key": item_key, "fields": fields})
+            return {"status": "STAGED", "item_key": item_key, "error": str(e)}
+
+    def delete_item(self, item_key: str) -> dict[str, Any]:
+        """Delete an item (e.g. a duplicate) via the local Zotero HTTP API."""
+        if not self.is_server_available():
+            return {"status": "OFFLINE", "item_key": item_key}
+        try:
+            g = requests.get(f"{self.base_url}/items/{item_key}", headers=self._headers(), timeout=5)
+            if g.status_code != 200:
+                return {"status": "NOT_FOUND", "item_key": item_key, "code": g.status_code}
+            version = g.json().get("data", {}).get("version")
+            d = requests.delete(
+                f"{self.base_url}/items/{item_key}",
+                headers=self._headers(version=version, require_auth=True),
+                timeout=10,
+            )
+            if d.status_code in (200, 204):
+                return {"status": "DELETED", "item_key": item_key}
+            return {"status": "ERROR", "item_key": item_key, "code": d.status_code}
+        except Exception as e:
+            return {"status": "ERROR", "item_key": item_key, "error": str(e)}
+
     def flush_staged_writes(self) -> list[dict[str, Any]]:
         """
         Replay all staged mutations when the Zotero server is available.
@@ -733,14 +928,7 @@ class ZoteroLocalWriter:
                 res = None
                 if m_type == "audit_note":
                     c_data = item.get("card", {})
-                    card = ZoteroAuditCard(
-                        item_key=key,
-                        contribution=c_data.get("contribution", ""),
-                        assumptions_flagged=c_data.get("assumptions_flagged", []),
-                        benchmarks_extracted=c_data.get("benchmarks_extracted", []),
-                        math_verified=c_data.get("math_verified", False),
-                        retraction_status=c_data.get("retraction_status", "OK"),
-                    )
+                    card = ZoteroAuditCard.from_dict(c_data, item_key=key)
                     res = self.push_audit_card_note(key, card)
                 elif m_type in ("tags", "tag"):
                     res = self.apply_tags(
@@ -780,6 +968,10 @@ class ZoteroLocalWriter:
                             pdf_path=item.get("pdf_path"),
                             collection_name=item.get("collection_name"),
                         )
+                elif m_type == "update_metadata":
+                    fields = item.get("fields")
+                    if key and isinstance(fields, dict):
+                        res = self.update_item_metadata(key, fields)
 
                 if res and res.get("status") in ("CREATED", "UPDATED", "SUCCESS", "EXISTS", "PUSHED"):
                     results.append(res)

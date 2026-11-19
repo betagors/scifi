@@ -7,7 +7,9 @@ and resolves PDF files directly from Zotero storage directories.
 from __future__ import annotations
 
 import re
+import shutil
 import sqlite3
+import tempfile
 from pathlib import Path
 
 from scifi.env import auto_detect_zotero_dir
@@ -15,7 +17,22 @@ from scifi.literature.zotero.models import (
     ZoteroAnnotation,
     ZoteroCollection,
     ZoteroItem,
+    ZoteroNote,
 )
+
+
+class _TempSnapConnection(sqlite3.Connection):
+    """SQLite connection that cleans up its temporary WAL snapshot directory on close."""
+
+    _tmp_dir: str | None = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self._tmp_dir:
+                shutil.rmtree(self._tmp_dir, ignore_errors=True)
+                self._tmp_dir = None
 
 
 class ZoteroLocalReader:
@@ -37,12 +54,32 @@ class ZoteroLocalReader:
 
     def _get_connection(self) -> sqlite3.Connection:
         """
-        Open a connection to zotero.sqlite in immutable mode.
-        Immutable mode guarantees SQLite will never attempt to lock the database,
-        making it safe to run concurrently with the active Zotero desktop app.
+        Open a read-only connection to zotero.sqlite without locking Zotero Desktop.
+        When a non-empty WAL file exists, snapshot ``zotero.sqlite`` (+ ``-wal`` /
+        ``-shm``) into a temporary directory so uncommitted Zotero Desktop edits
+        (like newly attached PDFs) are visible; otherwise use immutable URI mode.
         """
         if not self.sqlite_path.is_file():
             raise FileNotFoundError(f"Zotero SQLite database not found at {self.sqlite_path}")
+
+        wal_path = Path(f"{self.sqlite_path}-wal")
+        if wal_path.is_file() and wal_path.stat().st_size > 0:
+            tmp_dir = tempfile.mkdtemp(prefix="scifi_zotero_")
+            try:
+                for suffix in ("", "-wal", "-shm"):
+                    src = Path(f"{self.sqlite_path}{suffix}")
+                    if src.is_file():
+                        shutil.copy2(src, Path(tmp_dir) / src.name)
+                conn = sqlite3.connect(
+                    Path(tmp_dir) / self.sqlite_path.name,
+                    timeout=10.0,
+                    factory=_TempSnapConnection,
+                )
+                conn._tmp_dir = tmp_dir
+                return conn
+            except Exception:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                raise
 
         # Construct RFC-compliant file URI in immutable mode
         uri = f"{self.sqlite_path.as_uri()}?immutable=1"
@@ -200,6 +237,44 @@ class ZoteroLocalReader:
         except Exception:
             return None
 
+    def _extract_date_modified(self, cur: sqlite3.Cursor, item_id: int) -> str | None:
+        """Extract dateModified for an item when column exists."""
+        try:
+            cols = {r[1] for r in cur.execute("PRAGMA table_info(items)").fetchall()}
+            if "dateModified" not in cols:
+                return None
+            row = cur.execute("SELECT dateModified FROM items WHERE itemID = ?", (item_id,)).fetchone()
+            return str(row[0]) if row and row[0] is not None else None
+        except Exception:
+            return None
+
+    def _extract_attachment_hash(self, cur: sqlite3.Cursor, parent_item_id: int) -> str | None:
+        """Extract storageHash or storageModTime for an item's PDF attachment when columns exist."""
+        try:
+            cols = {r[1] for r in cur.execute("PRAGMA table_info(itemAttachments)").fetchall()}
+            has_hash = "storageHash" in cols
+            has_mtime = "storageModTime" in cols
+            if not has_hash and not has_mtime:
+                return None
+            h_col = "storageHash" if has_hash else "NULL"
+            m_col = "storageModTime" if has_mtime else "NULL"
+            rows = cur.execute(
+                f"""
+                SELECT {h_col}, {m_col}
+                FROM itemAttachments
+                WHERE parentItemID = ? AND (contentType = 'application/pdf' OR path LIKE '%.pdf')
+                """,
+                (parent_item_id,),
+            ).fetchall()
+            for s_hash, s_mtime in rows:
+                if s_hash:
+                    return str(s_hash)
+                if s_mtime is not None:
+                    return str(s_mtime)
+            return None
+        except Exception:
+            return None
+
     def _resolve_attachment_pdf(self, cur: sqlite3.Cursor, parent_item_id: int) -> Path | None:
         """Find the local PDF path for an item in Zotero storage."""
         rows = cur.execute(
@@ -251,6 +326,11 @@ class ZoteroLocalReader:
         authors = self._extract_creators(cur, it_id)
         item_type = self._extract_item_type(cur, it_id)
         pub_title = fields.get("publicationTitle") or fields.get("proceedingsTitle") or fields.get("bookTitle")
+        date_modified = self._extract_date_modified(cur, it_id)
+        attachment_hash = self._extract_attachment_hash(cur, it_id)
+        from scifi.literature.zotero.notes import _extract_item_notes_with_cursor
+
+        notes = _extract_item_notes_with_cursor(cur, it_id, it_key)
 
         return ZoteroItem(
             item_id=it_id,
@@ -262,6 +342,7 @@ class ZoteroLocalReader:
             abstract=fields.get("abstractNote"),
             publication_title=pub_title,
             pdf_path=pdf_path,
+            notes=notes,
             tags=tags,
             authors=authors,
             item_type=item_type,
@@ -269,6 +350,8 @@ class ZoteroLocalReader:
             volume=fields.get("volume"),
             issue=fields.get("issue"),
             pages=fields.get("pages"),
+            date_modified=date_modified,
+            attachment_hash=attachment_hash,
         )
 
     def get_collection_items(self, collection_name_or_id: str | int) -> list[ZoteroItem]:
@@ -290,6 +373,15 @@ class ZoteroLocalReader:
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deletedItems'"
             ).fetchone()
             deleted_clause = "AND i.itemID NOT IN (SELECT itemID FROM deletedItems)" if has_deleted else ""
+            has_item_types = cur.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='itemTypes'"
+            ).fetchone()
+            type_join = "LEFT JOIN itemTypes it ON i.itemTypeID = it.itemTypeID" if has_item_types else ""
+            type_clause = (
+                "AND (it.typeName IS NULL OR it.typeName NOT IN ('attachment', 'note', 'annotation'))"
+                if has_item_types
+                else ""
+            )
 
             placeholders = ",".join("?" for _ in col_ids)
             item_rows = cur.execute(
@@ -297,7 +389,8 @@ class ZoteroLocalReader:
                 SELECT i.itemID, i.key
                 FROM collectionItems ci
                 JOIN items i ON ci.itemID = i.itemID
-                WHERE ci.collectionID IN ({placeholders}) {deleted_clause}
+                {type_join}
+                WHERE ci.collectionID IN ({placeholders}) {type_clause} {deleted_clause}
                 """,
                 tuple(col_ids),
             ).fetchall()
@@ -530,3 +623,15 @@ class ZoteroLocalReader:
             ]
         finally:
             conn.close()
+
+    def get_item_notes(self, item_key: str) -> list[ZoteroNote]:
+        """Retrieve child notes (`itemNotes`) attached to a given item key."""
+        from scifi.literature.zotero.notes import get_item_notes
+
+        return get_item_notes(self, item_key)
+
+    def get_collection_notes(self, collection_name_or_id: str | int) -> list[ZoteroNote]:
+        """Retrieve all child and standalone notes belonging to a collection."""
+        from scifi.literature.zotero.notes import get_collection_notes
+
+        return get_collection_notes(self, collection_name_or_id)
